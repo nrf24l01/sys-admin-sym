@@ -12,10 +12,13 @@ cargo run --release
 
 The game starts with one empty 12U rack and $6,000.
 
-1. Buy a router, switch, and servers in the shop.
+1. Buy a Cisco ISR C1111-8P, Cisco Catalyst C1000-24T-4G-L, and Dell
+   PowerEdge R360 servers in the shop.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
 3. Power devices from the inspector.
-4. Select ports and click **Use for cable** on both endpoints.
+4. In **RACK**, left-click a switch port and then a server/router port. The
+   patch cable appears immediately between the physical ports. Right-click a
+   port to configure it without starting a cable.
 5. Create VLANs on the switch, configure access/trunk ports, server IPv4, and
    router subinterfaces.
 6. Select a server and use `ip`, `route`, `arp`, `ping <ip>`, or
@@ -30,6 +33,5 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The real-equipment development textures and their licenses are documented in
+The real-equipment reference textures and their sources are documented in
 [`assets/equipment/ATTRIBUTION.md`](assets/equipment/ATTRIBUTION.md).
-

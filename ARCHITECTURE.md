@@ -17,12 +17,12 @@ egui → UiAction → Bevy application layer → Command
 ## Crates
 
 - `crates/sim`: pure domain model. It depends only on `serde` and `thiserror`.
-- `crates/game`: Bevy application, egui presentation, simulation worker, 3D
-  projection, and SQLite adapter.
+- `crates/game`: Bevy application, egui rack/topology presentation, simulation
+  worker, and SQLite adapter.
 
 The worker thread exclusively owns the mutable `NetworkSim`. Bevy sends domain
-commands through a channel and renders cloned snapshots. The 3D entities are a
-projection rebuilt when `topology_revision` changes; they are never authoritative.
+commands through a channel and renders cloned snapshots. Rack panels, clickable
+ports, and cable paths are derived presentation and are never authoritative.
 
 Links are canonical records. The port-to-link map is a transient index rebuilt
 after load. Editor text remains in `EditorDrafts` until **Apply**, so incomplete
@@ -41,4 +41,3 @@ addresses never enter the domain state.
    `NoRoute`, or `AddressConflict`.
 
 There are no Ethernet frames or packet timing in this MVP.
-

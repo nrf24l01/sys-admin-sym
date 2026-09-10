@@ -229,7 +229,7 @@ impl NetworkSim {
                     })
                     .collect();
                 (
-                    format!("Server{index:02}"),
+                    format!("Dell PowerEdge R360 #{index:02}"),
                     DeviceKind::Server(Server {
                         hostname: format!("server{index:02}"),
                         ports,
@@ -237,19 +237,31 @@ impl NetworkSim {
                 )
             }
             DeviceTemplate::Switch => {
-                let ports = (1..=24)
+                let mut ports: Vec<_> = (1..=24)
                     .map(|n| {
                         self.alloc_port(
                             id,
-                            format!("Port {n:02}"),
+                            format!("Gi1/0/{n:02}"),
                             PortConfig::Switch(SwitchPortConfig {
                                 mode: SwitchPortMode::Access { vlan: VlanId(1) },
                             }),
                         )
                     })
                     .collect();
+                ports.extend((25..=28).map(|n| {
+                    self.alloc_port(
+                        id,
+                        format!("SFP Gi1/0/{n:02}"),
+                        PortConfig::Switch(SwitchPortConfig {
+                            mode: SwitchPortMode::Trunk {
+                                native_vlan: Some(VlanId(1)),
+                                allowed: vec![VlanId(1)],
+                            },
+                        }),
+                    )
+                }));
                 (
-                    format!("Switch{index:02}"),
+                    format!("Cisco Catalyst C1000-24T-4G-L #{index:02}"),
                     DeviceKind::Switch(Switch {
                         ports,
                         vlans: vec![Vlan {
@@ -261,7 +273,9 @@ impl NetworkSim {
             }
             DeviceTemplate::Router => {
                 let mut ports = Vec::new();
-                for name in ["WAN", "LAN1", "LAN2", "LAN3"] {
+                for name in [
+                    "WAN", "LAN1", "LAN2", "LAN3", "LAN4", "LAN5", "LAN6", "LAN7", "LAN8",
+                ] {
                     ports.push(self.alloc_port(
                         id,
                         name.into(),
@@ -278,7 +292,7 @@ impl NetworkSim {
                     config.interfaces.push(interface.clone());
                 }
                 (
-                    format!("Router{index:02}"),
+                    format!("Cisco ISR C1111-8P #{index:02}"),
                     DeviceKind::Router(Router {
                         ports,
                         interfaces: vec![interface],

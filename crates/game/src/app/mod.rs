@@ -4,7 +4,7 @@ mod state;
 pub use messages::*;
 pub use state::*;
 
-use crate::plugins::{PersistencePlugin, RoomPlugin, SimulationPlugin, UiPlugin};
+use crate::plugins::{PersistencePlugin, SimulationPlugin, UiPlugin};
 use bevy::prelude::*;
 
 pub struct GamePlugin;
@@ -20,7 +20,7 @@ impl Plugin for GamePlugin {
             )
                 .chain(),
         )
-        .add_plugins((SimulationPlugin, PersistencePlugin, RoomPlugin, UiPlugin));
+        .add_plugins((SimulationPlugin, PersistencePlugin, UiPlugin));
     }
 }
 

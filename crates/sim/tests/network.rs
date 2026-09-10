@@ -31,6 +31,26 @@ fn ports(sim: &NetworkSim, device: DeviceId) -> Vec<PortId> {
     sim.device(device).unwrap().ports().to_vec()
 }
 
+#[test]
+fn real_device_templates_expose_expected_network_panels() {
+    let mut sim = NetworkSim::new();
+    let switch = buy(&mut sim, DeviceTemplate::Switch);
+    let router = buy(&mut sim, DeviceTemplate::Router);
+    let server = buy(&mut sim, DeviceTemplate::Server);
+
+    assert!(sim.device(switch).unwrap().name.contains("C1000-24T-4G-L"));
+    assert_eq!(ports(&sim, switch).len(), 28);
+    assert_eq!(sim.port(ports(&sim, switch)[0]).unwrap().name, "Gi1/0/01");
+    assert_eq!(
+        sim.port(ports(&sim, switch)[27]).unwrap().name,
+        "SFP Gi1/0/28"
+    );
+    assert!(sim.device(router).unwrap().name.contains("C1111-8P"));
+    assert_eq!(ports(&sim, router).len(), 9);
+    assert!(sim.device(server).unwrap().name.contains("PowerEdge R360"));
+    assert_eq!(ports(&sim, server).len(), 2);
+}
+
 fn basic_vlan() -> (NetworkSim, DeviceId, DeviceId, DeviceId) {
     let mut sim = NetworkSim::new();
     let switch = buy(&mut sim, DeviceTemplate::Switch);

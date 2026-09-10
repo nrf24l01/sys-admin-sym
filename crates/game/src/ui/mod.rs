@@ -1,16 +1,45 @@
 use crate::app::*;
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
+
+#[derive(Resource, Default)]
+pub struct EquipmentImages {
+    server: Handle<Image>,
+    switch: Handle<Image>,
+    router: Handle<Image>,
+    textures: Option<EquipmentTextures>,
+}
+
+#[derive(Clone, Copy)]
+struct EquipmentTextures {
+    server: egui::TextureId,
+    switch: egui::TextureId,
+    router: egui::TextureId,
+}
+
+pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
+    images.server = assets.load("equipment/server_rear_clean.png");
+    images.switch = assets.load("equipment/switch_front_clean.png");
+    images.router = assets.load("equipment/router_rear_clean.png");
+}
 
 pub fn main_ui(
     mut contexts: EguiContexts,
     snapshot: Res<SimSnapshot>,
     mut state: ResMut<UiState>,
     mut drafts: ResMut<EditorDrafts>,
+    mut images: ResMut<EquipmentImages>,
     mut actions: MessageWriter<UiAction>,
 ) -> Result {
+    if images.textures.is_none() {
+        images.textures = Some(EquipmentTextures {
+            server: contexts.add_image(EguiTextureHandle::Strong(images.server.clone())),
+            switch: contexts.add_image(EguiTextureHandle::Strong(images.switch.clone())),
+            router: contexts.add_image(EguiTextureHandle::Strong(images.router.clone())),
+        });
+    }
     let ctx = contexts.ctx_mut()?;
     configure_style(ctx);
     let mut viewport_ui = egui::Ui::new(
@@ -30,7 +59,16 @@ pub fn main_ui(
         &mut actions,
     );
     terminal_panel(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
-    workspace(&mut viewport_ui, &snapshot.0, &state, &mut actions);
+    workspace(
+        &mut viewport_ui,
+        &snapshot.0,
+        &state,
+        images
+            .textures
+            .as_ref()
+            .expect("equipment textures registered"),
+        &mut actions,
+    );
     Ok(())
 }
 
@@ -57,11 +95,9 @@ fn top_bar(
                 ui.separator();
                 ui.strong(format!("${}", sim.money));
                 ui.separator();
-                for (workspace, label) in [
-                    (Workspace::Room, "3D ROOM"),
-                    (Workspace::Rack, "RACK"),
-                    (Workspace::Topology, "TOPOLOGY"),
-                ] {
+                for (workspace, label) in
+                    [(Workspace::Rack, "RACK"), (Workspace::Topology, "TOPOLOGY")]
+                {
                     if ui
                         .selectable_label(state.workspace == workspace, label)
                         .clicked()
@@ -70,6 +106,13 @@ fn top_bar(
                     }
                 }
                 ui.separator();
+                if state.pending_cable.is_some() {
+                    ui.colored_label(egui::Color32::from_rgb(255, 196, 64), "CABLE: SELECT PORT");
+                    if ui.small_button("Cancel cable").clicked() {
+                        state.pending_cable = None;
+                    }
+                    ui.separator();
+                }
                 if ui.button("Save").clicked() {
                     actions.write(UiAction::Save);
                 }
@@ -108,15 +151,19 @@ fn shop_panel(
             ui.label("Buy real rack hardware, then install it into an empty U.");
             ui.add_space(8.0);
             for (template, label, detail) in [
-                (DeviceTemplate::Router, "Router R1 — $500", "WAN + 3 × LAN"),
+                (
+                    DeviceTemplate::Router,
+                    "Cisco ISR C1111-8P — $500",
+                    "1 × WAN + 8 × GE LAN",
+                ),
                 (
                     DeviceTemplate::Switch,
-                    "Switch S24 — $500",
-                    "24 × managed Ethernet",
+                    "Cisco C1000-24T-4G-L — $500",
+                    "24 × 1GE + 4 × SFP",
                 ),
                 (
                     DeviceTemplate::Server,
-                    "Server S1 — $1000",
+                    "Dell PowerEdge R360 — $1000",
                     "2 × Ethernet, 1U",
                 ),
             ] {
@@ -244,7 +291,7 @@ fn device_inspector(
     ui.separator();
     ui.strong("Ports");
     egui::Grid::new("device_ports")
-        .num_columns(3)
+        .num_columns(2)
         .striped(true)
         .show(ui, |ui| {
             for port_id in device.ports() {
@@ -260,16 +307,6 @@ fn device_inspector(
                 );
                 if ui.selectable_label(false, &port.name).clicked() {
                     actions.write(UiAction::SelectPort(*port_id));
-                }
-                if ui
-                    .small_button(if state.pending_cable == Some(*port_id) {
-                        "cancel"
-                    } else {
-                        "cable"
-                    })
-                    .clicked()
-                {
-                    actions.write(UiAction::CablePort(*port_id));
                 }
                 ui.end_row();
             }
@@ -312,9 +349,7 @@ fn port_inspector(
         Some(link) => format!("LINK UP · cable {}", link.id.0),
         None => "LINK DOWN".into(),
     });
-    if ui.button("Use for cable").clicked() {
-        actions.write(UiAction::CablePort(id));
-    }
+    ui.weak("Connect cables by clicking ports directly in the Rack view.");
     if let Some(link) = link
         && ui.button("Disconnect cable").clicked()
     {
@@ -515,19 +550,11 @@ fn workspace(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
     state: &UiState,
+    textures: &EquipmentTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     match state.workspace {
-        Workspace::Room => {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE.fill(egui::Color32::TRANSPARENT))
-                .show(viewport, |ui| {
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                        ui.label("3D projection · use Rack view for installation and cabling");
-                    });
-                });
-        }
-        Workspace::Rack => rack_view(viewport, sim, state, actions),
+        Workspace::Rack => rack_view(viewport, sim, state, textures, actions),
         Workspace::Topology => topology_view(viewport, sim, actions),
     }
 }
@@ -536,6 +563,7 @@ fn rack_view(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
     state: &UiState,
+    textures: &EquipmentTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     egui::CentralPanel::default().show(viewport, |ui| {
@@ -543,67 +571,250 @@ fn rack_view(
             return;
         };
         ui.vertical_centered(|ui| {
-            ui.heading(&rack.name);
-            ui.weak(
-                "Click equipment to inspect it; select inventory and click an empty U to install.",
-            );
+            ui.heading(format!("{} · NETWORK SIDE", rack.name));
+            ui.weak("Left-click one port, then another to patch them. Right-click a port to configure it.");
         });
         let selected_inventory = match state.selected {
             Selection::Device(id) if sim.device(id).is_some_and(|d| d.rack.is_none()) => Some(id),
             _ => None,
         };
+        let row_height = 62.0;
+        let rack_width = ui.available_width().min(820.0);
+        let mut port_visuals = Vec::new();
         egui::Frame::group(ui.style())
-            .fill(egui::Color32::from_rgb(22, 25, 29))
-            .inner_margin(12.0)
+            .fill(egui::Color32::from_rgb(8, 10, 13))
+            .inner_margin(egui::Margin::same(10))
             .show(ui, |ui| {
+                ui.set_width(rack_width);
                 for unit in (1..=rack.units).rev() {
-                    ui.horizontal(|ui| {
-                        ui.monospace(format!("U{unit:02}"));
-                        if let Some(device_id) = rack.occupies(unit) {
-                            let device = sim.device(device_id).expect("rack device exists");
-                            let fill = match device.kind {
-                                DeviceKind::Server(_) => egui::Color32::from_rgb(53, 65, 77),
-                                DeviceKind::Switch(_) => egui::Color32::from_rgb(32, 73, 68),
-                                DeviceKind::Router(_) => egui::Color32::from_rgb(83, 59, 36),
-                            };
-                            if ui
-                                .add_sized(
-                                    [ui.available_width(), 34.0],
-                                    egui::Button::new(format!(
-                                        "{}    {}",
-                                        if device.powered { "●" } else { "○" },
-                                        device.name
-                                    ))
-                                    .fill(fill),
-                                )
-                                .clicked()
-                            {
-                                actions.write(UiAction::SelectDevice(device_id));
-                            }
-                        } else {
-                            let label = selected_inventory
-                                .map(|_| "+ INSTALL HERE")
-                                .unwrap_or("EMPTY");
-                            if ui
-                                .add_sized(
-                                    [ui.available_width(), 34.0],
-                                    egui::Button::new(label)
-                                        .fill(egui::Color32::from_rgb(27, 30, 34)),
-                                )
-                                .clicked()
-                                && let Some(device) = selected_inventory
-                            {
-                                actions.write(UiAction::Place {
-                                    device,
-                                    rack: rack.id,
-                                    unit,
-                                });
-                            }
+                    let (row_rect, row_response) = ui.allocate_exact_size(
+                        egui::vec2(rack_width, row_height),
+                        egui::Sense::click(),
+                    );
+                    let panel_rect = egui::Rect::from_min_max(
+                        egui::pos2(row_rect.left() + 170.0, row_rect.top() + 3.0),
+                        egui::pos2(row_rect.right() - 5.0, row_rect.bottom() - 3.0),
+                    );
+                    ui.painter().text(
+                        egui::pos2(row_rect.left() + 21.0, row_rect.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        format!("U{unit:02}"),
+                        egui::FontId::monospace(12.0),
+                        egui::Color32::from_gray(135),
+                    );
+                    if let Some(device_id) = rack.occupies(unit) {
+                        let device = sim.device(device_id).expect("rack device exists");
+                        let texture = match device.kind {
+                            DeviceKind::Server(_) => textures.server,
+                            DeviceKind::Switch(_) => textures.switch,
+                            DeviceKind::Router(_) => textures.router,
+                        };
+                        ui.painter().rect_filled(panel_rect, 2.0, egui::Color32::BLACK);
+                        ui.painter().image(
+                            texture,
+                            panel_rect,
+                            egui::Rect::from_min_max(
+                                egui::Pos2::ZERO,
+                                egui::pos2(1.0, 1.0),
+                            ),
+                            if device.powered {
+                                egui::Color32::WHITE
+                            } else {
+                                egui::Color32::from_gray(90)
+                            },
+                        );
+                        ui.painter().rect_stroke(
+                            panel_rect,
+                            2.0,
+                            egui::Stroke::new(
+                                1.5,
+                                if state.selected == Selection::Device(device_id) {
+                                    egui::Color32::from_rgb(255, 196, 64)
+                                } else {
+                                    egui::Color32::from_gray(75)
+                                },
+                            ),
+                            egui::StrokeKind::Outside,
+                        );
+                        let label_rect = egui::Rect::from_min_max(
+                            egui::pos2(row_rect.left() + 43.0, panel_rect.top()),
+                            egui::pos2(panel_rect.left() - 7.0, panel_rect.bottom()),
+                        );
+                        ui.painter().rect_filled(
+                            label_rect,
+                            2.0,
+                            egui::Color32::from_rgb(17, 21, 26),
+                        );
+                        ui.painter().text(
+                            label_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            rack_device_label(device),
+                            egui::FontId::monospace(10.0),
+                            egui::Color32::from_gray(210),
+                        );
+                        ui.painter().circle_filled(
+                            egui::pos2(panel_rect.right() - 10.0, panel_rect.top() + 10.0),
+                            4.0,
+                            if device.powered {
+                                egui::Color32::GREEN
+                            } else {
+                                egui::Color32::from_gray(45)
+                            },
+                        );
+                        for (index, port_id) in device.ports().iter().enumerate() {
+                            let position = rack_port_position(&device.kind, panel_rect, index);
+                            port_visuals.push((*port_id, position));
                         }
-                    });
+                        if row_response.clicked() {
+                            actions.write(UiAction::SelectDevice(device_id));
+                        }
+                    } else {
+                        let installing = selected_inventory.is_some();
+                        ui.painter().rect_filled(
+                            panel_rect,
+                            2.0,
+                            if installing {
+                                egui::Color32::from_rgb(24, 45, 40)
+                            } else {
+                                egui::Color32::from_rgb(20, 23, 27)
+                            },
+                        );
+                        ui.painter().rect_stroke(
+                            panel_rect,
+                            2.0,
+                            egui::Stroke::new(1.0, egui::Color32::from_gray(48)),
+                            egui::StrokeKind::Inside,
+                        );
+                        ui.painter().text(
+                            panel_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            if installing { "+ INSTALL SELECTED DEVICE" } else { "EMPTY" },
+                            egui::FontId::monospace(11.0),
+                            egui::Color32::from_gray(110),
+                        );
+                        if row_response.clicked()
+                            && let Some(device) = selected_inventory
+                        {
+                            actions.write(UiAction::Place {
+                                device,
+                                rack: rack.id,
+                                unit,
+                            });
+                        }
+                    }
                 }
             });
+
+        let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
+        for link in sim.links().filter(|link| link.enabled) {
+            let (Some(a), Some(b)) = (positions.get(&link.a), positions.get(&link.b)) else {
+                continue;
+            };
+            let bend = 18.0 + (link.id.0 % 7) as f32 * 5.0;
+            let middle_y = a.y.min(b.y) - bend;
+            let path = vec![
+                *a,
+                egui::pos2(a.x, middle_y),
+                egui::pos2(b.x, middle_y),
+                *b,
+            ];
+            ui.painter().add(egui::Shape::line(
+                path.clone(),
+                egui::Stroke::new(6.0, egui::Color32::from_black_alpha(190)),
+            ));
+            ui.painter().add(egui::Shape::line(
+                path,
+                egui::Stroke::new(3.0, cable_color(link.id)),
+            ));
+        }
+        for (port_id, position) in port_visuals {
+            let port = sim.port(port_id).expect("visualized port exists");
+            let link = sim.link_for_port(port_id);
+            let is_pending = state.pending_cable == Some(port_id);
+            let port_rect = egui::Rect::from_center_size(position, egui::vec2(14.0, 13.0));
+            let response = ui.interact(
+                port_rect,
+                egui::Id::new(("rack-port", port_id.0)),
+                egui::Sense::click(),
+            );
+            ui.painter().rect_filled(port_rect, 1.5, egui::Color32::from_rgb(9, 12, 13));
+            ui.painter().rect_stroke(
+                port_rect,
+                1.5,
+                egui::Stroke::new(
+                    if is_pending { 2.5 } else { 1.5 },
+                    if is_pending {
+                        egui::Color32::from_rgb(255, 196, 64)
+                    } else if link.is_some() {
+                        egui::Color32::GREEN
+                    } else {
+                        egui::Color32::from_gray(130)
+                    },
+                ),
+                egui::StrokeKind::Inside,
+            );
+            let response = response.on_hover_text(format!(
+                "{} / {}\nLeft click: connect cable\nRight click: configure",
+                sim.device(port.device).map(|d| d.name.as_str()).unwrap_or("?"),
+                port.name
+            ));
+            if response.clicked() {
+                actions.write(UiAction::SelectPort(port_id));
+                actions.write(UiAction::CablePort(port_id));
+            } else if response.secondary_clicked() {
+                actions.write(UiAction::SelectPort(port_id));
+            }
+        }
     });
+}
+
+fn rack_port_position(kind: &DeviceKind, rect: egui::Rect, index: usize) -> egui::Pos2 {
+    let normalized = match kind {
+        DeviceKind::Switch(_) if index < 24 => {
+            let bank = index / 12;
+            let bank_port = index % 12;
+            let column = bank_port / 2;
+            let row = bank_port % 2;
+            egui::pos2(
+                0.25 + bank as f32 * 0.266 + column as f32 * 0.0335,
+                0.255 + row as f32 * 0.315,
+            )
+        }
+        DeviceKind::Switch(_) => egui::pos2(0.758 + (index - 24) as f32 * 0.036, 0.575),
+        DeviceKind::Server(_) => egui::pos2(0.15 + index as f32 * 0.037, 0.40),
+        DeviceKind::Router(_) if index == 0 => egui::pos2(0.38, 0.55),
+        DeviceKind::Router(_) => {
+            let lan = index - 1;
+            egui::pos2(
+                0.182 + (lan % 4) as f32 * 0.03,
+                0.27 + (lan / 4) as f32 * 0.29,
+            )
+        }
+    };
+    egui::pos2(
+        rect.left() + rect.width() * normalized.x,
+        rect.top() + rect.height() * normalized.y,
+    )
+}
+
+fn rack_device_label(device: &Device) -> String {
+    device
+        .name
+        .replace("Dell PowerEdge ", "Dell ")
+        .replace("Cisco Catalyst ", "Cisco ")
+        .replace("Cisco ISR ", "Cisco ")
+}
+
+fn cable_color(id: LinkId) -> egui::Color32 {
+    const COLORS: [egui::Color32; 6] = [
+        egui::Color32::from_rgb(45, 210, 130),
+        egui::Color32::from_rgb(65, 155, 255),
+        egui::Color32::from_rgb(255, 185, 45),
+        egui::Color32::from_rgb(220, 80, 105),
+        egui::Color32::from_rgb(155, 105, 245),
+        egui::Color32::from_rgb(55, 205, 215),
+    ];
+    COLORS[id.0 as usize % COLORS.len()]
 }
 
 fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut MessageWriter<UiAction>) {

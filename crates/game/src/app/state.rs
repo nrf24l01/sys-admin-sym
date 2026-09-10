@@ -14,7 +14,6 @@ impl Default for SimSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Workspace {
     #[default]
-    Room,
     Rack,
     Topology,
 }
