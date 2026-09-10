@@ -1,0 +1,20 @@
+[package]
+name = "cloud-provider-game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cloud-provider-sim"
+path = "src/main.rs"
+
+[dependencies]
+bevy.workspace = true
+bevy_egui.workspace = true
+cloud-provider-sim = { path = "../sim" }
+crossbeam-channel.workspace = true
+ron.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+

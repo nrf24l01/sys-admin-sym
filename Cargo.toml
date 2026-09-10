@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["crates/sim", "crates/game"]
+default-members = ["crates/game"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+bevy = "0.19"
+bevy_egui = "0.42"
+crossbeam-channel = "0.5"
+ron = "0.12"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
