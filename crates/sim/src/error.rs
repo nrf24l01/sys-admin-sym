@@ -3,6 +3,18 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SimError {
+    #[error("install both devices in a rack before connecting a cable")]
+    CableDevicesNotInstalled,
+    #[error("cable too short: this route needs at least {minimum_cm} cm")]
+    CableTooShort { minimum_cm: u32 },
+    #[error("Ethernet cable length cannot exceed 100 m")]
+    CableTooLong,
+    #[error("not enough cable: need {needed_cm} cm, have {available_cm} cm; buy a 305 m box")]
+    InsufficientCable { needed_cm: u32, available_cm: u32 },
+    #[error("need two RJ45 connectors, have {available}; buy a connector pack")]
+    InsufficientConnectors { available: u32 },
+    #[error("cable inventory capacity exceeded")]
+    CableInventoryFull,
     #[error("device {0} does not exist")]
     DeviceNotFound(DeviceId),
     #[error("port {0} does not exist")]
@@ -11,7 +23,7 @@ pub enum SimError {
     RackNotFound(RackId),
     #[error("port {0} is already connected")]
     PortAlreadyConnected(PortId),
-    #[error("cannot connect two server ports in this MVP")]
+    #[error("supported cables: server–switch, router–switch, switch–switch, and server–router")]
     UnsupportedConnection,
     #[error("port {port} uses unsupported {connector:?}; only RJ45 cabling is implemented")]
     UnsupportedConnector {

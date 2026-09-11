@@ -32,8 +32,69 @@ fn ports(sim: &NetworkSim, device: DeviceId) -> Vec<PortId> {
 }
 
 #[test]
+fn dell_can_connect_directly_to_c1111_and_reach_the_internet() {
+    for reverse in [false, true] {
+        let mut sim = NetworkSim::new();
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::CableBox305m,
+        })
+        .unwrap();
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::Rj45Pack20,
+        })
+        .unwrap();
+        let router = buy(&mut sim, DeviceTemplate::Router);
+        let server = buy(&mut sim, DeviceTemplate::Server);
+        install_and_power(&mut sim, router, 1);
+        install_and_power(&mut sim, server, 2);
+        let lan = ports(&sim, router)[2];
+        let ethernet = ports(&sim, server)[0];
+        sim.execute(Command::ConfigureRouterInterface {
+            port: lan,
+            name: "LAN1".into(),
+            vlan: Some(VlanId(1)),
+            address: Some(ip("192.168.1.1")),
+            prefix: 24,
+            internet_connected: false,
+        })
+        .unwrap();
+        sim.execute(Command::SetIpv4 {
+            port: ethernet,
+            config: Ipv4InterfaceConfig::new(
+                ip("192.168.1.2"),
+                24,
+                Some(ip("192.168.1.1")),
+                VlanId(1),
+            ),
+        })
+        .unwrap();
+        let (a, b) = if reverse {
+            (lan, ethernet)
+        } else {
+            (ethernet, lan)
+        };
+        sim.execute(Command::Connect { a, b }).unwrap();
+        let result = sim.ping(ethernet, ip("8.8.8.8"));
+        assert!(result.reachable, "{result:?}");
+        let link = sim.link_for_port(ethernet).unwrap().id;
+        sim.execute(Command::Disconnect { link }).unwrap();
+        assert!(sim.link_for_port(ethernet).is_none());
+        assert!(sim.link_for_port(lan).is_none());
+        assert!(!sim.ping(ethernet, ip("8.8.8.8")).reachable);
+    }
+}
+
+#[test]
 fn real_device_templates_expose_expected_network_panels() {
     let mut sim = NetworkSim::new();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::CableBox305m,
+    })
+    .unwrap();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::Rj45Pack20,
+    })
+    .unwrap();
     let switch = buy(&mut sim, DeviceTemplate::Switch);
     let router = buy(&mut sim, DeviceTemplate::Router);
     let server = buy(&mut sim, DeviceTemplate::Server);
@@ -79,6 +140,14 @@ fn real_device_templates_expose_expected_network_panels() {
 #[test]
 fn sfp_cabling_is_explicitly_outside_the_mvp() {
     let mut sim = NetworkSim::new();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::CableBox305m,
+    })
+    .unwrap();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::Rj45Pack20,
+    })
+    .unwrap();
     let switch = buy(&mut sim, DeviceTemplate::Switch);
     let server = buy(&mut sim, DeviceTemplate::Server);
     let sfp = ports(&sim, switch)[24];
@@ -108,6 +177,14 @@ fn sfp_cabling_is_explicitly_outside_the_mvp() {
 
 fn basic_vlan() -> (NetworkSim, DeviceId, DeviceId, DeviceId) {
     let mut sim = NetworkSim::new();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::CableBox305m,
+    })
+    .unwrap();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::Rj45Pack20,
+    })
+    .unwrap();
     let switch = buy(&mut sim, DeviceTemplate::Switch);
     let a = buy(&mut sim, DeviceTemplate::Server);
     let b = buy(&mut sim, DeviceTemplate::Server);
@@ -213,6 +290,14 @@ fn duplicate_ip_is_reported() {
 
 fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, DeviceId, DeviceId) {
     let mut sim = NetworkSim::new();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::CableBox305m,
+    })
+    .unwrap();
+    sim.execute(Command::BuyCableSupply {
+        supply: CableSupply::Rj45Pack20,
+    })
+    .unwrap();
     let router = buy(&mut sim, DeviceTemplate::Router);
     let switch = buy(&mut sim, DeviceTemplate::Switch);
     let a = buy(&mut sim, DeviceTemplate::Server);

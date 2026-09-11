@@ -9,6 +9,7 @@ pub enum UiAction {
     SelectPort(PortId),
     SelectLink(LinkId),
     Buy(DeviceTemplate),
+    BuyCableSupply(cloud_provider_sim::CableSupply),
     Place {
         device: DeviceId,
         rack: RackId,
@@ -49,6 +50,12 @@ pub enum WorkerRequest {
 pub enum WorkerResponse {
     Snapshot(Box<NetworkSim>),
     Events(Vec<SimEvent>),
-    Terminal(TerminalOutput),
+    Terminal {
+        device: DeviceId,
+        input: String,
+        prompt: String,
+        output: TerminalOutput,
+    },
+    ConsolesReset,
     Error(String),
 }

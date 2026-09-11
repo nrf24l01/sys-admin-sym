@@ -66,7 +66,7 @@ impl SaveStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cloud_provider_sim::{Command, DeviceTemplate};
+    use cloud_provider_sim::{CableSupply, Command, DeviceTemplate};
 
     #[test]
     fn sqlite_round_trip_preserves_domain_state() {
@@ -79,10 +79,54 @@ mod tests {
                 kind: DeviceTemplate::Switch,
             })
             .unwrap();
+        before
+            .execute(Command::BuyCableSupply {
+                supply: CableSupply::CableBox305m,
+            })
+            .unwrap();
+        before
+            .execute(Command::BuyCableSupply {
+                supply: CableSupply::Rj45Pack20,
+            })
+            .unwrap();
+        let device = before.devices().next().unwrap().id;
+        before
+            .execute(Command::SetPower {
+                device,
+                powered: true,
+            })
+            .unwrap();
+        for line in [
+            "enable",
+            "configure terminal",
+            "hostname SavedSwitch",
+            "vlan 20",
+            "name Servers",
+            "end",
+            "write memory",
+            "configure terminal",
+            "hostname UnsavedSwitch",
+            "end",
+        ] {
+            assert!(before.execute_console(device, line).success, "{line}");
+        }
         store.save(&before).unwrap();
-        let after = store.load().unwrap();
+        let mut after = store.load().unwrap();
         assert_eq!(after.money, before.money);
         assert_eq!(after.devices().count(), 1);
+        assert_eq!(after.cable_inventory().cable_cm, 30_500);
+        assert_eq!(after.cable_inventory().connectors, 20);
+        assert_eq!(after.terminal_prompt(device), "UnsavedSwitch>");
+        assert!(after.execute_console(device, "enable").success);
+        let startup = after
+            .execute_console(device, "show startup-config")
+            .lines
+            .join("\n");
+        assert!(startup.contains("hostname SavedSwitch"));
+        assert!(startup.contains("name Servers"));
+        assert!(after.execute_console(device, "reload").success);
+        assert!(after.execute_console(device, "").success);
+        assert_eq!(after.terminal_prompt(device), "SavedSwitch>");
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
         let _ = std::fs::remove_file(path.with_extension("db-wal"));

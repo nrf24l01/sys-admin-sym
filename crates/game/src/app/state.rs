@@ -32,11 +32,20 @@ pub struct UiState {
     pub workspace: Workspace,
     pub selected: Selection,
     pub pending_cable: Option<PortId>,
+    pub cable_length_cm: Option<u32>,
     pub notice: Option<(String, bool)>,
-    pub terminal_input: String,
-    pub terminal_lines: Vec<String>,
+    pub terminals: HashMap<DeviceId, ConsoleState>,
     pub new_vlan_id: String,
     pub new_vlan_name: String,
+}
+
+#[derive(Default)]
+pub struct ConsoleState {
+    pub script_mode: bool,
+    pub input: String,
+    pub lines: Vec<String>,
+    pub history: Vec<String>,
+    pub history_position: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default)]

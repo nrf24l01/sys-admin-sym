@@ -32,6 +32,74 @@ pub enum ReachabilityFailure {
 }
 
 impl NetworkSim {
+    /// Router-originated diagnostics for connected networks and the abstract internet uplink.
+    pub fn ping_router(&self, router: DeviceId, destination: Ipv4Addr) -> ReachabilityResult {
+        let failure = |reason| ReachabilityResult {
+            reachable: false,
+            hops: vec![],
+            failure: Some(reason),
+        };
+        if !self.device_active(router) {
+            return failure(ReachabilityFailure::SourceDown);
+        }
+        let Some(Device {
+            kind: DeviceKind::Router(config),
+            ..
+        }) = self.device(router)
+        else {
+            return failure(ReachabilityFailure::NoAddress);
+        };
+        if self
+            .duplicate_addresses()
+            .iter()
+            .any(|(ip, _)| *ip == destination)
+        {
+            return failure(ReachabilityFailure::AddressConflict);
+        }
+        for iface in &config.interfaces {
+            if !self.ports[&iface.port].enabled {
+                continue;
+            }
+            let (Some(address), Some(vlan)) = (iface.address, iface.vlan) else {
+                continue;
+            };
+            if !same_subnet(address, destination, iface.prefix) {
+                continue;
+            }
+            let mut targets = self.server_ports_with_ip(destination);
+            targets.extend(
+                self.router_interfaces_with_ip(destination, vlan)
+                    .into_iter()
+                    .map(|(_, p)| p),
+            );
+            return match self.reach_local(iface.port, vlan, &targets) {
+                Ok(hops) => ReachabilityResult {
+                    reachable: true,
+                    hops,
+                    failure: None,
+                },
+                Err((reason, hops)) => ReachabilityResult {
+                    reachable: false,
+                    hops,
+                    failure: Some(reason),
+                },
+            };
+        }
+        if !is_private(destination)
+            && let Some(wan) = config
+                .interfaces
+                .iter()
+                .find(|i| i.internet_connected && self.ports[&i.port].enabled)
+        {
+            return ReachabilityResult {
+                reachable: true,
+                hops: self.one_hop(wan.port, "simulated internet uplink"),
+                failure: None,
+            };
+        }
+        failure(ReachabilityFailure::NoRoute)
+    }
+
     pub fn ping(&self, source: PortId, destination: Ipv4Addr) -> ReachabilityResult {
         match self.check_reachability(source, destination) {
             Ok(hops) => ReachabilityResult {
@@ -107,7 +175,13 @@ impl NetworkSim {
 
         let destinations = self.server_ports_with_ip(destination);
         if config.contains(destination) {
-            return self.reach_local(source, config.vlan, &destinations);
+            let mut targets = destinations;
+            targets.extend(
+                self.router_interfaces_with_ip(destination, config.vlan)
+                    .into_iter()
+                    .map(|(_, port)| port),
+            );
+            return self.reach_local(source, config.vlan, &targets);
         }
 
         let gateway = config.gateway.ok_or((
@@ -128,7 +202,10 @@ impl NetworkSim {
                 .devices
                 .get(&router)
                 .is_some_and(|device| match &device.kind {
-                    DeviceKind::Router(v) => v.interfaces.iter().any(|i| i.internet_connected),
+                    DeviceKind::Router(v) => v
+                        .interfaces
+                        .iter()
+                        .any(|i| i.internet_connected && self.ports[&i.port].enabled),
                     _ => false,
                 });
             if has_wan && !is_private(destination) {
@@ -289,7 +366,11 @@ impl NetworkSim {
         }
         match &port.config {
             PortConfig::Server(v) => v.ipv4.as_ref().is_some_and(|i| i.vlan == vlan),
-            PortConfig::Switch(v) => v.mode.carries(vlan),
+            PortConfig::Switch(v) => {
+                v.mode.carries(vlan)
+                    && matches!(&self.devices[&port.device].kind, DeviceKind::Switch(sw)
+                    if sw.vlans.iter().any(|v| v.id == vlan))
+            }
             PortConfig::Router(v) => v.interfaces.iter().any(|i| i.vlan == Some(vlan)),
         }
     }

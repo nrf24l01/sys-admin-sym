@@ -1,8 +1,6 @@
 use crate::app::*;
 use bevy::prelude::*;
-use cloud_provider_sim::{
-    Command, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId, parse_terminal_command,
-};
+use cloud_provider_sim::{Command, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::net::Ipv4Addr;
 use std::thread::{self, JoinHandle};
@@ -69,19 +67,30 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
                     let _ = responses.send(WorkerResponse::Error(error.to_string()));
                 }
             },
-            WorkerRequest::Terminal { device, input } => match parse_terminal_command(&input) {
-                Ok(command) => {
-                    let _ = responses.send(WorkerResponse::Terminal(
-                        sim.execute_terminal(device, command),
-                    ));
+            WorkerRequest::Terminal { device, input } => {
+                for line in input
+                    .lines()
+                    .chain(if input.is_empty() { Some("") } else { None })
+                {
+                    let prompt = sim.terminal_prompt(device);
+                    let output = sim.execute_console(device, line);
+                    let success = output.success;
+                    let _ = responses.send(WorkerResponse::Terminal {
+                        device,
+                        input: line.into(),
+                        prompt,
+                        output,
+                    });
+                    if !success {
+                        break;
+                    }
                 }
-                Err(error) => {
-                    let _ = responses.send(WorkerResponse::Error(error));
-                }
-            },
+                let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+            }
             WorkerRequest::Replace(mut replacement) => {
                 replacement.rebuild_indexes();
                 sim = *replacement;
+                let _ = responses.send(WorkerResponse::ConsolesReset);
                 let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
             }
             WorkerRequest::Stop => break,
@@ -113,6 +122,7 @@ fn translate_ui_actions(
                 None
             }
             UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
+            UiAction::BuyCableSupply(supply) => Some(Command::BuyCableSupply { supply: *supply }),
             UiAction::Place { device, rack, unit } => Some(Command::PlaceDevice {
                 device: *device,
                 rack: *rack,
@@ -138,10 +148,43 @@ fn translate_ui_actions(
                 }
             },
             UiAction::CablePort(port) => {
-                if let Some(first) = state.pending_cable.take() {
+                if snapshot.0.link_for_port(*port).is_some() {
+                    state.notice = Some((
+                        "This port already has a cable. Disconnect it first.".into(),
+                        false,
+                    ));
+                    continue;
+                }
+                if let Some(first) = state.pending_cable {
                     if first != *port {
-                        Some(Command::Connect { a: first, b: *port })
+                        let length_cm = state.cable_length_cm;
+                        match snapshot.0.quote_cable(first, *port, length_cm) {
+                            Ok(quote) => {
+                                let stock = snapshot.0.cable_inventory();
+                                if stock.cable_cm < quote.cable_required()
+                                    || stock.connectors < quote.connectors_required()
+                                {
+                                    state.notice = Some(("Buy cable and RJ45 connectors in the shop before making this lead.".into(),false));
+                                    continue;
+                                }
+                                state.pending_cable = None;
+                                Some(if length_cm.is_none() {
+                                    Command::Connect { a: first, b: *port }
+                                } else {
+                                    Command::ConnectCable {
+                                        a: first,
+                                        b: *port,
+                                        length_cm: quote.length_cm,
+                                    }
+                                })
+                            }
+                            Err(error) => {
+                                state.notice = Some((error.to_string(), false));
+                                None
+                            }
+                        }
                     } else {
+                        state.pending_cable = None;
                         None
                     }
                 } else {
@@ -274,15 +317,115 @@ fn poll_worker(
     worker: Res<SimulationWorker>,
     mut snapshot: ResMut<SimSnapshot>,
     mut state: ResMut<UiState>,
+    mut drafts: ResMut<EditorDrafts>,
 ) {
     while let Ok(response) = worker.rx.try_recv() {
         match response {
             WorkerResponse::Snapshot(new_snapshot) => snapshot.0 = *new_snapshot,
             WorkerResponse::Events(events) => {
-                state.notice = events.last().map(|event| (format!("{event:?}"), true))
+                state.notice = events.first().map(|event| {
+                    let message = match event {
+                        cloud_provider_sim::SimEvent::CableSuppliesPurchased(_) => {
+                            "Cable supplies purchased".into()
+                        }
+                        cloud_provider_sim::SimEvent::LinkCreated(_) => {
+                            "RJ45 lead connected".into()
+                        }
+                        cloud_provider_sim::SimEvent::LinkRemoved(_) => {
+                            "Lead unplugged and returned to cable inventory".into()
+                        }
+                        _ => format!("{event:?}"),
+                    };
+                    (message, true)
+                });
             }
-            WorkerResponse::Terminal(output) => state.terminal_lines = output.lines,
+            WorkerResponse::Terminal {
+                device,
+                input,
+                prompt,
+                output,
+            } => {
+                if output.success {
+                    *drafts = EditorDrafts::default();
+                }
+                let console = state.terminals.entry(device).or_default();
+                console.lines.push(format!("{prompt} {input}"));
+                console.lines.extend(output.lines);
+                if console.lines.len() > 1000 {
+                    console.lines.drain(..console.lines.len() - 1000);
+                }
+            }
+            WorkerResponse::ConsolesReset => {
+                state.terminals.clear();
+                state.pending_cable = None;
+                state.selected = Selection::None;
+            }
             WorkerResponse::Error(error) => state.notice = Some((error, false)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cloud_provider_sim::{DeviceTemplate, SimEvent};
+
+    #[test]
+    fn console_worker_keeps_device_identity_and_stops_scripts_on_error() {
+        let mut sim = NetworkSim::new();
+        let mut devices = vec![];
+        for kind in [DeviceTemplate::Switch, DeviceTemplate::Router] {
+            let device = match sim.execute(Command::BuyDevice { kind }).unwrap()[0] {
+                SimEvent::DeviceAdded(id) => id,
+                _ => unreachable!(),
+            };
+            sim.execute(Command::SetPower {
+                device,
+                powered: true,
+            })
+            .unwrap();
+            devices.push(device);
+        }
+        let (requests_tx, requests_rx) = unbounded();
+        let (responses_tx, responses_rx) = unbounded();
+        requests_tx
+            .send(WorkerRequest::Replace(Box::new(sim)))
+            .unwrap();
+        requests_tx.send(WorkerRequest::Terminal {
+            device: devices[0],
+            input: "enable\nconfigure terminal\nhostname Core\ninvalid command\nhostname ShouldNotRun".into(),
+        }).unwrap();
+        requests_tx
+            .send(WorkerRequest::Terminal {
+                device: devices[1],
+                input: "show version".into(),
+            })
+            .unwrap();
+        requests_tx.send(WorkerRequest::Stop).unwrap();
+        worker_loop(requests_rx, responses_tx);
+        let mut consoles = vec![];
+        let mut snapshot = None;
+        let mut resets = 0;
+        for response in responses_rx.try_iter() {
+            match response {
+                WorkerResponse::Terminal {
+                    device,
+                    prompt,
+                    output,
+                    ..
+                } => consoles.push((device, prompt, output.success)),
+                WorkerResponse::Snapshot(sim) => snapshot = Some(sim),
+                WorkerResponse::ConsolesReset => resets += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(resets, 1);
+        assert_eq!(consoles.len(), 5);
+        assert_eq!(consoles[0], (devices[0], "Switch>".into(), true));
+        assert_eq!(consoles[3], (devices[0], "Core(config)#".into(), false));
+        assert_eq!(consoles[4], (devices[1], "Router>".into(), true));
+        let snapshot = snapshot.unwrap();
+        assert_eq!(snapshot.terminal_prompt(devices[0]), "Core(config)#");
+        assert_eq!(snapshot.terminal_prompt(devices[1]), "Router>");
     }
 }

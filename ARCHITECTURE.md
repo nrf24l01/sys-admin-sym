@@ -28,6 +28,12 @@ Links are canonical records. The port-to-link map is a transient index rebuilt
 after load. Editor text remains in `EditorDrafts` until **Apply**, so incomplete
 addresses never enter the domain state.
 
+Cable inventory is domain state: a 305 m bulk box is raw stock, connector packs
+provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
+Disconnecting stores the finished lead for reuse. Rack cable shape is presentation
+state only: a fixed-endpoint Verlet rope applies gravity and damping while the
+network link keeps its exact physical length.
+
 `PortConnector` records physical media independently from VLAN/IP
 configuration. This milestone permits cable creation only between RJ45 ports;
 the Catalyst SFP cages exist in the domain and rack projection but reject links

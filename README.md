@@ -16,15 +16,28 @@ The game starts with one empty 12U rack and $6,000.
    PowerEdge R360 servers in the shop.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
 3. Power devices from the inspector.
-4. In **RACK**, left-click a highlighted RJ45 socket and then another RJ45
-   socket. The patch cable appears between the physical connectors. Right-click
-   an RJ45 port to configure it without starting a cable. The Catalyst SFP
-   cages are shown for physical accuracy but are intentionally inactive in the
-   MVP.
+4. In **RACK**, left-click an RJ45 socket and then another RJ45
+   socket. Buy a 305 m cable box and RJ45 connector packs in the shop first;
+   each new lead consumes its cut length and two plugs. The patch cable appears
+   with visible plugs and a physically sagging, draggable jacket. Automatic cuts
+   use the straight distance between sockets plus 10% slack, rounded up to a cm.
+   Longer reusable leads can be selected explicitly in the shop. Switch link
+   LEDs light at their physical positions when both endpoints are powered and enabled. Unplugging
+   returns the finished lead for reuse. Right-click an RJ45 port to configure it
+   without starting a cable. The Catalyst SFP cages are shown for physical
+   accuracy but are intentionally inactive in the MVP.
 5. Create VLANs on the switch, configure access/trunk ports, server IPv4, and
    router subinterfaces.
-6. Select a server and use `ip`, `route`, `arp`, `ping <ip>`, or
+6. Select a switch or router to open its IOS-style console. Start with `enable`
+   and `configure terminal`; use `?` for supported commands. VLANs, switchports,
+   router IP addresses/subinterfaces, shutdown, and startup configurations are
+   backed by the simulator. Each device has its own console and history.
+7. Select a server and use `ip`, `route`, `arp`, `ping <ip>`, or
    `traceroute <ip>` in its terminal.
+
+See [the IOS-style console guide](docs/IOS_GUIDE.md) for Cisco reference manuals,
+a working switch/router configuration example, interface names, and the exact
+compatibility limits. This is a simulated CLI subset, not Cisco IOS firmware.
 
 Save/load uses `cloud-provider-save.db` in the current working directory.
 

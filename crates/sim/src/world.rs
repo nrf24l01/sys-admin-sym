@@ -10,8 +10,16 @@ pub struct NetworkSim {
     pub(crate) links: HashMap<LinkId, Link>,
     pub(crate) racks: HashMap<RackId, Rack>,
     pub money: i64,
+    #[serde(default)]
+    pub(crate) cable_inventory: CableInventory,
     pub topology_revision: u64,
     pub routing_revision: u64,
+    #[serde(default)]
+    pub(crate) ios_configs: HashMap<DeviceId, IosDeviceConfig>,
+    #[serde(default)]
+    pub(crate) startup_configs: HashMap<DeviceId, IosStartupConfig>,
+    #[serde(skip)]
+    pub(crate) console_modes: HashMap<DeviceId, IosMode>,
     next_device_id: u64,
     next_port_id: u64,
     next_link_id: u64,
@@ -34,8 +42,12 @@ impl NetworkSim {
             links: HashMap::new(),
             racks: HashMap::new(),
             money: 6_000,
+            cable_inventory: CableInventory::default(),
             topology_revision: 0,
             routing_revision: 0,
+            ios_configs: HashMap::new(),
+            startup_configs: HashMap::new(),
+            console_modes: HashMap::new(),
             next_device_id: 1,
             next_port_id: 1,
             next_link_id: 1,
@@ -62,6 +74,22 @@ impl NetworkSim {
             })
         });
         self.port_links.clear();
+        let cuts: Vec<_> = self
+            .links
+            .values()
+            .filter(|link| link.auto_length)
+            .filter_map(|link| {
+                self.minimum_cable_length(link.a, link.b)
+                    .ok()
+                    .map(|cm| (link.id, cm))
+            })
+            .collect();
+        for (id, cm) in cuts {
+            // Trim legacy automatic leads; offcuts do not return to the spool.
+            if let Some(link) = self.links.get_mut(&id) {
+                link.length_cm = link.length_cm.min(cm);
+            }
+        }
         for (id, link) in &self.links {
             self.port_links.insert(link.a, *id);
             self.port_links.insert(link.b, *id);
@@ -100,6 +128,20 @@ impl NetworkSim {
         self.port_links.get(&id).and_then(|v| self.links.get(v))
     }
 
+    pub fn port_link_up(&self, id: PortId) -> bool {
+        self.link_for_port(id).is_some_and(|link| {
+            link.enabled
+                && [link.a, link.b].iter().all(|endpoint| {
+                    self.port(*endpoint).is_some_and(|port| {
+                        port.enabled
+                            && self
+                                .device(port.device)
+                                .is_some_and(|device| device.powered && device.rack.is_some())
+                    })
+                })
+        })
+    }
+
     pub fn add_rack(&mut self, name: impl Into<String>, units: u8) -> RackId {
         let id = RackId(self.next_rack_id);
         self.next_rack_id += 1;
@@ -117,6 +159,14 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::BuyCableSupply { supply } => {
+                self.buy_cable_supply(supply)?;
+                vec![SimEvent::CableSuppliesPurchased(supply)]
+            }
+            Command::ConnectCable { a, b, length_cm } => {
+                let id = self.connect(a, b, Some(length_cm))?;
+                vec![SimEvent::LinkCreated(id)]
+            }
             Command::BuyDevice { kind } => {
                 let id = self.buy_device(kind)?;
                 vec![SimEvent::DeviceAdded(id)]
@@ -134,7 +184,7 @@ impl NetworkSim {
                 vec![SimEvent::DeviceMoved { device }]
             }
             Command::Connect { a, b } => {
-                let id = self.connect(a, b)?;
+                let id = self.connect(a, b, None)?;
                 vec![SimEvent::LinkCreated(id)]
             }
             Command::Disconnect { link } => {
@@ -351,6 +401,9 @@ impl NetworkSim {
             }
         }
         let device = self.devices.remove(&id).expect("checked");
+        self.ios_configs.remove(&id);
+        self.startup_configs.remove(&id);
+        self.console_modes.remove(&id);
         for port in ports {
             self.ports.remove(&port);
         }
@@ -409,10 +462,20 @@ impl NetworkSim {
                 .retain(|(v, _)| *v != id);
         }
         self.devices.get_mut(&id).expect("checked").rack = None;
+        let links: Vec<_> = self.devices[&id]
+            .ports()
+            .iter()
+            .filter_map(|p| self.link_for_port(*p).map(|l| l.id))
+            .collect();
+        for link in links {
+            if self.links.contains_key(&link) {
+                self.disconnect(link)?;
+            }
+        }
         Ok(())
     }
 
-    fn connect(&mut self, a: PortId, b: PortId) -> Result<LinkId, SimError> {
+    pub(crate) fn validate_cable_endpoints(&self, a: PortId, b: PortId) -> Result<(), SimError> {
         if a == b {
             return Err(SimError::SamePort);
         }
@@ -438,9 +501,25 @@ impl NetworkSim {
         }
         if !matches!(pa.config, PortConfig::Switch(_))
             && !matches!(pb.config, PortConfig::Switch(_))
+            && !matches!(
+                (&pa.config, &pb.config),
+                (PortConfig::Server(_), PortConfig::Router(_))
+                    | (PortConfig::Router(_), PortConfig::Server(_))
+            )
         {
             return Err(SimError::UnsupportedConnection);
         }
+        Ok(())
+    }
+
+    fn connect(
+        &mut self,
+        a: PortId,
+        b: PortId,
+        length_cm: Option<u32>,
+    ) -> Result<LinkId, SimError> {
+        let quote = self.quote_cable(a, b, length_cm)?;
+        self.consume_cable(quote)?;
         let id = LinkId(self.next_link_id);
         self.next_link_id += 1;
         self.links.insert(
@@ -450,6 +529,8 @@ impl NetworkSim {
                 a,
                 b,
                 enabled: true,
+                length_cm: quote.length_cm,
+                auto_length: length_cm.is_none(),
             },
         );
         self.port_links.insert(a, id);
@@ -461,6 +542,8 @@ impl NetworkSim {
         let link = self.links.remove(&id).ok_or(SimError::LinkNotFound)?;
         self.port_links.remove(&link.a);
         self.port_links.remove(&link.b);
+        self.cable_inventory.patch_cables_cm.push(link.length_cm);
+        self.cable_inventory.patch_cables_cm.sort_unstable();
         Ok(())
     }
 
@@ -545,9 +628,14 @@ impl NetworkSim {
                 .chain(native_vlan.iter().copied())
                 .collect(),
         };
-        if let Some(missing) = vlans
-            .into_iter()
-            .find(|v| !switch.vlans.iter().any(|known| known.id == *v))
+        if let Some(invalid) = vlans.iter().find(|v| v.0 == 0 || v.0 >= 4095) {
+            return Err(SimError::VlanNotFound(*invalid));
+        }
+        // Trunks may allow VLANs before those VLANs exist in the local database.
+        if matches!(mode, SwitchPortMode::Access { .. })
+            && let Some(missing) = vlans
+                .into_iter()
+                .find(|v| !switch.vlans.iter().any(|known| known.id == *v))
         {
             return Err(SimError::VlanNotFound(missing));
         }

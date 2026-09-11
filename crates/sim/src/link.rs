@@ -7,6 +7,18 @@ pub struct Link {
     pub a: PortId,
     pub b: PortId,
     pub enabled: bool,
+    #[serde(default = "legacy_cable_length")]
+    pub length_cm: u32,
+    #[serde(default = "legacy_auto_length")]
+    pub auto_length: bool,
+}
+
+fn legacy_auto_length() -> bool {
+    true
+}
+
+fn legacy_cable_length() -> u32 {
+    100
 }
 
 impl Link {

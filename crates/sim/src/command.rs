@@ -7,6 +7,14 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
+    BuyCableSupply {
+        supply: crate::CableSupply,
+    },
+    ConnectCable {
+        a: PortId,
+        b: PortId,
+        length_cm: u32,
+    },
     BuyDevice {
         kind: DeviceTemplate,
     },
