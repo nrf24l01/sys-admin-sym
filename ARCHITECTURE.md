@@ -28,6 +28,11 @@ Links are canonical records. The port-to-link map is a transient index rebuilt
 after load. Editor text remains in `EditorDrafts` until **Apply**, so incomplete
 addresses never enter the domain state.
 
+`PortConnector` records physical media independently from VLAN/IP
+configuration. This milestone permits cable creation only between RJ45 ports;
+the Catalyst SFP cages exist in the domain and rack projection but reject links
+until SFP transceivers and fiber media are implemented.
+
 ## Reachability model
 
 `NetworkSim::ping` performs constrained graph traversal:

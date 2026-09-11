@@ -1,4 +1,4 @@
-use crate::{DeviceId, PortId, RackId, VlanId};
+use crate::{DeviceId, PortConnector, PortId, RackId, VlanId};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -13,6 +13,11 @@ pub enum SimError {
     PortAlreadyConnected(PortId),
     #[error("cannot connect two server ports in this MVP")]
     UnsupportedConnection,
+    #[error("port {port} uses unsupported {connector:?}; only RJ45 cabling is implemented")]
+    UnsupportedConnector {
+        port: PortId,
+        connector: PortConnector,
+    },
     #[error("cannot connect a port to itself")]
     SamePort,
     #[error("rack unit {unit} is occupied in rack {rack}")]

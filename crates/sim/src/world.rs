@@ -47,6 +47,20 @@ impl NetworkSim {
     }
 
     pub fn rebuild_indexes(&mut self) {
+        // Saves created before connector types existed named SFP ports explicitly.
+        // Restore that physical distinction before accepting their links.
+        for port in self.ports.values_mut() {
+            if port.name.starts_with("SFP ") {
+                port.connector = PortConnector::Sfp;
+            }
+        }
+        self.links.retain(|_, link| {
+            [link.a, link.b].iter().all(|id| {
+                self.ports
+                    .get(id)
+                    .is_some_and(|port| port.connector.supports_cabling())
+            })
+        });
         self.port_links.clear();
         for (id, link) in &self.links {
             self.port_links.insert(link.a, *id);
@@ -184,7 +198,13 @@ impl NetworkSim {
         Ok(events)
     }
 
-    fn alloc_port(&mut self, device: DeviceId, name: String, config: PortConfig) -> PortId {
+    fn alloc_port(
+        &mut self,
+        device: DeviceId,
+        name: String,
+        connector: PortConnector,
+        config: PortConfig,
+    ) -> PortId {
         let id = PortId(self.next_port_id);
         self.next_port_id += 1;
         self.ports.insert(
@@ -194,6 +214,7 @@ impl NetworkSim {
                 device,
                 name,
                 enabled: true,
+                connector,
                 config,
             },
         );
@@ -224,6 +245,7 @@ impl NetworkSim {
                         self.alloc_port(
                             id,
                             format!("eth{n}"),
+                            PortConnector::Rj45,
                             PortConfig::Server(ServerPortConfig::default()),
                         )
                     })
@@ -242,6 +264,7 @@ impl NetworkSim {
                         self.alloc_port(
                             id,
                             format!("Gi1/0/{n:02}"),
+                            PortConnector::Rj45,
                             PortConfig::Switch(SwitchPortConfig {
                                 mode: SwitchPortMode::Access { vlan: VlanId(1) },
                             }),
@@ -252,6 +275,7 @@ impl NetworkSim {
                     self.alloc_port(
                         id,
                         format!("SFP Gi1/0/{n:02}"),
+                        PortConnector::Sfp,
                         PortConfig::Switch(SwitchPortConfig {
                             mode: SwitchPortMode::Trunk {
                                 native_vlan: Some(VlanId(1)),
@@ -274,16 +298,17 @@ impl NetworkSim {
             DeviceTemplate::Router => {
                 let mut ports = Vec::new();
                 for name in [
-                    "WAN", "LAN1", "LAN2", "LAN3", "LAN4", "LAN5", "LAN6", "LAN7", "LAN8",
+                    "WAN1", "WAN2", "LAN1", "LAN2", "LAN3", "LAN4", "LAN5", "LAN6", "LAN7", "LAN8",
                 ] {
                     ports.push(self.alloc_port(
                         id,
                         name.into(),
+                        PortConnector::Rj45,
                         PortConfig::Router(RouterPortConfig::default()),
                     ));
                 }
                 let wan = ports[0];
-                let interface = RouterInterface::wan("WAN", wan);
+                let interface = RouterInterface::wan("WAN1", wan);
                 if let Some(Port {
                     config: PortConfig::Router(config),
                     ..
@@ -399,6 +424,14 @@ impl NetworkSim {
         if self.port_links.contains_key(&b) {
             return Err(SimError::PortAlreadyConnected(b));
         }
+        for port in [pa, pb] {
+            if !port.connector.supports_cabling() {
+                return Err(SimError::UnsupportedConnector {
+                    port: port.id,
+                    connector: port.connector,
+                });
+            }
+        }
         if matches!(pa.config, PortConfig::Server(_)) && matches!(pb.config, PortConfig::Server(_))
         {
             return Err(SimError::UnsupportedConnection);
@@ -484,11 +517,14 @@ impl NetworkSim {
     }
 
     fn set_switch_mode(&mut self, id: PortId, mode: SwitchPortMode) -> Result<(), SimError> {
-        let device_id = self
-            .ports
-            .get(&id)
-            .ok_or(SimError::PortNotFound(id))?
-            .device;
+        let port = self.ports.get(&id).ok_or(SimError::PortNotFound(id))?;
+        if !port.connector.supports_cabling() {
+            return Err(SimError::UnsupportedConnector {
+                port: id,
+                connector: port.connector,
+            });
+        }
+        let device_id = port.device;
         let switch = match &self
             .devices
             .get(&device_id)

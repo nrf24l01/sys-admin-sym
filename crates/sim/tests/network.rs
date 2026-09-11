@@ -40,15 +40,70 @@ fn real_device_templates_expose_expected_network_panels() {
 
     assert!(sim.device(switch).unwrap().name.contains("C1000-24T-4G-L"));
     assert_eq!(ports(&sim, switch).len(), 28);
+    assert_eq!(
+        ports(&sim, switch)
+            .iter()
+            .filter(|id| sim.port(**id).unwrap().connector == PortConnector::Rj45)
+            .count(),
+        24
+    );
+    assert_eq!(
+        ports(&sim, switch)
+            .iter()
+            .filter(|id| sim.port(**id).unwrap().connector == PortConnector::Sfp)
+            .count(),
+        4
+    );
     assert_eq!(sim.port(ports(&sim, switch)[0]).unwrap().name, "Gi1/0/01");
+    assert_eq!(
+        sim.port(ports(&sim, switch)[0]).unwrap().connector,
+        PortConnector::Rj45
+    );
     assert_eq!(
         sim.port(ports(&sim, switch)[27]).unwrap().name,
         "SFP Gi1/0/28"
     );
+    assert_eq!(
+        sim.port(ports(&sim, switch)[27]).unwrap().connector,
+        PortConnector::Sfp
+    );
     assert!(sim.device(router).unwrap().name.contains("C1111-8P"));
-    assert_eq!(ports(&sim, router).len(), 9);
+    assert_eq!(ports(&sim, router).len(), 10);
+    assert_eq!(sim.port(ports(&sim, router)[0]).unwrap().name, "WAN1");
+    assert_eq!(sim.port(ports(&sim, router)[1]).unwrap().name, "WAN2");
+    assert_eq!(sim.port(ports(&sim, router)[9]).unwrap().name, "LAN8");
     assert!(sim.device(server).unwrap().name.contains("PowerEdge R360"));
     assert_eq!(ports(&sim, server).len(), 2);
+}
+
+#[test]
+fn sfp_cabling_is_explicitly_outside_the_mvp() {
+    let mut sim = NetworkSim::new();
+    let switch = buy(&mut sim, DeviceTemplate::Switch);
+    let server = buy(&mut sim, DeviceTemplate::Server);
+    let sfp = ports(&sim, switch)[24];
+    let ethernet = ports(&sim, server)[0];
+
+    assert_eq!(
+        sim.execute(Command::Connect {
+            a: sfp,
+            b: ethernet,
+        }),
+        Err(SimError::UnsupportedConnector {
+            port: sfp,
+            connector: PortConnector::Sfp,
+        })
+    );
+    assert_eq!(
+        sim.execute(Command::SetSwitchPortMode {
+            port: sfp,
+            mode: SwitchPortMode::Access { vlan: VlanId(1) },
+        }),
+        Err(SimError::UnsupportedConnector {
+            port: sfp,
+            connector: PortConnector::Sfp,
+        })
+    );
 }
 
 fn basic_vlan() -> (NetworkSim, DeviceId, DeviceId, DeviceId) {
@@ -198,7 +253,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {
-        port: rp[1],
+        port: rp[2],
         name: "vlan10".into(),
         vlan: Some(VlanId(10)),
         address: Some(ip("10.10.10.1")),
@@ -207,7 +262,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {
-        port: rp[1],
+        port: rp[2],
         name: "vlan20".into(),
         vlan: Some(VlanId(20)),
         address: Some(ip("10.10.20.1")),
@@ -226,7 +281,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::Connect {
-        a: rp[1],
+        a: rp[2],
         b: swp[0],
     })
     .unwrap();

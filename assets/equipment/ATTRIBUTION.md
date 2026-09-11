@@ -11,6 +11,10 @@ manufacturer reference figures below: manual callouts and margins were removed,
 then each panel was normalized to a 2200 x 200 rack texture. They are not original
 manufacturer product images.
 
+For `switch_front_clean.png`, both 6 x 2 RJ45 banks are composited directly from
+the official Cisco figure rather than generated, preserving the exact 24-port
+geometry used by the rack hitboxes.
+
 ## `server_rear.png`
 
 - Model represented: Dell PowerEdge R360
