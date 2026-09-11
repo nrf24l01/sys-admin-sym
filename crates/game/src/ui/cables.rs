@@ -251,7 +251,7 @@ impl CableScene {
                 .map(|p| screen(*p))
                 .collect();
             let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
-            let color = super::cable_color(link.id);
+            let color = super::cable_color_value(link.color);
             let shadow: Vec<_> = path.iter().map(|p| *p + Vec2::new(2.0, 3.0)).collect();
             ui.painter().add(egui::Shape::line(
                 shadow,

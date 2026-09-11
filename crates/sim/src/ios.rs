@@ -105,6 +105,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                         commands.push("encapsulation dot1q <id>");
                     }
                 }
+                commands.extend(["speed 10", "speed 100", "speed 1000", "speed auto"]);
             }
         }
         IosMode::ReloadConfirm => {}
@@ -343,7 +344,7 @@ impl NetworkSim {
                 let address = args[0]
                     .parse::<Ipv4Addr>()
                     .map_err(|_| "% Invalid IPv4 address.")?;
-                let result = self.ping_router(device, address);
+                let result = self.ping_router_mut(device, address);
                 if !result.reachable {
                     return Err(format!("% Destination unreachable: {:?}", result.failure));
                 }
@@ -612,6 +613,16 @@ impl NetworkSim {
                 self.topology_revision += 1;
                 return Ok(());
             }
+            "speed 10" | "speed 100" | "speed 1000" | "speed auto" => {
+                let speed = match command {
+                    "speed 10" => LinkSpeed::Mbps10,
+                    "speed 100" => LinkSpeed::Mbps100,
+                    "speed 1000" | "speed auto" => LinkSpeed::Gbps1,
+                    _ => unreachable!(),
+                };
+                self.ios_execute(Command::SetPortSpeed { port, speed })?;
+                return Ok(());
+            }
             _ => {}
         }
         match self.ports[&port].config.clone() {
@@ -619,9 +630,9 @@ impl NetworkSim {
                 let mode = match command {
                     "switchport mode access" => match config.mode {
                         mode @ SwitchPortMode::Access { .. } => mode,
-                        _ => SwitchPortMode::Access { vlan: VlanId(1) },
+                        _ => SwitchPortMode::Access { vlan: None },
                     },
-                    "no switchport access vlan" => SwitchPortMode::Access { vlan: VlanId(1) },
+                    "no switchport access vlan" => SwitchPortMode::Access { vlan: None },
                     "switchport access vlan <id>" => {
                         let vlan = vlan_id(&args[0])?;
                         if let DeviceKind::Switch(sw) = &self.devices[&device].kind
@@ -635,7 +646,7 @@ impl NetworkSim {
                                 },
                             })?;
                         }
-                        SwitchPortMode::Access { vlan }
+                        SwitchPortMode::Access { vlan: Some(vlan) }
                     }
                     "switchport mode trunk" => match config.mode {
                         mode @ SwitchPortMode::Trunk { .. } => mode,
@@ -782,7 +793,7 @@ impl NetworkSim {
                 let mut vlans = sw.vlans.clone();
                 vlans.sort_by_key(|v| v.id.0);
                 for vlan in vlans {
-                    let ports = sw.ports.iter().filter(|p| matches!(&self.ports[p].config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: vlan.id })).map(|p| self.ios_interface_name(device, *p)).collect::<Vec<_>>().join(", ");
+                    let ports = sw.ports.iter().filter(|p| matches!(&self.ports[p].config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: Some(vlan.id) })).map(|p| self.ios_interface_name(device, *p)).collect::<Vec<_>>().join(", ");
                     lines.push(format!(
                         "{:<5} {:<32} active   {ports}",
                         vlan.id.0, vlan.name
@@ -862,20 +873,10 @@ impl NetworkSim {
                     }
                     vec![port]
                 };
-                let mut lines = vec!["Interface                      IP-Address       Status                   Protocol / Configuration".into()];
+                let mut lines = vec!["Interface                      IP-Address       Status                   Speed / Configuration".into()];
                 for id in ports {
                     let port = &self.ports[&id];
-                    let up = dev.rack.is_some()
-                        && port.enabled
-                        && self
-                            .link_for_port(id)
-                            .filter(|l| l.enabled)
-                            .and_then(|l| l.other(id))
-                            .is_some_and(|other| {
-                                let p = &self.ports[&other];
-                                let d = &self.devices[&p.device];
-                                p.enabled && d.powered && d.rack.is_some()
-                            });
+                    let up = self.port_link_up(id);
                     let status = if !port.enabled {
                         "administratively down"
                     } else if up {
@@ -883,6 +884,10 @@ impl NetworkSim {
                     } else {
                         "down"
                     };
+                    let speed = self
+                        .port_link_speed(id)
+                        .unwrap_or(port.advertised_speed)
+                        .mbps();
                     let name = self.ios_interface_name(device, id);
                     match &port.config {
                         PortConfig::Switch(c) => {
@@ -892,8 +897,8 @@ impl NetworkSim {
                                 continue;
                             }
                             lines.push(format!(
-                                "{name:<30} unassigned       {status:<24} {}",
-                                switch_mode_text(&c.mode)
+                                "{name:<30} unassigned       {status:<24} {speed:>4}Mbps {}",
+                                switch_mode_text(&c.mode),
                             ));
                         }
                         PortConfig::Router(c) => {
@@ -902,11 +907,13 @@ impl NetworkSim {
                                 return Err("% This is a routed interface in the simulator.".into());
                             }
                             if c.interfaces.is_empty() {
-                                lines.push(format!("{name:<30} unassigned       {status}"));
+                                lines.push(format!(
+                                    "{name:<30} unassigned       {status:<24} {speed:>4}Mbps"
+                                ));
                             }
                             for iface in &c.interfaces {
                                 lines.push(format!(
-                                    "{:<30} {:<16} {status:<24} {}",
+                                    "{:<30} {:<16} {status:<24} {speed:>4}Mbps {}",
                                     if iface.name.contains('.') {
                                         iface.name.clone()
                                     } else {
@@ -979,11 +986,13 @@ impl NetworkSim {
                 }
                 .into(),
             );
+            lines.push(format!(" speed {}", port.advertised_speed.mbps()));
             match &port.config {
                 PortConfig::Switch(c) => match &c.mode {
                     SwitchPortMode::Access { vlan } => lines.extend([
                         " switchport mode access".into(),
-                        format!(" switchport access vlan {}", vlan.0),
+                        vlan.map(|v| format!(" switchport access vlan {}", v.0))
+                            .unwrap_or_else(|| " no switchport access vlan".into()),
                     ]),
                     SwitchPortMode::Trunk {
                         native_vlan,
@@ -1096,7 +1105,9 @@ fn format_vlan_list(vlans: &[VlanId]) -> String {
 }
 fn switch_mode_text(mode: &SwitchPortMode) -> String {
     match mode {
-        SwitchPortMode::Access { vlan } => format!("access VLAN {}", vlan.0),
+        SwitchPortMode::Access { vlan } => vlan
+            .map(|v| format!("access VLAN {}", v.0))
+            .unwrap_or_else(|| "access VLAN 1 (untagged)".into()),
         SwitchPortMode::Trunk {
             native_vlan,
             allowed,

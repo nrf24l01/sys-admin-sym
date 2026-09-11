@@ -1,6 +1,6 @@
 use bevy::prelude::*;
-use cloud_provider_sim::{DeviceId, LinkId, NetworkSim, PortId};
-use std::collections::HashMap;
+use cloud_provider_sim::{CableColor, DeviceId, LinkId, NetworkSim, PortId};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Resource, Clone)]
 pub struct SimSnapshot(pub NetworkSim);
@@ -33,7 +33,11 @@ pub struct UiState {
     pub selected: Selection,
     pub pending_cable: Option<PortId>,
     pub cable_length_cm: Option<u32>,
+    pub cable_color: CableColor,
+    pub terminal_windows: HashSet<DeviceId>,
+    pub terminal_window_focus: HashSet<DeviceId>,
     pub notice: Option<(String, bool)>,
+    pub error_dialog: Option<String>,
     pub terminals: HashMap<DeviceId, ConsoleState>,
     pub new_vlan_id: String,
     pub new_vlan_name: String,

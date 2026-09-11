@@ -40,6 +40,16 @@ pub enum SimError {
     VlanNotFound(VlanId),
     #[error("invalid IPv4 interface configuration")]
     InvalidIpv4,
+    #[error("IPv4 prefix must be between 0 and 32")]
+    InvalidIpv4Prefix,
+    #[error("IPv4 address cannot be unspecified")]
+    InvalidIpv4Address,
+    #[error("IPv4 VLAN must be between 1 and 4094")]
+    InvalidIpv4Vlan,
+    #[error("IPv4 gateway must be in the interface subnet")]
+    InvalidIpv4Gateway,
+    #[error("static route next hop is not a valid unicast IPv4 address")]
+    InvalidRouteNextHop,
     #[error("port has the wrong device type for this command")]
     WrongPortType,
     #[error("not enough money: need ${needed}, have ${available}")]

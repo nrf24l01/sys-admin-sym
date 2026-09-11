@@ -1,4 +1,4 @@
-use crate::{LinkId, PortId};
+use crate::{CableColor, LinkId, PortId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,6 +11,8 @@ pub struct Link {
     pub length_cm: u32,
     #[serde(default = "legacy_auto_length")]
     pub auto_length: bool,
+    #[serde(default)]
+    pub color: CableColor,
 }
 
 fn legacy_auto_length() -> bool {

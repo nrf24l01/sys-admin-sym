@@ -4,6 +4,7 @@ use cloud_provider_sim::{Command, Ipv4InterfaceConfig, NetworkSim, SwitchPortMod
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::net::Ipv4Addr;
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 #[derive(Resource)]
 pub struct SimulationWorker {
@@ -55,13 +56,42 @@ impl Plugin for SimulationPlugin {
 
 fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerResponse>) {
     let mut sim = NetworkSim::new();
-    let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
-    while let Ok(request) = requests.recv() {
+    let mut last_tick = std::time::Instant::now();
+    if responses
+        .send(WorkerResponse::Snapshot(Box::new(sim.clone())))
+        .is_err()
+    {
+        return;
+    }
+    loop {
+        let elapsed = last_tick.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        if elapsed > 0 {
+            sim.advance_time(elapsed);
+            last_tick = std::time::Instant::now();
+        }
+        let request = match requests.recv_timeout(Duration::from_millis(50)) {
+            Ok(request) => request,
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                if responses
+                    .send(WorkerResponse::Snapshot(Box::new(sim.clone())))
+                    .is_err()
+                {
+                    break;
+                }
+                continue;
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+        };
         match request {
             WorkerRequest::Execute(command) => match sim.execute(command) {
                 Ok(events) => {
-                    let _ = responses.send(WorkerResponse::Events(events));
-                    let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+                    if responses.send(WorkerResponse::Events(events)).is_err()
+                        || responses
+                            .send(WorkerResponse::Snapshot(Box::new(sim.clone())))
+                            .is_err()
+                    {
+                        break;
+                    }
                 }
                 Err(error) => {
                     let _ = responses.send(WorkerResponse::Error(error.to_string()));
@@ -143,7 +173,7 @@ fn translate_ui_actions(
                     },
                 }),
                 Err(_) => {
-                    state.notice = Some(("Invalid VLAN ID".into(), false));
+                    set_error(&mut state, "Invalid VLAN ID");
                     None
                 }
             },
@@ -158,28 +188,34 @@ fn translate_ui_actions(
                 if let Some(first) = state.pending_cable {
                     if first != *port {
                         let length_cm = state.cable_length_cm;
-                        match snapshot.0.quote_cable(first, *port, length_cm) {
+                        match snapshot.0.quote_colored_cable(
+                            first,
+                            *port,
+                            length_cm,
+                            state.cable_color,
+                        ) {
                             Ok(quote) => {
                                 let stock = snapshot.0.cable_inventory();
                                 if stock.cable_cm < quote.cable_required()
                                     || stock.connectors < quote.connectors_required()
                                 {
-                                    state.notice = Some(("Buy cable and RJ45 connectors in the shop before making this lead.".into(),false));
+                                    set_error(&mut state, "Buy cable and RJ45 connectors in the shop before making this lead.");
                                     continue;
                                 }
                                 state.pending_cable = None;
-                                Some(if length_cm.is_none() {
-                                    Command::Connect { a: first, b: *port }
-                                } else {
-                                    Command::ConnectCable {
-                                        a: first,
-                                        b: *port,
-                                        length_cm: quote.length_cm,
-                                    }
+                                Some(Command::ConnectColoredCable {
+                                    a: first,
+                                    b: *port,
+                                    length_cm: if length_cm.is_none() {
+                                        None
+                                    } else {
+                                        Some(quote.length_cm)
+                                    },
+                                    color: state.cable_color,
                                 })
                             }
                             Err(error) => {
-                                state.notice = Some((error.to_string(), false));
+                                set_error(&mut state, error.to_string());
                                 None
                             }
                         }
@@ -193,26 +229,28 @@ fn translate_ui_actions(
                     None
                 }
             }
-            UiAction::ApplyServer(port) => {
-                match drafts.servers.get(port).and_then(parse_server_draft) {
-                    Some((hostname, config)) => {
-                        if let Some(owner) = snapshot.0.port(*port).map(|p| p.device) {
-                            commands.write(SimCommandMessage(Command::SetHostname {
-                                device: owner,
-                                hostname,
-                            }));
-                        }
-                        Some(Command::SetIpv4 {
-                            port: *port,
-                            config,
-                        })
+            UiAction::ApplyServer(port) => match drafts.servers.get(port).map(parse_server_draft) {
+                Some(Ok((hostname, config))) => {
+                    if let Some(owner) = snapshot.0.port(*port).map(|p| p.device) {
+                        commands.write(SimCommandMessage(Command::SetHostname {
+                            device: owner,
+                            hostname,
+                        }));
                     }
-                    None => {
-                        state.notice = Some(("Invalid server configuration".into(), false));
-                        None
-                    }
+                    Some(Command::SetIpv4 {
+                        port: *port,
+                        config,
+                    })
                 }
-            }
+                Some(Err(error)) => {
+                    set_error(&mut state, error);
+                    None
+                }
+                None => {
+                    set_error(&mut state, "Missing server configuration");
+                    None
+                }
+            },
             UiAction::ApplySwitch(port) => drafts.switches.get(port).and_then(|draft| {
                 if draft.trunk {
                     let allowed: Option<Vec<_>> = draft
@@ -221,6 +259,12 @@ fn translate_ui_actions(
                         .filter(|v| !v.trim().is_empty())
                         .map(|v| v.trim().parse::<u16>().ok().map(VlanId))
                         .collect();
+                    if allowed.is_none() {
+                        state.notice = Some((
+                            "Invalid VLAN list: use comma-separated VLAN IDs.".into(),
+                            false,
+                        ));
+                    }
                     allowed.map(|allowed| Command::SetSwitchPortMode {
                         port: *port,
                         mode: SwitchPortMode::Trunk {
@@ -229,27 +273,67 @@ fn translate_ui_actions(
                         },
                     })
                 } else {
-                    draft
-                        .vlan
-                        .parse::<u16>()
-                        .ok()
-                        .map(|vlan| Command::SetSwitchPortMode {
+                    let result = if draft.vlan.trim().is_empty() {
+                        Some(Command::SetSwitchPortMode {
                             port: *port,
-                            mode: SwitchPortMode::Access { vlan: VlanId(vlan) },
+                            mode: SwitchPortMode::Access { vlan: None },
                         })
+                    } else {
+                        draft.vlan.parse::<u16>().ok().map(|vlan| Command::SetSwitchPortMode {
+                            port: *port,
+                            mode: SwitchPortMode::Access { vlan: Some(VlanId(vlan)) },
+                        })
+                    };
+                    if result.is_none() {
+                        set_error(&mut state, "Invalid access VLAN: enter a VLAN ID or leave it blank.");
+                    }
+                    result
                 }
             }),
             UiAction::ApplyRouter(port) => drafts.routers.get(port).and_then(|draft| {
-                let prefix = draft.prefix.parse().ok()?;
+                let prefix = match draft.prefix.parse() {
+                    Ok(prefix) if prefix <= 32 => prefix,
+                    Err(_) => {
+                        state.notice = Some((
+                            "Invalid router prefix: enter a number from 0 to 32.".into(),
+                            false,
+                        ));
+                        return None;
+                    }
+                    _ => {
+                        set_error(&mut state, "Invalid router prefix: enter a number from 0 to 32.");
+                        return None;
+                    }
+                };
                 let vlan = if draft.vlan.trim().is_empty() {
                     None
                 } else {
-                    Some(VlanId(draft.vlan.parse().ok()?))
+                    match draft.vlan.parse::<u16>() {
+                        Ok(vlan) if (1..=4094).contains(&vlan) => Some(VlanId(vlan)),
+                        Err(_) => {
+                            set_error(&mut state, "Invalid router VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+                            return None;
+                        }
+                        _ => {
+                            set_error(&mut state, "Invalid router VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+                            return None;
+                        }
+                    }
                 };
                 let address = if draft.address.trim().is_empty() {
                     None
                 } else {
-                    Some(draft.address.parse().ok()?)
+                    match draft.address.parse::<Ipv4Addr>() {
+                        Ok(address) if !address.is_unspecified() => Some(address),
+                        Err(_) => {
+                            set_error(&mut state, "Invalid router IPv4 address: enter a host address.");
+                            return None;
+                        }
+                        _ => {
+                            set_error(&mut state, "Invalid router IPv4 address: enter a host address.");
+                            return None;
+                        }
+                    }
                 };
                 Some(Command::ConfigureRouterInterface {
                     port: *port,
@@ -265,6 +349,13 @@ fn translate_ui_actions(
                     device: *device,
                     input: input.clone(),
                 });
+                None
+            }
+            UiAction::FlushPortConfig(port) => Some(Command::ResetPortConfig { port: *port }),
+            UiAction::LaunchExternalTerminal(device) => {
+                state.terminal_windows.insert(*device);
+                state.terminal_window_focus.insert(*device);
+                state.notice = Some(("Terminal window opened".into(), true));
                 None
             }
             UiAction::Save => {
@@ -289,19 +380,50 @@ fn translate_ui_actions(
     }
 }
 
-fn parse_server_draft(draft: &ServerDraft) -> Option<(String, Ipv4InterfaceConfig)> {
-    let address: Ipv4Addr = draft.address.parse().ok()?;
-    let prefix = draft.prefix.parse().ok()?;
+fn set_error(state: &mut UiState, message: impl Into<String>) {
+    let message = message.into();
+    state.error_dialog = Some(message.clone());
+    state.notice = Some((message, false));
+}
+
+fn parse_server_draft(draft: &ServerDraft) -> Result<(String, Ipv4InterfaceConfig), &'static str> {
+    let address: Ipv4Addr = draft
+        .address
+        .parse()
+        .map_err(|_| "Invalid server IPv4 address: enter a host address.")?;
+    if address.is_unspecified() {
+        return Err("Invalid server IPv4 address: 0.0.0.0 is not a host address.");
+    }
+    let prefix: u8 = draft
+        .prefix
+        .parse()
+        .map_err(|_| "Invalid server prefix: enter a number from 0 to 32.")?;
+    if prefix > 32 {
+        return Err("Invalid server prefix: enter a number from 0 to 32.");
+    }
     let gateway = if draft.gateway.trim().is_empty() {
         None
     } else {
-        Some(draft.gateway.parse().ok()?)
+        Some(
+            draft
+                .gateway
+                .parse()
+                .map_err(|_| "Invalid server gateway: enter an IPv4 address or leave it blank.")?,
+        )
     };
-    let vlan = VlanId(draft.vlan.parse().ok()?);
-    Some((
-        draft.hostname.clone(),
-        Ipv4InterfaceConfig::new(address, prefix, gateway, vlan),
-    ))
+    let vlan = if draft.vlan.trim().is_empty() {
+        None
+    } else {
+        Some(VlanId(draft.vlan.parse().map_err(
+            |_| "Invalid access VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.",
+        )?))
+    };
+    if vlan.is_some_and(|v| !(1..=4094).contains(&v.0)) {
+        return Err("Invalid access VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+    }
+    let mut config = Ipv4InterfaceConfig::new(address, prefix, gateway, vlan.unwrap_or(VlanId(1)));
+    config.vlan = vlan;
+    Ok((draft.hostname.clone(), config))
 }
 
 fn dispatch_sim_commands(
@@ -321,7 +443,26 @@ fn poll_worker(
 ) {
     while let Ok(response) = worker.rx.try_recv() {
         match response {
-            WorkerResponse::Snapshot(new_snapshot) => snapshot.0 = *new_snapshot,
+            WorkerResponse::Snapshot(new_snapshot) => {
+                snapshot.0 = *new_snapshot;
+                let selection_gone = match state.selected {
+                    Selection::Port(port) => snapshot.0.port(port).is_none(),
+                    Selection::Link(link) => snapshot.0.link(link).is_none(),
+                    _ => false,
+                };
+                if selection_gone {
+                    state.selected = Selection::None;
+                }
+                drafts
+                    .servers
+                    .retain(|port, _| snapshot.0.port(*port).is_some());
+                drafts
+                    .switches
+                    .retain(|port, _| snapshot.0.port(*port).is_some());
+                drafts
+                    .routers
+                    .retain(|port, _| snapshot.0.port(*port).is_some());
+            }
             WorkerResponse::Events(events) => {
                 state.notice = events.first().map(|event| {
                     let message = match event {
@@ -338,6 +479,15 @@ fn poll_worker(
                     };
                     (message, true)
                 });
+                for event in &events {
+                    if matches!(
+                        event,
+                        cloud_provider_sim::SimEvent::DeviceMoved { .. }
+                            | cloud_provider_sim::SimEvent::DeviceRemoved(_)
+                    ) {
+                        state.pending_cable = None;
+                    }
+                }
             }
             WorkerResponse::Terminal {
                 device,
@@ -360,7 +510,7 @@ fn poll_worker(
                 state.pending_cable = None;
                 state.selected = Selection::None;
             }
-            WorkerResponse::Error(error) => state.notice = Some((error, false)),
+            WorkerResponse::Error(error) => set_error(&mut state, error),
         }
     }
 }

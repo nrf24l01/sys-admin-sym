@@ -66,7 +66,9 @@ impl SaveStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cloud_provider_sim::{CableSupply, Command, DeviceTemplate};
+    use cloud_provider_sim::{
+        CableColor, CableSupply, Command, DeviceKind, DeviceTemplate, RackId, SimEvent,
+    };
 
     #[test]
     fn sqlite_round_trip_preserves_domain_state() {
@@ -127,6 +129,83 @@ mod tests {
         assert!(after.execute_console(device, "reload").success);
         assert!(after.execute_console(device, "").success);
         assert_eq!(after.terminal_prompt(device), "SavedSwitch>");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+    }
+
+    #[test]
+    fn sqlite_round_trip_preserves_colored_leads_and_legacy_defaults() {
+        let path =
+            std::env::temp_dir().join(format!("cloud-provider-colored-{}.db", std::process::id()));
+        let store = SaveStore::new(&path);
+        let mut sim = NetworkSim::new();
+        for (kind, unit) in [(DeviceTemplate::Switch, 1), (DeviceTemplate::Server, 2)] {
+            let device = match sim.execute(Command::BuyDevice { kind }).unwrap()[0] {
+                SimEvent::DeviceAdded(id) => id,
+                _ => unreachable!(),
+            };
+            sim.execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit,
+            })
+            .unwrap();
+        }
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::CableBox305m,
+        })
+        .unwrap();
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::Rj45Pack20,
+        })
+        .unwrap();
+        let devices: Vec<_> = sim.devices().collect();
+        let a = devices
+            .iter()
+            .find(|device| matches!(device.kind, DeviceKind::Switch(_)))
+            .unwrap()
+            .ports()[0];
+        let b = devices
+            .iter()
+            .find(|device| matches!(device.kind, DeviceKind::Server(_)))
+            .unwrap()
+            .ports()[0];
+        sim.execute(Command::ConnectColoredCable {
+            a,
+            b,
+            length_cm: Some(125),
+            color: CableColor::Orange,
+        })
+        .unwrap();
+        let link = sim.link_for_port(a).unwrap().id;
+        sim.execute(Command::Disconnect { link }).unwrap();
+        store.save(&sim).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(
+            loaded.cable_inventory().patch_cable_colors,
+            vec![CableColor::Orange]
+        );
+
+        // A pre-color save has no parallel color field; loading defaults its leads to white.
+        let connection = store.open().unwrap();
+        let payload: String = connection
+            .query_row("SELECT state FROM saves WHERE slot=1", [], |row| row.get(0))
+            .unwrap();
+        let start = payload.find("patch_cable_colors:").unwrap();
+        let end = payload[start..].find("],").unwrap() + start + 2;
+        let legacy = format!("{}{}", &payload[..start], &payload[end..]);
+        connection
+            .execute(
+                "UPDATE saves SET state = ?1 WHERE slot = 1",
+                rusqlite::params![legacy],
+            )
+            .unwrap();
+        let legacy_loaded = store.load().unwrap();
+        assert_eq!(
+            legacy_loaded.cable_inventory().patch_cable_colors,
+            vec![CableColor::White]
+        );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
         let _ = std::fs::remove_file(path.with_extension("db-wal"));

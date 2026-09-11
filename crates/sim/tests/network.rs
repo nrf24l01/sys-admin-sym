@@ -166,7 +166,9 @@ fn sfp_cabling_is_explicitly_outside_the_mvp() {
     assert_eq!(
         sim.execute(Command::SetSwitchPortMode {
             port: sfp,
-            mode: SwitchPortMode::Access { vlan: VlanId(1) },
+            mode: SwitchPortMode::Access {
+                vlan: Some(VlanId(1))
+            },
         }),
         Err(SimError::UnsupportedConnector {
             port: sfp,
@@ -205,7 +207,9 @@ fn basic_vlan() -> (NetworkSim, DeviceId, DeviceId, DeviceId) {
     for port in [sp[1], sp[2]] {
         sim.execute(Command::SetSwitchPortMode {
             port,
-            mode: SwitchPortMode::Access { vlan: VlanId(20) },
+            mode: SwitchPortMode::Access {
+                vlan: Some(VlanId(20)),
+            },
         })
         .unwrap();
     }
@@ -244,7 +248,9 @@ fn different_access_vlan_is_blocked() {
     let sw_port = ports(&sim, switch)[2];
     sim.execute(Command::SetSwitchPortMode {
         port: sw_port,
-        mode: SwitchPortMode::Access { vlan: VlanId(30) },
+        mode: SwitchPortMode::Access {
+            vlan: Some(VlanId(30)),
+        },
     })
     .unwrap();
     let result = sim.ping(ports(&sim, a)[0], ip("10.10.20.12"));
@@ -329,12 +335,16 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     .unwrap();
     sim.execute(Command::SetSwitchPortMode {
         port: swp[1],
-        mode: SwitchPortMode::Access { vlan: VlanId(10) },
+        mode: SwitchPortMode::Access {
+            vlan: Some(VlanId(10)),
+        },
     })
     .unwrap();
     sim.execute(Command::SetSwitchPortMode {
         port: swp[2],
-        mode: SwitchPortMode::Access { vlan: VlanId(20) },
+        mode: SwitchPortMode::Access {
+            vlan: Some(VlanId(20)),
+        },
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {

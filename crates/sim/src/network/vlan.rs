@@ -10,7 +10,7 @@ pub struct Vlan {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SwitchPortMode {
     Access {
-        vlan: VlanId,
+        vlan: Option<VlanId>,
     },
     Trunk {
         native_vlan: Option<VlanId>,
@@ -21,7 +21,7 @@ pub enum SwitchPortMode {
 impl SwitchPortMode {
     pub fn carries(&self, vlan: VlanId) -> bool {
         match self {
-            Self::Access { vlan: access } => *access == vlan,
+            Self::Access { vlan: access } => access.unwrap_or(VlanId(1)) == vlan,
             Self::Trunk { allowed, .. } => allowed.contains(&vlan),
         }
     }

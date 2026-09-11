@@ -149,6 +149,9 @@ not emulated as IOS services.
   and allowed-list `add LIST` / `remove LIST`.
 - Router interfaces: `ip address ADDRESS MASK`, `no ip address`;
   router subinterfaces additionally support `encapsulation dot1q ID`.
+- Physical interfaces support `speed 10`, `speed 100`, `speed 1000`, and
+  `speed auto` (the default). The configured advertisement is saved by
+  `write memory`; a link negotiates the lower rate advertised by its endpoints.
 
 VLAN IDs are 1–4094. Lists accept `20,30-35`, `all`, or `none`. Configure trunk
 mode before changing its allowed/native VLAN settings. Trunks initially allow
@@ -179,7 +182,9 @@ show cdp neighbors
 ```
 
 Outputs are computed from the simulator state. Interface status reflects power,
-installation, administrative shutdown, and the remote cable endpoint.
+installation, administrative shutdown, cable length, and the remote cable
+endpoint; the speed column reports the negotiated rate when the link is up and
+the local advertisement when it is down.
 CDP output derives active adjacent network devices from the topology; the
 simulator does not exchange or age CDP packets. Router diagnostics support
 connected destinations and the abstract internet uplink. Traceroute lists

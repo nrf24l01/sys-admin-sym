@@ -26,6 +26,54 @@ fn buy(sim: &mut NetworkSim, supply: CableSupply) {
 }
 
 #[test]
+fn colored_leads_are_saved_and_reused_only_with_matching_jacket() {
+    let mut sim = NetworkSim::new();
+    let (a, b) = endpoints(&mut sim);
+    buy(&mut sim, CableSupply::CableBox305m);
+    buy(&mut sim, CableSupply::Rj45Pack20);
+    sim.execute(Command::ConnectColoredCable {
+        a,
+        b,
+        length_cm: Some(125),
+        color: CableColor::Blue,
+    })
+    .unwrap();
+    let link = sim.link_for_port(a).unwrap().clone();
+    assert_eq!(link.color, CableColor::Blue);
+    sim.execute(Command::Disconnect { link: link.id }).unwrap();
+    assert_eq!(
+        sim.cable_inventory().patch_cable_colors,
+        vec![CableColor::Blue]
+    );
+    let cable_before = sim.cable_inventory().cable_cm;
+    // A requested color mismatch cannot consume the blue reusable lead.
+    sim.execute(Command::ConnectColoredCable {
+        a,
+        b,
+        length_cm: Some(125),
+        color: CableColor::Red,
+    })
+    .unwrap();
+    assert_eq!(sim.cable_inventory().cable_cm, cable_before - 125);
+    let red = sim.link_for_port(a).unwrap().id;
+    sim.execute(Command::Disconnect { link: red }).unwrap();
+    // The matching blue lead is selected and removed without spending raw cable.
+    sim.execute(Command::ConnectColoredCable {
+        a,
+        b,
+        length_cm: Some(125),
+        color: CableColor::Blue,
+    })
+    .unwrap();
+    assert_eq!(sim.cable_inventory().cable_cm, cable_before - 125);
+    assert!(
+        !sim.cable_inventory()
+            .patch_cable_colors
+            .contains(&CableColor::Blue)
+    );
+}
+
+#[test]
 fn new_game_has_no_free_cable_and_purchases_charge_money() {
     let mut sim = NetworkSim::new();
     assert_eq!(*sim.cable_inventory(), CableInventory::default());

@@ -47,6 +47,34 @@ fn link(sim: &mut NetworkSim, a: PortId, b: PortId) {
 }
 
 #[test]
+fn interface_speed_is_shown_and_restored_from_startup_config() {
+    let mut sim = NetworkSim::new();
+    let switch = buy(&mut sim, DeviceTemplate::Switch, 1);
+
+    run(
+        &mut sim,
+        switch,
+        "enable\nconfigure terminal\ninterface Gi1/0/1\nspeed 100\nend",
+    );
+    let running = run(&mut sim, switch, "show running-config");
+    assert!(running.iter().any(|line| line == " speed 100"));
+
+    run(
+        &mut sim,
+        switch,
+        "write memory\nconfigure terminal\ninterface Gi1/0/1\nspeed 10\nend",
+    );
+    assert_eq!(sim.port_link_speed(port(&sim, switch, 0)), None);
+    run(&mut sim, switch, "reload");
+    let output = sim.execute_console(switch, "");
+    assert!(output.success, "reload confirmation: {:?}", output.lines);
+    assert_eq!(
+        sim.port(port(&sim, switch, 0)).unwrap().advertised_speed,
+        LinkSpeed::Mbps100
+    );
+}
+
+#[test]
 fn modes_abbreviations_validation_and_sessions_are_independent() {
     let mut sim = NetworkSim::new();
     sim.execute(Command::BuyCableSupply {
@@ -231,7 +259,7 @@ fn invalid_interface_range_and_mask_do_not_partially_mutate_state() {
     run(&mut sim, sw, "enable\nconf t\nint range gi1/0/24 - 25");
     assert!(!sim.execute_console(sw, "switchport access vlan 20").success);
     assert!(
-        matches!(&sim.port(last_rj45).unwrap().config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: VlanId(1) })
+        matches!(&sim.port(last_rj45).unwrap().config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: None })
     );
     assert!(
         matches!(&sim.device(sw).unwrap().kind, DeviceKind::Switch(c) if !c.vlans.iter().any(|v| v.id == VlanId(20)))

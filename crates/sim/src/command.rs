@@ -1,6 +1,6 @@
 use crate::{
-    DeviceId, DeviceTemplate, Ipv4InterfaceConfig, LinkId, PortId, RackId, SwitchPortMode, Vlan,
-    VlanId,
+    DeviceId, DeviceTemplate, Ipv4InterfaceConfig, LinkId, LinkSpeed, PortId, RackId, Route,
+    SwitchPortMode, Vlan, VlanId,
 };
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -14,6 +14,12 @@ pub enum Command {
         a: PortId,
         b: PortId,
         length_cm: u32,
+    },
+    ConnectColoredCable {
+        a: PortId,
+        b: PortId,
+        length_cm: Option<u32>,
+        color: crate::CableColor,
     },
     BuyDevice {
         kind: DeviceTemplate,
@@ -40,6 +46,10 @@ pub enum Command {
         port: PortId,
         mode: SwitchPortMode,
     },
+    SetPortSpeed {
+        port: PortId,
+        speed: LinkSpeed,
+    },
     CreateVlan {
         switch: DeviceId,
         vlan: Vlan,
@@ -56,6 +66,14 @@ pub enum Command {
         prefix: u8,
         internet_connected: bool,
     },
+    SetStaticRoute {
+        router: DeviceId,
+        route: Route,
+    },
+    RemoveStaticRoute {
+        router: DeviceId,
+        route: Route,
+    },
     SetHostname {
         device: DeviceId,
         hostname: String,
@@ -63,5 +81,8 @@ pub enum Command {
     SetPower {
         device: DeviceId,
         powered: bool,
+    },
+    ResetPortConfig {
+        port: PortId,
     },
 }
