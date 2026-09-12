@@ -22,7 +22,7 @@ The game starts with one empty 12U rack and $6,000.
    each new lead consumes its cut length and two plugs. Choose white, gray, blue,
    orange, or red for the jacket. The patch cable appears
    with visible plugs and a physically sagging, draggable jacket. Automatic cuts
-   use the straight distance between sockets plus 10% slack, rounded up to a cm.
+   use the straight distance between sockets plus 5% slack, rounded up to a cm.
    Longer reusable leads can be selected explicitly in the shop. Switch link
    Port LEDs use separate link/status and activity indicators. Link/status shows
    the negotiated 10/100/1000 Mbps connection; activity reflects simulated

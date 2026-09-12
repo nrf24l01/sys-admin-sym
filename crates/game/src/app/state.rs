@@ -1,5 +1,7 @@
 use bevy::prelude::*;
-use cloud_provider_sim::{CableColor, DeviceId, LinkId, NetworkSim, PortId, RackSide};
+use cloud_provider_sim::{
+    CableColor, CableRoutePoint, DeviceId, LinkId, NetworkSim, PortId, RackSide,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Resource, Clone)]
@@ -40,6 +42,8 @@ pub struct UiState {
     pub workspace: Workspace,
     pub selected: Selection,
     pub pending_cable: Option<PortId>,
+    /// Route points collected between choosing the source and destination plug.
+    pub pending_cable_route: Vec<CableRoutePoint>,
     pub cable_length_cm: Option<u32>,
     pub cable_color: CableColor,
     pub terminal_windows: HashSet<DeviceId>,

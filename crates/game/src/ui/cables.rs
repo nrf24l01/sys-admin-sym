@@ -1,6 +1,6 @@
 use crate::app::CableVisibility;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
-use cloud_provider_sim::{LinkId, NetworkSim, PortId, RackSide};
+use cloud_provider_sim::{CableRoutePoint, LinkId, NetworkSim, PortId};
 use std::collections::HashMap;
 
 const SEGMENTS: usize = 64;
@@ -34,6 +34,17 @@ impl Rope {
     }
 
     fn step(&mut self, a: Pos2, b: Pos2, floor: f32, grab: Option<(usize, Pos2)>) {
+        self.step_with_pins(a, b, floor, grab, &[]);
+    }
+
+    fn step_with_pins(
+        &mut self,
+        a: Pos2,
+        b: Pos2,
+        floor: f32,
+        grab: Option<(usize, Pos2)>,
+        pins: &[(usize, Pos2)],
+    ) {
         self.endpoints = (a, b);
         for i in 1..SEGMENTS {
             let point = self.points[i];
@@ -47,6 +58,10 @@ impl Rope {
         for _ in 0..CONSTRAINT_PASSES {
             self.points[0] = a;
             self.points[SEGMENTS] = b;
+            for &(index, point) in pins {
+                self.points[index] = point;
+                self.previous[index] = point;
+            }
             if let Some((i, p)) = grab {
                 self.points[i] = p;
             }
@@ -57,8 +72,12 @@ impl Rope {
                     continue;
                 }
                 let correction = delta * (1.0 - segment_length / distance);
-                let pinned_a = i == 0 || grab.is_some_and(|(index, _)| index == i);
-                let pinned_b = i + 1 == SEGMENTS || grab.is_some_and(|(index, _)| index == i + 1);
+                let pinned_a = i == 0
+                    || pins.iter().any(|(index, _)| *index == i)
+                    || grab.is_some_and(|(index, _)| index == i);
+                let pinned_b = i + 1 == SEGMENTS
+                    || pins.iter().any(|(index, _)| *index == i + 1)
+                    || grab.is_some_and(|(index, _)| index == i + 1);
                 match (pinned_a, pinned_b) {
                     (false, false) => {
                         self.points[i] += correction * 0.5;
@@ -78,6 +97,10 @@ impl Rope {
         }
         self.points[0] = a;
         self.points[SEGMENTS] = b;
+        for &(index, point) in pins {
+            self.points[index] = point;
+            self.previous[index] = point;
+        }
         if let Some((i, p)) = grab {
             self.points[i] = p;
             self.previous[i] = p;
@@ -90,6 +113,28 @@ impl Rope {
         self.previous[0] = a;
         self.points[SEGMENTS] = b;
         self.previous[SEGMENTS] = b;
+    }
+
+    fn pin_points(&mut self, pins: &[(usize, Pos2)]) {
+        for &(index, point) in pins {
+            self.points[index] = point;
+            self.previous[index] = point;
+        }
+    }
+
+    fn seed_pinned_path(&mut self, a: Pos2, b: Pos2, pins: &[(usize, Pos2)]) {
+        let mut stops = Vec::with_capacity(pins.len() + 2);
+        stops.push((0, a));
+        stops.extend_from_slice(pins);
+        stops.push((SEGMENTS, b));
+        for pair in stops.windows(2) {
+            let ((start, from), (end, to)) = (pair[0], pair[1]);
+            for index in start..=end {
+                let t = (index - start) as f32 / (end - start).max(1) as f32;
+                self.points[index] = from.lerp(to, t);
+                self.previous[index] = self.points[index];
+            }
+        }
     }
 }
 
@@ -108,12 +153,56 @@ pub(super) struct CableView {
     pub plug: egui::TextureId,
     pub selected: Option<LinkId>,
     pub visibility: CableVisibility,
-    pub route_left_px: f32,
-    pub route_top_px: f32,
-    pub route_width_px: f32,
-    pub route_row_height_px: f32,
-    pub rack_units: u8,
-    pub route_side: RackSide,
+    pub anchors: Vec<(CableRoutePoint, Pos2)>,
+    pub preview: Option<(Vec<Pos2>, Color32)>,
+}
+
+impl CableView {
+    fn routed_path(&self, a: Pos2, b: Pos2, route: &[CableRoutePoint]) -> Vec<Pos2> {
+        std::iter::once(a)
+            .chain(
+                route
+                    .iter()
+                    .filter_map(|point| anchor_position(point, &self.anchors)),
+            )
+            .chain(std::iter::once(b))
+            .collect()
+    }
+}
+
+pub(super) fn anchor_position(
+    point: &CableRoutePoint,
+    anchors: &[(CableRoutePoint, Pos2)],
+) -> Option<Pos2> {
+    let find = |target: &CableRoutePoint| {
+        anchors
+            .iter()
+            .find(|(anchor, _)| anchor == target)
+            .map(|(_, pos)| *pos)
+    };
+    find(point).or_else(|| {
+        // Retain saved interior routes even after a cable manager is removed.
+        let left = find(&CableRoutePoint {
+            offset_cm: 0,
+            ..*point
+        })?;
+        let right = find(&CableRoutePoint {
+            offset_cm: 48,
+            ..*point
+        })?;
+        Some(left.lerp(right, point.offset_cm.min(48) as f32 / 48.0))
+    })
+}
+
+pub(super) fn paint_preview(ui: &egui::Ui, path: Vec<Pos2>, color: Color32) {
+    ui.painter().add(egui::Shape::line(
+        path.clone(),
+        egui::Stroke::new(7.0, Color32::from_black_alpha(110)),
+    ));
+    ui.painter().add(egui::Shape::line(
+        path,
+        egui::Stroke::new(4.0, color.gamma_multiply(0.65)),
+    ));
 }
 
 impl CableScene {
@@ -169,6 +258,19 @@ impl CableScene {
                 *rope = Rope::new(a, b, link.length_cm as f32);
             }
             rope.pin_endpoints(a, b);
+            let route = view.routed_path(exit(ports[&link.a]), exit(ports[&link.b]), &link.route);
+            let pins: Vec<_> = route_pin_indices(&route)
+                .into_iter()
+                .map(|(index, point)| (index, local(point)))
+                .collect();
+            if pins
+                .iter()
+                .any(|(index, point)| rope.points[*index].distance(*point) > 0.01)
+            {
+                rope.seed_pinned_path(a, b, &pins);
+            } else {
+                rope.pin_points(&pins);
+            }
         }
         let (pointer, pressed, down, dt) = ui.input(|i| {
             (
@@ -184,19 +286,23 @@ impl CableScene {
         }
         if let Some(pointer) = pointer.filter(|p| ui.clip_rect().contains(*p)) {
             // Socket interactions keep priority, including plugs over their sockets.
-            if !ports.values().any(|r| r.expand(3.0).contains(pointer)) {
+            if !ports.values().any(|r| r.expand(3.0).contains(pointer))
+                && !view.anchors.iter().any(|(_, pos)| {
+                    Rect::from_center_size(*pos, Vec2::splat(14.0)).contains(pointer)
+                })
+            {
                 let nearest = links
                     .iter()
                     .filter_map(|link| {
                         let rope = &self.ropes[&link.id];
-                        rope.points
-                            .windows(2)
+                        let path: Vec<_> = rope.points.iter().map(|p| screen(*p)).collect();
+                        path.windows(2)
                             .enumerate()
                             .map(|(i, pair)| {
                                 (
                                     link.id,
                                     (i + 1).clamp(1, SEGMENTS - 1),
-                                    distance_to_segment(pointer, screen(pair[0]), screen(pair[1])),
+                                    distance_to_segment(pointer, pair[0], pair[1]),
                                 )
                             })
                             .min_by(|a, b| a.2.total_cmp(&b.2))
@@ -206,7 +312,9 @@ impl CableScene {
                 if let Some((id, index, _)) = nearest {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                     if pressed {
-                        self.grab = Some((id, index));
+                        if sim.link(id).is_some_and(|link| link.route.is_empty()) {
+                            self.grab = Some((id, index));
+                        }
                         selected = Some(id);
                     }
                 }
@@ -217,6 +325,12 @@ impl CableScene {
         while self.accumulator >= STEP {
             for link in &links {
                 let (a, b) = (local(exit(ports[&link.a])), local(exit(ports[&link.b])));
+                let route =
+                    view.routed_path(exit(ports[&link.a]), exit(ports[&link.b]), &link.route);
+                let pins: Vec<_> = route_pin_indices(&route)
+                    .into_iter()
+                    .map(|(index, point)| (index, local(point)))
+                    .collect();
                 let grab = self
                     .grab
                     .filter(|(id, _)| *id == link.id)
@@ -240,10 +354,12 @@ impl CableScene {
                             (i, target)
                         })
                     });
-                self.ropes
-                    .get_mut(&link.id)
-                    .unwrap()
-                    .step(a, b, floor, grab);
+                let rope = self.ropes.get_mut(&link.id).unwrap();
+                if pins.is_empty() {
+                    rope.step(a, b, floor, grab);
+                } else {
+                    rope.step_with_pins(a, b, floor, grab, &pins);
+                }
             }
             self.accumulator -= STEP;
         }
@@ -272,24 +388,6 @@ impl CableScene {
                 .iter()
                 .map(|p| screen(*p))
                 .collect();
-            let routed: Vec<_> = std::iter::once(screen(local(exit(ports[&link.a]))))
-                .chain(
-                    link.route
-                        .iter()
-                        .filter(|point| point.side == view.route_side)
-                        .map(|point| {
-                            Pos2::new(
-                                view.route_left_px
-                                    + point.offset_cm.min(48) as f32 / 48.0 * view.route_width_px,
-                                view.route_top_px
-                                    + view.rack_units.saturating_sub(point.unit) as f32
-                                        * view.route_row_height_px
-                                    + view.route_row_height_px * 0.5,
-                            )
-                        }),
-                )
-                .chain(std::iter::once(screen(local(exit(ports[&link.b])))))
-                .collect();
             let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
             let in_selected_path =
                 selected_ports.contains(&link.a) || selected_ports.contains(&link.b);
@@ -301,11 +399,7 @@ impl CableScene {
             {
                 color = color.gamma_multiply(0.35);
             }
-            let display_path = if link.route.is_empty() {
-                path.clone()
-            } else {
-                routed.clone()
-            };
+            let display_path = path;
             let shadow: Vec<_> = display_path
                 .iter()
                 .map(|p| *p + Vec2::new(2.0, 3.0))
@@ -325,6 +419,9 @@ impl CableScene {
                 egui::Stroke::new(width, color),
             ));
             paint_jacket(ui.painter(), &display_path, width, view.jacket);
+        }
+        if let Some((path, color)) = view.preview {
+            paint_preview(ui, path, color);
         }
         if !links.is_empty() {
             ui.ctx()
@@ -347,6 +444,34 @@ fn distance_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let delta = b - a;
     let t = ((p - a).dot(delta) / delta.length_sq().max(0.0001)).clamp(0.0, 1.0);
     p.distance(a + delta * t)
+}
+
+/// Turn a routed polyline into a flexible lead. Endpoints and rack anchors are
+/// kept fixed while any length beyond the geometric path becomes a visible sag.
+/// Maps every interior route anchor onto a stable rope particle. The solver
+/// then treats these particles as fixed while the cable between them moves.
+fn route_pin_indices(path: &[Pos2]) -> Vec<(usize, Pos2)> {
+    let total: f32 = path.windows(2).map(|pair| pair[0].distance(pair[1])).sum();
+    if path.len() < 3 || total < 0.001 {
+        return vec![];
+    }
+    let mut travelled = 0.0;
+    let mut previous_index = 0;
+    let last_anchor = path.len() - 2;
+    path.windows(2)
+        .enumerate()
+        .filter_map(|(segment, pair)| {
+            travelled += pair[0].distance(pair[1]);
+            if segment == last_anchor {
+                return None;
+            }
+            let remaining = last_anchor - segment;
+            let index = ((travelled / total * SEGMENTS as f32).round() as usize)
+                .clamp(previous_index + 1, SEGMENTS - remaining);
+            previous_index = index;
+            Some((index, path[segment + 1]))
+        })
+        .collect()
 }
 fn paint_jacket(painter: &egui::Painter, path: &[Pos2], width: f32, texture: egui::TextureId) {
     let mut mesh = egui::Mesh::with_texture(texture);
@@ -377,7 +502,122 @@ fn paint_jacket(painter: &egui::Painter, path: &[Pos2], width: f32, texture: egu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cloud_provider_sim::{CableSupply, Command, DeviceTemplate, RackId, SimEvent};
+    use cloud_provider_sim::{CableSupply, Command, DeviceTemplate, RackId, RackSide, SimEvent};
+
+    #[test]
+    fn routed_rope_keeps_the_anchor_fixed_while_its_port_legs_sag() {
+        let (a, anchor, b) = (
+            egui::pos2(0.0, 0.0),
+            egui::pos2(80.0, 0.0),
+            egui::pos2(160.0, 0.0),
+        );
+        let mut rope = Rope::new(a, b, 220.0);
+        let pins = vec![(SEGMENTS / 2, anchor)];
+        for _ in 0..600 {
+            rope.step_with_pins(a, b, 140.0, None, &pins);
+        }
+        assert_eq!(rope.points[SEGMENTS / 2], anchor);
+        assert!(rope.points[SEGMENTS / 4].y > 10.0);
+        assert!(rope.points[SEGMENTS * 3 / 4].y > 10.0);
+    }
+
+    #[test]
+    fn routed_cable_uses_visible_anchors_for_painting_and_clicks() {
+        let mut sim = NetworkSim::new();
+        let mut ids = vec![];
+        for unit in [1, 2] {
+            let SimEvent::DeviceAdded(id) = sim
+                .execute(Command::BuyDevice {
+                    kind: DeviceTemplate::Switch,
+                })
+                .unwrap()[0]
+            else {
+                unreachable!()
+            };
+            sim.execute(Command::PlaceDevice {
+                device: id,
+                rack: RackId(1),
+                unit,
+            })
+            .unwrap();
+            ids.push(sim.device(id).unwrap().ports()[0]);
+        }
+        for supply in [CableSupply::CableBox305m, CableSupply::Rj45Pack20] {
+            sim.execute(Command::BuyCableSupply { supply }).unwrap();
+        }
+        sim.execute(Command::Connect {
+            a: ids[0],
+            b: ids[1],
+        })
+        .unwrap();
+        let link = sim.link_for_port(ids[0]).unwrap().id;
+        let anchor = CableRoutePoint {
+            rack: RackId(1),
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 48,
+        };
+        sim.execute(Command::AddCableRoutePoint {
+            link,
+            point: anchor,
+        })
+        .unwrap();
+        let a = egui::pos2(50.0, 50.0);
+        let b = egui::pos2(50.0, 150.0);
+        let corner = egui::pos2(250.0, 50.0);
+        let ports = HashMap::from([
+            (ids[0], Rect::from_center_size(a, Vec2::splat(12.0))),
+            (ids[1], Rect::from_center_size(b, Vec2::splat(12.0))),
+        ]);
+        let view = || CableView {
+            origin: Pos2::ZERO,
+            pixels_per_cm: 5.0,
+            floor_y: 400.0,
+            jacket: egui::TextureId::User(1),
+            plug: egui::TextureId::User(2),
+            selected: Some(link),
+            visibility: CableVisibility::All,
+            anchors: vec![(anchor, corner)],
+            preview: None,
+        };
+        assert_eq!(view().routed_path(a, b, &[anchor]), vec![a, corner, b]);
+        let other_rack = CableRoutePoint {
+            rack: RackId(2),
+            ..anchor
+        };
+        assert_eq!(view().routed_path(a, b, &[other_rack]), vec![a, b]);
+        let state = crate::app::UiState {
+            selected: crate::app::Selection::Port(ids[0]),
+            ..Default::default()
+        };
+        assert_eq!(super::super::selected_link_id(&state, &sim), Some(link));
+
+        for (pointer, expected) in [(a.lerp(corner, 0.5), Some(link)), (corner, None)] {
+            let ctx = egui::Context::default();
+            let mut scene = CableScene::default();
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(500.0))),
+                events: vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::PointerButton {
+                        pos: pointer,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                assert_eq!(scene.show(ui, &sim, &ports, view()), expected);
+            });
+            output.textures_delta.clear();
+            assert!(
+                scene.grab.is_none(),
+                "routed cables must keep their anchors fixed"
+            );
+        }
+    }
 
     #[test]
     fn rendered_cable_anchors_remain_inside_sockets_after_scroll_and_resize() {
@@ -442,12 +682,8 @@ mod tests {
                         plug: egui::TextureId::User(2),
                         selected: None,
                         visibility: CableVisibility::All,
-                        route_left_px: 0.0,
-                        route_top_px: 0.0,
-                        route_width_px: 0.0,
-                        route_row_height_px: 0.0,
-                        rack_units: 0,
-                        route_side: RackSide::Front,
+                        anchors: vec![],
+                        preview: None,
                     },
                 );
             });

@@ -19,6 +19,7 @@ pub enum UiAction {
     Remove(DeviceId),
     TogglePower(DeviceId, bool),
     CablePort(PortId),
+    AddPendingCableRoutePoint(CableRoutePoint),
     Disconnect(LinkId),
     CreateVlan(DeviceId),
     ApplyServer(PortId),

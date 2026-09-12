@@ -21,6 +21,13 @@ pub enum Command {
         length_cm: Option<u32>,
         color: crate::CableColor,
     },
+    ConnectRoutedColoredCable {
+        a: PortId,
+        b: PortId,
+        length_cm: Option<u32>,
+        color: crate::CableColor,
+        route: Vec<CableRoutePoint>,
+    },
     BuyDevice {
         kind: DeviceTemplate,
     },

@@ -237,9 +237,9 @@ fn automatic_length_accounts_for_rack_distance_and_custom_length_is_exact() {
         sim.device(a).unwrap().ports()[0],
         sim.device(b).unwrap().ports()[0],
     );
-    // 9.02462 cm sideways, 53.9505 cm vertically, then 10% slack.
-    assert_eq!(sim.minimum_cable_length(a, b).unwrap(), 61);
-    assert_eq!(sim.quote_cable(a, b, None).unwrap().length_cm, 61);
+    // Direct leads get 5% installation slack; routed leads use their measured path.
+    assert_eq!(sim.minimum_cable_length(a, b).unwrap(), 58);
+    assert_eq!(sim.quote_cable(a, b, None).unwrap().length_cm, 58);
     assert_eq!(sim.quote_cable(a, b, Some(200)).unwrap().length_cm, 200);
-    assert!(sim.quote_cable(a, b, Some(60)).is_err());
+    assert!(sim.quote_cable(a, b, Some(57)).is_err());
 }

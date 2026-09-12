@@ -158,9 +158,12 @@ impl NetworkSim {
             .values()
             .filter(|link| link.auto_length)
             .filter_map(|link| {
-                self.minimum_cable_length(link.a, link.b)
-                    .ok()
-                    .map(|cm| (link.id, cm))
+                let minimum = if link.route.is_empty() {
+                    self.minimum_cable_length(link.a, link.b)
+                } else {
+                    self.minimum_routed_cable_length(link.a, link.b, &link.route)
+                };
+                minimum.ok().map(|cm| (link.id, cm))
             })
             .collect();
         for (id, cm) in cuts {
@@ -323,6 +326,33 @@ impl NetworkSim {
                 color,
             } => {
                 let id = self.connect(a, b, length_cm, color)?;
+                vec![SimEvent::LinkCreated(id)]
+            }
+            Command::ConnectRoutedColoredCable {
+                a,
+                b,
+                length_cm,
+                color,
+                route,
+            } => {
+                // Validate first so a bad route never consumes cable stock.
+                for point in &route {
+                    self.validate_route_point(point)?;
+                }
+                let routed_minimum = self.minimum_routed_cable_length(a, b, &route)?;
+                if let Some(length) = length_cm
+                    && length < routed_minimum
+                {
+                    return Err(SimError::CableTooShort {
+                        minimum_cm: routed_minimum,
+                    });
+                }
+                let automatic = length_cm.is_none();
+                let effective_length = length_cm.or(Some(routed_minimum));
+                let id = self.connect(a, b, effective_length, color)?;
+                let link = self.links.get_mut(&id).expect("new link exists");
+                link.route = route;
+                link.auto_length = automatic;
                 vec![SimEvent::LinkCreated(id)]
             }
             Command::BuyDevice { kind } => {
@@ -1199,6 +1229,41 @@ mod route_tests {
                 }
             })
             .is_err()
+        );
+    }
+
+    #[test]
+    fn routed_connection_persists_its_route_when_created() {
+        let mut sim = NetworkSim::new();
+        let rack = RackId(1);
+        let first = sim.buy_device(DeviceTemplate::Switch).unwrap();
+        let second = sim.buy_device(DeviceTemplate::Switch).unwrap();
+        sim.place_device(first, rack, 1).unwrap();
+        sim.place_device(second, rack, 2).unwrap();
+        sim.buy_cable_supply(CableSupply::CableBox305m).unwrap();
+        sim.buy_cable_supply(CableSupply::Rj45Pack20).unwrap();
+        let a = sim.device(first).unwrap().ports()[0];
+        let b = sim.device(second).unwrap().ports()[0];
+        let route = vec![CableRoutePoint {
+            rack,
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 0,
+        }];
+        sim.execute(Command::ConnectRoutedColoredCable {
+            a,
+            b,
+            length_cm: None,
+            color: CableColor::Blue,
+            route: route.clone(),
+        })
+        .unwrap();
+        let link = sim.link_for_port(a).unwrap();
+        assert_eq!(link.route, route);
+        assert_eq!(link.color, CableColor::Blue);
+        assert_eq!(
+            link.length_cm,
+            sim.minimum_routed_cable_length(a, b, &route).unwrap()
         );
     }
 }

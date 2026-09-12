@@ -4,16 +4,14 @@ use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
+mod rack;
 use cables::{CableScene, CableView};
+use rack::RackLayout;
 
-const RACK_FACE_ASPECT: f32 = 19.0 / 1.75;
-const RACK_METADATA_WIDTH: f32 = 175.0;
-const RACK_MANAGER_WIDTH: f32 = 22.0;
-const RACK_RAIL_WIDTH: f32 = 8.0;
-
-fn selected_link_id(state: &UiState) -> Option<LinkId> {
+fn selected_link_id(state: &UiState, sim: &NetworkSim) -> Option<LinkId> {
     match state.selected {
         Selection::Link(id) => Some(id),
+        Selection::Port(id) => sim.link_for_port(id).map(|link| link.id),
         _ => None,
     }
 }
@@ -184,10 +182,19 @@ fn top_bar(
                 if state.pending_cable.is_some() {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 196, 64),
-                        "RJ45 CABLE: SELECT PORT",
+                        format!(
+                            "RJ45 CABLE: {} ANCHOR{} → SELECT PORT",
+                            state.pending_cable_route.len(),
+                            if state.pending_cable_route.len() == 1 {
+                                ""
+                            } else {
+                                "S"
+                            },
+                        ),
                     );
                     if ui.small_button("Cancel cable").clicked() {
                         state.pending_cable = None;
+                        state.pending_cable_route.clear();
                     }
                     ui.separator();
                 }
@@ -295,7 +302,7 @@ fn shop_panel(
                     }
                     let mut automatic = state.cable_length_cm.is_none();
                     if ui
-                        .checkbox(&mut automatic, "Auto: shortest path + 10%")
+                        .checkbox(&mut automatic, "Auto: shortest path + 5%")
                         .changed()
                     {
                         state.cable_length_cm = if automatic { None } else { Some(100) };
@@ -1131,7 +1138,7 @@ fn rack_view(
                 "Buy cable + RJ45 plugs, then click two sockets. Select a cable, then click the visible left/right rail anchors to add or remove route points. Drag a wire to move its slack.",
             );
         });
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
                 .id_salt("rack-scroll")
                 .show(ui, |ui| {
                 let selected_inventory = match state.selected {
@@ -1140,14 +1147,10 @@ fn rack_view(
                     }
                     _ => None,
                 };
-                let available_rack_width = ui.available_width().min(820.0);
-                let panel_height = ((available_rack_width - RACK_METADATA_WIDTH)
-                    / RACK_FACE_ASPECT)
-                    .clamp(30.0, 56.0);
-                let panel_width = panel_height * RACK_FACE_ASPECT;
-                let rack_width = panel_width + RACK_METADATA_WIDTH;
-                let gap = RACK_GAP_CM * panel_width / RACK_FACE_WIDTH_CM;
-                let row_height = panel_height + gap;
+                let layout = RackLayout::new((ui.available_width() - 20.0).min(960.0));
+                let panel_width = layout.face_width;
+                let rack_width = layout.width;
+                let row_height = layout.row_height;
                 let mut port_visuals = Vec::new();
                 let mut led_visuals = Vec::new();
                 let mut route_anchors: Vec<(RackId, u8, RackSide, u16, egui::Pos2)> = Vec::new();
@@ -1157,39 +1160,18 @@ fn rack_view(
                     .show(ui, |ui| {
                         ui.set_width(rack_width);
                         ui.spacing_mut().item_spacing.y = 0.0;
+                        layout.paint_crossbar(ui, &format!("{} U  /  {:?}", rack.units, state.rack_side).to_uppercase());
                         for unit in (1..=rack.units).rev() {
                             let (row_rect, row_response) = ui.allocate_exact_size(
                                 egui::vec2(rack_width, row_height),
                                 egui::Sense::click(),
                             );
-                            let panel_rect = egui::Rect::from_min_max(
-                                egui::pos2(
-                                    row_rect.right() - 5.0 - panel_width,
-                                    row_rect.top() + gap * 0.5,
-                                ),
-                                egui::pos2(row_rect.right() - 5.0, row_rect.bottom() - gap * 0.5),
-                            );
-                            route_anchors.push((
-                                rack.id,
-                                unit,
-                                state.rack_side,
-                                0,
-                                egui::pos2(panel_rect.left() - 8.0, panel_rect.center().y),
-                            ));
-                            route_anchors.push((
-                                rack.id,
-                                unit,
-                                state.rack_side,
-                                48,
-                                egui::pos2(panel_rect.right() + 8.0, panel_rect.center().y),
-                            ));
-                            ui.painter().text(
-                                egui::pos2(row_rect.left() + 21.0, row_rect.center().y),
-                                egui::Align2::CENTER_CENTER,
-                                format!("U{unit:02}"),
-                                egui::FontId::monospace(12.0),
-                                egui::Color32::from_gray(135),
-                            );
+                            let row = layout.row(row_rect);
+                            let panel_rect = row.face;
+                            row.paint(ui.painter(), unit, rack.occupies(unit).is_some());
+                            for (offset_cm, position) in [0, 48].into_iter().zip(row.anchors) {
+                                route_anchors.push((rack.id, unit, state.rack_side, offset_cm, position));
+                            }
                             if let Some(device_id) = rack.occupies(unit) {
                                 let device = sim.device(device_id).expect("rack device exists");
                                 row_response.context_menu(|menu| {
@@ -1202,7 +1184,8 @@ fn rack_view(
                                 if matches!(device.kind, DeviceKind::CableManager(_))
                                     && state.rack_side == RackSide::Front
                                 {
-                                    for slot in 0..6u16 {
+                                    // The end slots share route identities with the rail anchors.
+                                    for slot in 1..5u16 {
                                         let offset_cm = slot * 48 / 5;
                                         route_anchors.push((
                                             rack.id,
@@ -1210,7 +1193,7 @@ fn rack_view(
                                             RackSide::Front,
                                             offset_cm,
                                             egui::pos2(
-                                                panel_rect.left() + panel_rect.width() * slot as f32 / 5.0,
+                                                panel_rect.left() + panel_rect.width() * offset_cm as f32 / 48.0,
                                                 panel_rect.center().y,
                                             ),
                                         ));
@@ -1250,9 +1233,10 @@ fn rack_view(
                                             1.0,
                                             egui::Color32::from_rgb(31, 37, 42),
                                         );
-                                        for slot in 0..6 {
+                                        for slot in 1..5 {
+                                            let offset_cm = slot * 48 / 5;
                                             let center = egui::pos2(
-                                                panel_rect.left() + panel_rect.width() * slot as f32 / 5.0,
+                                                panel_rect.left() + panel_rect.width() * offset_cm as f32 / 48.0,
                                                 panel_rect.center().y,
                                             );
                                             ui.painter().circle_stroke(
@@ -1385,29 +1369,19 @@ fn rack_view(
                                 }
                             } else {
                                 let installing = selected_inventory.is_some();
-                                ui.painter().rect_filled(
-                                    panel_rect,
-                                    2.0,
-                                    if installing {
-                                        egui::Color32::from_rgb(24, 45, 40)
-                                    } else {
-                                        egui::Color32::from_rgba_premultiplied(20, 23, 27, 38)
-                                    },
-                                );
-                                ui.painter().rect_stroke(
-                                    panel_rect,
-                                    2.0,
-                                    egui::Stroke::new(1.0, egui::Color32::from_gray(48)),
-                                    egui::StrokeKind::Inside,
-                                );
                                 if installing {
-                                    ui.painter().text(
-                                        panel_rect.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        "+ INSTALL SELECTED DEVICE",
-                                        egui::FontId::monospace(11.0),
-                                        egui::Color32::from_gray(110),
+                                    let hovered = row_response.hovered();
+                                    ui.painter().rect_filled(
+                                        panel_rect, 1.0,
+                                        if hovered { egui::Color32::from_rgb(28, 52, 48) }
+                                        else { egui::Color32::from_rgb(15, 25, 26) },
                                     );
+                                    ui.painter().rect_stroke(panel_rect, 1.0,
+                                        egui::Stroke::new(1.0, egui::Color32::from_rgb(67, 115, 105)),
+                                        egui::StrokeKind::Inside);
+                                    ui.painter().text(panel_rect.center(), egui::Align2::CENTER_CENTER,
+                                        format!("+ INSTALL AT U{unit:02}"), egui::FontId::monospace(11.0),
+                                        egui::Color32::from_rgb(146, 186, 175));
                                 }
                                 if row_response.clicked()
                                     && let Some(device) = selected_inventory
@@ -1420,54 +1394,64 @@ fn rack_view(
                                 }
                             }
                         }
+                        layout.paint_crossbar(ui, "CABLE SERVICE SPACE");
                     });
 
-                // A neutral scalable cabinet face: heavy vertical mounting rails,
-                // repeating cage-nut holes, and cable-management channels beside
-                // the equipment face. These are presentation anchors for the
-                // flexible leads below and remain independent of device sprites.
-                let frame = rack_frame.response.rect;
-                let cabinet = egui::Rect::from_min_max(
-                    egui::pos2(frame.left() + RACK_METADATA_WIDTH, frame.top()),
-                    frame.right_bottom(),
-                );
-                let panel_right = cabinet.right() - RACK_MANAGER_WIDTH - RACK_RAIL_WIDTH;
-                let panel_left = panel_right - panel_width;
-                for manager in [
-                    egui::Rect::from_min_max(
-                        egui::pos2(panel_left - RACK_MANAGER_WIDTH, cabinet.top()),
-                        egui::pos2(panel_left, cabinet.bottom()),
-                    ),
-                    egui::Rect::from_min_max(
-                        egui::pos2(panel_right, cabinet.top()),
-                        egui::pos2(panel_right + RACK_MANAGER_WIDTH, cabinet.bottom()),
-                    ),
-                ] {
-                    ui.painter().rect_filled(
-                        manager,
-                        1.0,
-                        egui::Color32::from_rgb(20, 31, 38),
-                    );
-                    let x = manager.center().x;
-                    ui.painter().line_segment(
-                        [
-                            egui::pos2(x, cabinet.top() + 4.0),
-                            egui::pos2(x, cabinet.bottom() - 4.0),
-                        ],
-                        egui::Stroke::new(5.0, egui::Color32::from_rgb(62, 91, 103)),
-                    );
-                    for unit in 0..rack.units {
-                        let y = cabinet.top() + (unit as f32 + 0.5) * row_height;
-                        ui.painter().circle_filled(
-                            egui::pos2(x, y),
-                            4.0,
-                            egui::Color32::from_rgb(116, 145, 157),
-                        );
-                    }
-                }
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
-                let selected_route = selected_link_id(state).and_then(|link_id| sim.link(link_id).map(|link| (link_id, link.route.clone())));
+                let selected_route = selected_link_id(state, sim).and_then(|link_id| sim.link(link_id).map(|link| (link_id, link.route.clone())));
+                let anchors: Vec<_> = route_anchors.iter().map(|&(rack, unit, side, offset_cm, pos)| {
+                    (CableRoutePoint { rack, unit, side, offset_cm }, pos)
+                }).collect();
+                let mut preview = None;
                 for (rack_id, unit, side, offset_cm, position) in route_anchors {
+                    let point = CableRoutePoint {
+                        rack: rack_id,
+                        unit,
+                        side,
+                        offset_cm,
+                    };
+                    if let Some(source) = state.pending_cable {
+                        let anchor_rect =
+                            egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                        let response = ui.interact(
+                            anchor_rect,
+                            egui::Id::new((
+                                "pending-route-anchor",
+                                rack_id.0,
+                                unit,
+                                side == RackSide::Front,
+                                offset_cm,
+                            )),
+                            egui::Sense::click(),
+                        )
+                        .on_hover_text("Click to route the pending cable through this rail fixing point");
+                        let selected = state.pending_cable_route.contains(&point);
+                        ui.painter().circle_filled(
+                            position,
+                            5.0,
+                            if selected || response.hovered() {
+                                egui::Color32::from_rgb(255, 196, 64)
+                            } else {
+                                egui::Color32::from_rgb(92, 112, 125)
+                            },
+                        );
+                        if response.hovered()
+                            && let Some(source_rect) = positions.get(&source)
+                        {
+                            let mut proposed = state.pending_cable_route.clone();
+                            proposed.push(point);
+                            let path = std::iter::once(source_rect.center())
+                                .chain(proposed.iter().filter_map(|route| {
+                                    cables::anchor_position(route, &anchors)
+                                }))
+                                .collect();
+                            preview = Some((path, cable_color_value(state.cable_color)));
+                        }
+                        if response.clicked() {
+                            actions.write(UiAction::AddPendingCableRoutePoint(point));
+                        }
+                        continue;
+                    }
                     let Some((link_id, route)) = selected_route.as_ref() else {
                         let anchor_rect = egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
                         ui.interact(anchor_rect, egui::Id::new(("route-anchor", rack_id.0, unit, side == RackSide::Front, offset_cm)), egui::Sense::hover())
@@ -1503,6 +1487,21 @@ fn rack_view(
                                 egui::Color32::from_rgb(92, 112, 125)
                             },
                         );
+                        if response.hovered() {
+                            let link = sim.link(*link_id).expect("selected cable exists");
+                            if let (Some(a), Some(b)) = (positions.get(&link.a), positions.get(&link.b)) {
+                                let mut proposed = route.clone();
+                                if let Some(index) = used {
+                                    proposed.remove(index);
+                                } else {
+                                    proposed.push(CableRoutePoint { rack: rack_id, unit, side, offset_cm });
+                                }
+                                let path = std::iter::once(a.center())
+                                    .chain(proposed.iter().filter_map(|point| cables::anchor_position(point, &anchors)))
+                                    .chain(std::iter::once(b.center())).collect();
+                                preview = Some((path, cable_color_value(link.color)));
+                            }
+                        }
                         if response.clicked() {
                             if let Some(index) = used {
                                 actions.write(UiAction::RemoveCableRoutePoint {
@@ -1534,18 +1533,10 @@ fn rack_view(
                         floor_y: rack_frame.response.rect.bottom() + 110.0,
                         jacket: textures.jacket,
                         plug: textures.plug,
-                        selected: match state.selected {
-                            Selection::Link(id) => Some(id),
-                            Selection::Port(port) => sim.link_for_port(port).map(|link| link.id),
-                            _ => None,
-                        },
+                        selected: selected_link_id(state, sim),
                         visibility: state.cable_visibility,
-                        route_left_px: panel_left,
-                        route_top_px: frame.top() + 10.0 + gap * 0.5,
-                        route_width_px: panel_width,
-                        route_row_height_px: row_height,
-                        rack_units: rack.units,
-                        route_side: state.rack_side,
+                        anchors: anchors.clone(),
+                        preview,
                     },
                 ) {
                     actions.write(UiAction::SelectLink(link));
@@ -1594,6 +1585,20 @@ fn rack_view(
                         },
                     );
                     let hovered = response.hovered();
+                    if hovered && supported
+                        && let Some(first) = state.pending_cable.filter(|first| *first != port_id)
+                        && let Some(start) = positions.get(&first)
+                    {
+                        let valid = sim.quote_colored_cable(first, port_id, state.cable_length_cm, state.cable_color).is_ok();
+                        let path = std::iter::once(start.center())
+                            .chain(state.pending_cable_route.iter().filter_map(|route| {
+                                cables::anchor_position(route, &anchors)
+                            }))
+                            .chain(std::iter::once(port_rect.center()))
+                            .collect();
+                        cables::paint_preview(ui, path,
+                            if valid { cable_color_value(state.cable_color) } else { egui::Color32::from_rgb(240, 65, 65) });
+                    }
                     if is_pending {
                         ui.painter().rect_filled(
                             port_rect,
@@ -1851,12 +1856,12 @@ mod tests {
 
     #[test]
     fn rack_face_uses_nineteen_inch_one_u_proportions() {
-        let available_rack_width = 820.0_f32;
-        let panel_height =
-            ((available_rack_width - RACK_METADATA_WIDTH) / RACK_FACE_ASPECT).clamp(30.0, 56.0);
-        let panel_width = panel_height * RACK_FACE_ASPECT;
-
-        assert!((panel_width / panel_height - 19.0 / 1.75).abs() < f32::EPSILON);
+        let layout = RackLayout::new(820.0);
+        let row = layout.row(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(layout.width, layout.row_height),
+        ));
+        assert!((row.face.width() / row.face.height() - 19.0 / 1.75).abs() < 0.001);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use crate::app::*;
 use bevy::prelude::*;
-use cloud_provider_sim::{Command, DeviceKind, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId};
+use cloud_provider_sim::{
+    Command, DeviceKind, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId,
+};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::net::Ipv4Addr;
 use std::thread::{self, JoinHandle};
@@ -202,8 +204,9 @@ fn translate_ui_actions(
                                     set_error(&mut state, "Buy cable and RJ45 connectors in the shop before making this lead.");
                                     continue;
                                 }
+                                let route = std::mem::take(&mut state.pending_cable_route);
                                 state.pending_cable = None;
-                                Some(Command::ConnectColoredCable {
+                                Some(Command::ConnectRoutedColoredCable {
                                     a: first,
                                     b: *port,
                                     length_cm: if length_cm.is_none() {
@@ -212,6 +215,7 @@ fn translate_ui_actions(
                                         Some(quote.length_cm)
                                     },
                                     color: state.cable_color,
+                                    route,
                                 })
                             }
                             Err(error) => {
@@ -221,13 +225,22 @@ fn translate_ui_actions(
                         }
                     } else {
                         state.pending_cable = None;
+                        state.pending_cable_route.clear();
                         None
                     }
                 } else {
                     state.pending_cable = Some(*port);
-                    state.notice = Some(("Select the destination port".into(), true));
+                    state.pending_cable_route.clear();
+                    state.notice = Some(("Select anchors, then the destination port".into(), true));
                     None
                 }
+            }
+            UiAction::AddPendingCableRoutePoint(point) => {
+                if state.pending_cable.is_some() {
+                    state.pending_cable_route.push(*point);
+                    state.notice = Some(("Anchor added. Select another anchor or the destination port".into(), true));
+                }
+                None
             }
             UiAction::ApplyServer(port) => match drafts.servers.get(port).map(parse_server_draft) {
                 Some(Ok((hostname, config))) => {
@@ -492,6 +505,7 @@ fn poll_worker(
                             | cloud_provider_sim::SimEvent::DeviceRemoved(_)
                     ) {
                         state.pending_cable = None;
+                        state.pending_cable_route.clear();
                     }
                 }
             }
@@ -514,6 +528,7 @@ fn poll_worker(
             WorkerResponse::ConsolesReset => {
                 state.terminals.clear();
                 state.pending_cable = None;
+                state.pending_cable_route.clear();
                 state.selected = Selection::None;
             }
             WorkerResponse::Error(error) => set_error(&mut state, error),

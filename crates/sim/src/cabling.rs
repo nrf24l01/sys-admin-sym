@@ -97,7 +97,8 @@ impl NetworkSim {
         Ok(())
     }
 
-    /// Straight socket-to-socket distance plus 10% slack, rounded up to a cm.
+    /// Straight socket-to-socket distance plus 5% installation slack, rounded
+    /// up to a cm. Routed connections use `minimum_routed_cable_length` instead.
     pub fn minimum_cable_length(&self, a: PortId, b: PortId) -> Result<u32, SimError> {
         let placements: Vec<_> = [a, b]
             .iter()
@@ -127,7 +128,67 @@ impl NetworkSim {
             // Racks have no world positions yet; retain the inter-rack route allowance.
             500.0
         };
-        Ok((cm * 1.10).ceil() as u32)
+        Ok((cm * 1.05).ceil() as u32)
+    }
+
+    /// Routed leads follow their selected fixing points. The port legs receive
+    /// 5% installation slack; spans between anchors remain exact.
+    pub fn minimum_routed_cable_length(
+        &self,
+        a: PortId,
+        b: PortId,
+        route: &[crate::CableRoutePoint],
+    ) -> Result<u32, SimError> {
+        let endpoints = [a, b]
+            .iter()
+            .map(|id| self.port_position(*id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut points = Vec::with_capacity(route.len() + 2);
+        points.push(endpoints[0]);
+        points.extend(route.iter().map(|point| {
+            (
+                point.rack,
+                f32::from(point.offset_cm) / 48.0 * RACK_FACE_WIDTH_CM,
+                -f32::from(point.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM),
+            )
+        }));
+        points.push(endpoints[1]);
+        let mut total = 0.0;
+        for (index, pair) in points.windows(2).enumerate() {
+            let previous = pair[0];
+            let next = pair[1];
+            let segment = if previous.0 == next.0 {
+                (previous.1 - next.1).hypot(previous.2 - next.2)
+            } else {
+                500.0
+            };
+            total += if index == 0 || index + 1 == points.len() - 1 {
+                segment * 1.05
+            } else {
+                segment
+            };
+        }
+        Ok(total.ceil() as u32)
+    }
+
+    fn port_position(&self, id: PortId) -> Result<(crate::RackId, f32, f32), SimError> {
+        let p = self.port(id).ok_or(SimError::PortNotFound(id))?;
+        let device = self
+            .device(p.device)
+            .ok_or(SimError::CableDevicesNotInstalled)?;
+        let placement = device.rack.ok_or(SimError::CableDevicesNotInstalled)?;
+        let index = device
+            .ports()
+            .iter()
+            .position(|port| port == &id)
+            .ok_or(SimError::PortNotFound(id))?;
+        let (x, y) = device.kind.port_position_normalized(index);
+        Ok((
+            placement.rack,
+            x * RACK_FACE_WIDTH_CM,
+            -f32::from(placement.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)
+                + y * RACK_FACE_HEIGHT_CM,
+        ))
     }
 
     /// A quote is read-only; validation or canceling never spends stock.
