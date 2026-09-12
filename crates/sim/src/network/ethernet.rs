@@ -13,6 +13,119 @@ pub struct FrameDelivery {
 const MAX_FRAME_HOPS: u16 = 64;
 
 impl NetworkSim {
+    /// Resolve a physical route through passive patch-panel pairs. The
+    /// returned ports include both cable ends and panel sides in traversal
+    /// order, which is useful for highlighting a complete cable path.
+    pub fn physical_path(&self, start: PortId) -> Vec<PortId> {
+        fn walk(
+            sim: &NetworkSim,
+            current: PortId,
+            start: PortId,
+            path: &mut Vec<PortId>,
+            seen: &mut HashSet<PortId>,
+        ) -> bool {
+            if path.len() >= 128 || !seen.insert(current) {
+                return false;
+            }
+            path.push(current);
+            let terminals = path
+                .iter()
+                .filter(|p| {
+                    !matches!(
+                        sim.port(**p).map(|x| &x.config),
+                        Some(PortConfig::PatchPanel | PortConfig::CableManager)
+                    )
+                })
+                .count();
+            if terminals >= 2 && current != start {
+                return true;
+            }
+            let mut next = Vec::new();
+            if let Some(link) = sim.link_for_port(current)
+                && let Some(other) = link.other(current)
+            {
+                next.push(other);
+            }
+            if let Some(pair) = sim.port(current).and_then(|p| p.paired_port) {
+                next.push(pair);
+            }
+            next.sort();
+            for neighbor in next {
+                if sim.direct_segment_active(current, neighbor)
+                    && walk(sim, neighbor, start, path, seen)
+                {
+                    return true;
+                }
+            }
+            path.pop();
+            seen.remove(&current);
+            false
+        }
+        let terminals: Vec<_> = self
+            .ports
+            .values()
+            .filter(|p| !matches!(p.config, PortConfig::PatchPanel | PortConfig::CableManager))
+            .map(|p| p.id)
+            .collect();
+        let mut terminals = terminals;
+        terminals.sort();
+        for terminal in terminals {
+            let mut path = Vec::new();
+            if walk(self, terminal, terminal, &mut path, &mut HashSet::new())
+                && path.contains(&start)
+            {
+                return path;
+            }
+        }
+        Vec::new()
+    }
+
+    pub fn physical_link_up(&self, start: PortId) -> bool {
+        let path = self.physical_path(start);
+        !path.is_empty()
+            && path
+                .windows(2)
+                .all(|pair| self.direct_segment_active(pair[0], pair[1]))
+    }
+
+    pub fn physical_link_speed(&self, start: PortId) -> Option<crate::LinkSpeed> {
+        if !self.physical_link_up(start) {
+            return None;
+        }
+        self.physical_path(start)
+            .windows(2)
+            .filter_map(|pair| {
+                let a = self.port(pair[0])?;
+                let b = self.port(pair[1])?;
+                Some(
+                    a.advertised_speed
+                        .min(a.max_speed)
+                        .min(b.advertised_speed)
+                        .min(b.max_speed),
+                )
+            })
+            .min()
+    }
+
+    fn direct_segment_active(&self, a: PortId, b: PortId) -> bool {
+        let (Some(pa), Some(pb)) = (self.port(a), self.port(b)) else {
+            return false;
+        };
+        let active = |p: &crate::Port| {
+            p.enabled
+                && p.connector.supports_cabling()
+                && self.device(p.device).is_some_and(|d| {
+                    d.rack.is_some()
+                        && (matches!(p.config, PortConfig::PatchPanel | PortConfig::CableManager)
+                            || d.powered)
+                })
+        };
+        let cable = self.links.values().any(|l| {
+            l.enabled && l.length_cm <= 10_000 && ((l.a == a && l.b == b) || (l.a == b && l.b == a))
+        });
+        (pa.paired_port == Some(b) || cable) && active(pa) && active(pb)
+    }
+
     pub(crate) fn prepare_runtime(&mut self) {
         self.runtime.prepare(self.topology_revision);
     }
@@ -41,13 +154,20 @@ impl NetworkSim {
             let Some(in_port) = link.other(out) else {
                 continue;
             };
-            if !self.port_link_up(out) || !self.port_link_up(in_port) {
+            if !self.physical_link_up(out) || !self.physical_link_up(in_port) {
                 continue;
             }
             if !self.endpoint_link_vlan_matches(out, in_port, frame.vlan) {
                 continue;
             }
             self.runtime.send_frame(out, in_port);
+            if let Some(pair) = self.port(in_port).and_then(|p| p.paired_port) {
+                if !self.port_link_up(pair) {
+                    continue;
+                }
+                queue.push_back((pair, frame, hops + 1));
+                continue;
+            }
             let wire_vlan = frame.vlan;
             let Some(vlan) = self.ingress_vlan(in_port, &frame) else {
                 continue;
@@ -89,6 +209,7 @@ impl NetworkSim {
                         });
                     }
                 }
+                Some(DeviceKind::PatchPanel(_)) | Some(DeviceKind::CableManager(_)) => {}
                 None => {}
             }
         }
@@ -143,6 +264,7 @@ impl NetworkSim {
                     (vlans.all(|other| other == vlan)).then_some(vlan)
                 }
             }
+            PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
 
@@ -167,6 +289,7 @@ impl NetworkSim {
                     .collect::<std::collections::BTreeSet<_>>();
                 (distinct.len() > 1 && distinct.contains(&vlan)).then_some(vlan)
             }
+            PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
 
@@ -229,6 +352,7 @@ impl NetworkSim {
                     })
             }),
             None => false,
+            Some(PortConfig::PatchPanel) | Some(PortConfig::CableManager) => false,
         }
     }
 
@@ -433,5 +557,53 @@ mod tests {
         let deliveries = sim.transmit_frame(ap[0], frame(ap[0], MacAddress([0xff; 6]), None));
         assert!(deliveries.is_empty());
         assert!(sim.port_telemetry(ap[0]).tx_frames < 100);
+    }
+
+    #[test]
+    fn passive_patch_panel_is_end_to_end_and_reports_full_path() {
+        let mut sim = setup();
+        let sw = device(&mut sim, DeviceTemplate::Switch, 1);
+        let panel = device(&mut sim, DeviceTemplate::PatchPanel, 2);
+        let server = device(&mut sim, DeviceTemplate::Server, 3);
+        let switch_port = sim.device(sw).unwrap().ports()[0];
+        let rear = sim.device(panel).unwrap().ports()[0];
+        let front = sim.device(panel).unwrap().ports()[1];
+        let server_port = sim.device(server).unwrap().ports()[0];
+        sim.execute(Command::Connect {
+            a: switch_port,
+            b: front,
+        })
+        .unwrap();
+        sim.execute(Command::Connect {
+            a: rear,
+            b: server_port,
+        })
+        .unwrap();
+        sim.ports.get_mut(&server_port).unwrap().max_speed = crate::LinkSpeed::Mbps100;
+        let expected = vec![switch_port, front, rear, server_port];
+        assert_eq!(sim.physical_path(switch_port), expected);
+        assert_eq!(sim.physical_path(front), expected);
+        assert!(sim.physical_link_up(switch_port));
+        assert_eq!(
+            sim.physical_link_speed(switch_port),
+            Some(crate::LinkSpeed::Mbps100)
+        );
+        assert_eq!(
+            sim.transmit_frame(switch_port, frame(switch_port, MacAddress([0xff; 6]), None))
+                .len(),
+            1
+        );
+        assert!(sim.port_telemetry(switch_port).tx_frames > 0);
+        assert!(sim.port_telemetry(front).rx_frames > 0);
+        assert!(sim.port_telemetry(rear).tx_frames > 0);
+        assert!(sim.port_telemetry(server_port).rx_frames > 0);
+        let baseline = sim.clone();
+        let first = sim.link_for_port(switch_port).unwrap().id;
+        sim.execute(Command::Disconnect { link: first }).unwrap();
+        assert!(!sim.physical_link_up(server_port));
+        let second = baseline.link_for_port(server_port).unwrap().id;
+        let mut other = baseline;
+        other.execute(Command::Disconnect { link: second }).unwrap();
+        assert!(!other.physical_link_up(switch_port));
     }
 }

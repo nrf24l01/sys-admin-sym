@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use cloud_provider_sim::{CableColor, DeviceId, LinkId, NetworkSim, PortId};
+use cloud_provider_sim::{CableColor, DeviceId, LinkId, NetworkSim, PortId, RackSide};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Resource, Clone)]
@@ -16,6 +16,14 @@ pub enum Workspace {
     #[default]
     Rack,
     Topology,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CableVisibility {
+    #[default]
+    All,
+    Selected,
+    Hidden,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -36,6 +44,8 @@ pub struct UiState {
     pub cable_color: CableColor,
     pub terminal_windows: HashSet<DeviceId>,
     pub terminal_window_focus: HashSet<DeviceId>,
+    pub rack_side: RackSide,
+    pub cable_visibility: CableVisibility,
     pub notice: Option<(String, bool)>,
     pub error_dialog: Option<String>,
     pub terminals: HashMap<DeviceId, ConsoleState>,

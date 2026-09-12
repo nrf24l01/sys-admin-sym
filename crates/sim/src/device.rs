@@ -16,6 +16,8 @@ impl Device {
             DeviceKind::Server(v) => &v.ports,
             DeviceKind::Switch(v) => &v.ports,
             DeviceKind::Router(v) => &v.ports,
+            DeviceKind::PatchPanel(v) => &v.ports,
+            DeviceKind::CableManager(v) => &v.ports,
         }
     }
 
@@ -24,6 +26,8 @@ impl Device {
             DeviceKind::Server(_) => DeviceTemplate::Server,
             DeviceKind::Switch(_) => DeviceTemplate::Switch,
             DeviceKind::Router(_) => DeviceTemplate::Router,
+            DeviceKind::PatchPanel(_) => DeviceTemplate::PatchPanel,
+            DeviceKind::CableManager(_) => DeviceTemplate::CableManager,
         }
     }
 }
@@ -33,6 +37,8 @@ pub enum DeviceKind {
     Server(Server),
     Switch(Switch),
     Router(Router),
+    PatchPanel(PatchPanel),
+    CableManager(CableManager),
 }
 
 pub const RACK_FACE_WIDTH_CM: f32 = 48.26;
@@ -57,6 +63,14 @@ impl DeviceKind {
                     0.32 + (lan / 4) as f32 * 0.32,
                 )
             }
+            Self::PatchPanel(_) => {
+                let slot = (index / 2).min(23);
+                (
+                    (0.16 + (slot % 12) as f32 * 0.062).min(0.90),
+                    0.30 + (slot / 12) as f32 * 0.38,
+                )
+            }
+            Self::CableManager(_) => (0.5, 0.5),
         }
     }
 }
@@ -80,11 +94,23 @@ pub struct Router {
     pub routes: Vec<Route>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PatchPanel {
+    pub ports: Vec<PortId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CableManager {
+    pub ports: Vec<PortId>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceTemplate {
     Server,
     Switch,
     Router,
+    PatchPanel,
+    CableManager,
 }
 
 impl DeviceTemplate {
@@ -92,6 +118,8 @@ impl DeviceTemplate {
         match self {
             Self::Server => 1_000,
             Self::Switch | Self::Router => 500,
+            Self::PatchPanel => 150,
+            Self::CableManager => 75,
         }
     }
 

@@ -16,7 +16,7 @@ impl NetworkSim {
                 .iter()
                 .find(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
                 .and_then(|i| i.address),
-            PortConfig::Switch(_) => None,
+            PortConfig::Switch(_) | PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
 
@@ -51,6 +51,7 @@ impl NetworkSim {
                             > 1;
                 (trunk && iface.vlan.is_some()).then_some(vlan)
             }
+            PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
 

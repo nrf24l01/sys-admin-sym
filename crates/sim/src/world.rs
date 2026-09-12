@@ -62,6 +62,46 @@ impl NetworkSim {
     }
 
     pub fn rebuild_indexes(&mut self) {
+        // Migrate legacy servers that predate the dedicated management NIC.
+        let legacy_servers: Vec<_> = self
+            .devices
+            .iter()
+            .filter_map(|(id, device)| match &device.kind {
+                DeviceKind::Server(server) if server.ports.len() < 3 => {
+                    Some((*id, server.ports.len()))
+                }
+                _ => None,
+            })
+            .collect();
+        for (device, count) in legacy_servers {
+            let mut existing: std::collections::HashSet<_> = self.devices[&device]
+                .ports()
+                .iter()
+                .filter_map(|port| self.ports.get(port).map(|port| port.name.clone()))
+                .collect();
+            let mut current = count;
+            while current < 3 {
+                let name = if !existing.contains("eth1") {
+                    "eth1"
+                } else if !existing.contains("mgmt0") {
+                    "mgmt0"
+                } else {
+                    "mgmt1"
+                };
+                let port = self.alloc_port(
+                    device,
+                    name.into(),
+                    PortConnector::Rj45,
+                    PortConfig::Server(ServerPortConfig::default()),
+                );
+                if let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind
+                {
+                    server.ports.push(port);
+                }
+                existing.insert(name.to_string());
+                current += 1;
+            }
+        }
         // Runtime state is deliberately not persisted across a loaded or
         // replaced topology: learned MAC/ARP entries and port LEDs refer to
         // the old physical graph.
@@ -71,6 +111,36 @@ impl NetworkSim {
         for port in self.ports.values_mut() {
             if port.name.starts_with("SFP ") {
                 port.connector = PortConnector::Sfp;
+            }
+        }
+        // Port face metadata was added after the original save format. Restore
+        // deterministic faces for legacy equipment, while preserving panel
+        // front/rear assignments and rebuilding missing reciprocal pairs.
+        let port_devices: Vec<_> = self.ports.iter().map(|(id, p)| (*id, p.device)).collect();
+        for (id, device) in port_devices {
+            let side = match self.devices.get(&device).map(|d| &d.kind) {
+                Some(DeviceKind::Server(_)) => RackSide::Rear,
+                Some(DeviceKind::Switch(_)) | Some(DeviceKind::Router(_)) => RackSide::Front,
+                Some(DeviceKind::PatchPanel(_)) => self.ports[&id].side,
+                _ => RackSide::Rear,
+            };
+            self.ports.get_mut(&id).unwrap().side = side;
+        }
+        let panel_ports: Vec<Vec<PortId>> = self
+            .devices
+            .values()
+            .filter_map(|d| {
+                if let DeviceKind::PatchPanel(panel) = &d.kind {
+                    Some(panel.ports.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for ports in panel_ports {
+            for pair in ports.chunks(2).filter(|pair| pair.len() == 2) {
+                self.ports.get_mut(&pair[0]).unwrap().paired_port = Some(pair[1]);
+                self.ports.get_mut(&pair[1]).unwrap().paired_port = Some(pair[0]);
             }
         }
         self.links.retain(|_, link| {
@@ -138,6 +208,16 @@ impl NetworkSim {
     }
 
     pub fn port_link_up(&self, id: PortId) -> bool {
+        if self.port(id).and_then(|p| p.paired_port).is_some()
+            || self
+                .link_for_port(id)
+                .and_then(|l| l.other(id))
+                .and_then(|p| self.port(p))
+                .and_then(|p| p.paired_port)
+                .is_some()
+        {
+            return self.physical_link_up(id);
+        }
         self.link_for_port(id).is_some_and(|link| {
             link.enabled
                 && link.length_cm <= 10_000
@@ -155,6 +235,16 @@ impl NetworkSim {
 
     /// Returns the negotiated physical rate when this port has an active link.
     pub fn port_link_speed(&self, id: PortId) -> Option<LinkSpeed> {
+        if self.port(id).and_then(|p| p.paired_port).is_some()
+            || self
+                .link_for_port(id)
+                .and_then(|l| l.other(id))
+                .and_then(|p| self.port(p))
+                .and_then(|p| p.paired_port)
+                .is_some()
+        {
+            return self.physical_link_speed(id);
+        }
         let link = self.link_for_port(id)?;
         if !self.port_link_up(id) {
             return None;
@@ -259,6 +349,22 @@ impl NetworkSim {
                 self.disconnect(link)?;
                 vec![SimEvent::LinkRemoved(link)]
             }
+            Command::AddCableRoutePoint { link, point } => {
+                self.add_cable_route_point(link, point)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::RemoveCableRoutePoint { link, index } => {
+                self.remove_cable_route_point(link, index)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::MoveCableRoutePoint { link, index, point } => {
+                self.move_cable_route_point(link, index, point)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::RerouteCable { link, route } => {
+                self.reroute_cable(link, route)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
             Command::SetSwitchPortMode { port, mode } => {
                 self.set_switch_mode(port, mode)?;
                 vec![SimEvent::PortConfigChanged(port)]
@@ -348,6 +454,8 @@ impl NetworkSim {
                 device,
                 name,
                 enabled: true,
+                side: RackSide::Rear,
+                paired_port: None,
                 connector,
                 advertised_speed: LinkSpeed::default(),
                 max_speed: LinkSpeed::default(),
@@ -376,7 +484,7 @@ impl NetworkSim {
             + 1;
         let (name, kind) = match template {
             DeviceTemplate::Server => {
-                let ports = (0..2)
+                let ports = (0..3)
                     .map(|n| {
                         self.alloc_port(
                             id,
@@ -407,6 +515,9 @@ impl NetworkSim {
                         )
                     })
                     .collect();
+                for port in &ports {
+                    self.ports.get_mut(port).unwrap().side = RackSide::Front;
+                }
                 ports.extend((25..=28).map(|n| {
                     self.alloc_port(
                         id,
@@ -443,6 +554,9 @@ impl NetworkSim {
                         PortConfig::Router(RouterPortConfig::default()),
                     ));
                 }
+                for port in &ports {
+                    self.ports.get_mut(port).unwrap().side = RackSide::Front;
+                }
                 let wan = ports[0];
                 let interface = RouterInterface::wan("WAN1", wan);
                 if let Some(Port {
@@ -461,6 +575,35 @@ impl NetworkSim {
                     }),
                 )
             }
+            DeviceTemplate::PatchPanel => {
+                let mut ports = Vec::new();
+                for n in 1..=24 {
+                    let rear = self.alloc_port(
+                        id,
+                        format!("Rear {n:02}"),
+                        PortConnector::Rj45,
+                        PortConfig::PatchPanel,
+                    );
+                    let front = self.alloc_port(
+                        id,
+                        format!("Front {n:02}"),
+                        PortConnector::Rj45,
+                        PortConfig::PatchPanel,
+                    );
+                    self.ports.get_mut(&rear).unwrap().paired_port = Some(front);
+                    self.ports.get_mut(&front).unwrap().paired_port = Some(rear);
+                    self.ports.get_mut(&front).unwrap().side = RackSide::Front;
+                    ports.extend([rear, front]);
+                }
+                (
+                    format!("24-port Patch Panel #{index:02}"),
+                    DeviceKind::PatchPanel(PatchPanel { ports }),
+                )
+            }
+            DeviceTemplate::CableManager => (
+                format!("1U Horizontal Cable Manager #{index:02}"),
+                DeviceKind::CableManager(CableManager { ports: Vec::new() }),
+            ),
         };
         self.devices.insert(
             id,
@@ -618,6 +761,7 @@ impl NetworkSim {
                 length_cm: quote.length_cm,
                 auto_length: length_cm.is_none(),
                 color,
+                route: Vec::new(),
             },
         );
         self.port_links.insert(a, id);
@@ -671,6 +815,7 @@ impl NetworkSim {
                     vec![]
                 };
             }
+            PortConfig::PatchPanel | PortConfig::CableManager => {}
         }
         if let DeviceKind::Router(router) =
             &mut self.devices.get_mut(&device).expect("checked").kind
@@ -917,6 +1062,69 @@ impl NetworkSim {
         }
         Ok(())
     }
+    fn validate_route_point(&self, point: &CableRoutePoint) -> Result<(), SimError> {
+        let rack = self
+            .racks
+            .get(&point.rack)
+            .ok_or(SimError::RackNotFound(point.rack))?;
+        if point.unit == 0 || point.unit > rack.units || point.offset_cm > 48 {
+            return Err(SimError::RackPlacementOutOfBounds);
+        }
+        Ok(())
+    }
+    fn add_cable_route_point(
+        &mut self,
+        link: LinkId,
+        point: CableRoutePoint,
+    ) -> Result<(), SimError> {
+        self.validate_route_point(&point)?;
+        self.links
+            .get_mut(&link)
+            .ok_or(SimError::LinkNotFound)?
+            .route
+            .push(point);
+        Ok(())
+    }
+    fn remove_cable_route_point(&mut self, link: LinkId, index: usize) -> Result<(), SimError> {
+        let r = &mut self
+            .links
+            .get_mut(&link)
+            .ok_or(SimError::LinkNotFound)?
+            .route;
+        if index >= r.len() {
+            return Err(SimError::LinkNotFound);
+        }
+        r.remove(index);
+        Ok(())
+    }
+    fn move_cable_route_point(
+        &mut self,
+        link: LinkId,
+        index: usize,
+        point: CableRoutePoint,
+    ) -> Result<(), SimError> {
+        self.validate_route_point(&point)?;
+        let r = &mut self
+            .links
+            .get_mut(&link)
+            .ok_or(SimError::LinkNotFound)?
+            .route;
+        if index >= r.len() {
+            return Err(SimError::LinkNotFound);
+        }
+        r[index] = point;
+        Ok(())
+    }
+    fn reroute_cable(&mut self, link: LinkId, route: Vec<CableRoutePoint>) -> Result<(), SimError> {
+        for p in &route {
+            self.validate_route_point(p)?;
+        }
+        self.links
+            .get_mut(&link)
+            .ok_or(SimError::LinkNotFound)?
+            .route = route;
+        Ok(())
+    }
 }
 
 fn canonical_network(address: Ipv4Addr, prefix: u8) -> Ipv4Addr {
@@ -924,4 +1132,59 @@ fn canonical_network(address: Ipv4Addr, prefix: u8) -> Ipv4Addr {
         return Ipv4Addr::UNSPECIFIED;
     }
     Ipv4Addr::from(u32::from(address) & (u32::MAX << (32 - prefix)))
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+    #[test]
+    fn route_commands_preserve_link_endpoints() {
+        let mut sim = NetworkSim::new();
+        let id = LinkId(77);
+        sim.links.insert(
+            id,
+            Link {
+                id,
+                a: PortId(1),
+                b: PortId(2),
+                enabled: true,
+                length_cm: 1,
+                auto_length: false,
+                color: CableColor::White,
+                route: vec![],
+            },
+        );
+        let point = CableRoutePoint {
+            rack: RackId(1),
+            unit: 2,
+            side: RackSide::Front,
+            offset_cm: 48,
+        };
+        sim.execute(Command::AddCableRoutePoint { link: id, point })
+            .unwrap();
+        sim.execute(Command::MoveCableRoutePoint {
+            link: id,
+            index: 0,
+            point,
+        })
+        .unwrap();
+        sim.execute(Command::RerouteCable {
+            link: id,
+            route: vec![point],
+        })
+        .unwrap();
+        sim.execute(Command::RemoveCableRoutePoint { link: id, index: 0 })
+            .unwrap();
+        assert_eq!((sim.links[&id].a, sim.links[&id].b), (PortId(1), PortId(2)));
+        assert!(
+            sim.execute(Command::AddCableRoutePoint {
+                link: id,
+                point: CableRoutePoint {
+                    offset_cm: 49,
+                    ..point
+                }
+            })
+            .is_err()
+        );
+    }
 }

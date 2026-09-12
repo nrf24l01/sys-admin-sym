@@ -8,6 +8,22 @@ use cables::{CableScene, CableView};
 
 const RACK_FACE_ASPECT: f32 = 19.0 / 1.75;
 const RACK_METADATA_WIDTH: f32 = 175.0;
+const RACK_MANAGER_WIDTH: f32 = 22.0;
+const RACK_RAIL_WIDTH: f32 = 8.0;
+
+fn selected_link_id(state: &UiState) -> Option<LinkId> {
+    match state.selected {
+        Selection::Link(id) => Some(id),
+        _ => None,
+    }
+}
+
+fn inventory_model_name(device: &Device) -> String {
+    device
+        .name
+        .split_once(" #")
+        .map_or_else(|| device.name.clone(), |(model, _)| model.to_owned())
+}
 
 #[derive(Resource, Default)]
 pub struct EquipmentImages {
@@ -202,7 +218,17 @@ fn shop_panel(
                         (
                             DeviceTemplate::Server,
                             "Dell PowerEdge R360 — $1000",
-                            "2 × RJ45 Ethernet · 1U",
+                            "3 × rear RJ45 Ethernet: primary, secondary, management · 1U",
+                        ),
+                        (
+                            DeviceTemplate::PatchPanel,
+                            "24-port RJ45 patch panel — $150",
+                            "24 passive RJ45 passthrough ports · front/rear paired · 1U",
+                        ),
+                        (
+                            DeviceTemplate::CableManager,
+                            "1U horizontal cable manager — $75",
+                            "Front routing anchors · no network logic · 1U",
                         ),
                     ] {
                         ui.group(|ui| {
@@ -328,17 +354,45 @@ fn shop_panel(
                     }
                     ui.separator();
                     ui.heading("Inventory");
-                    let mut inventory: Vec<_> =
-                        sim.devices().filter(|d| d.rack.is_none()).collect();
-                    inventory.sort_by_key(|d| d.id);
+                    let inventory: Vec<_> = sim.devices().filter(|d| d.rack.is_none()).collect();
                     if inventory.is_empty() {
                         ui.weak("No uninstalled devices");
                     }
-                    for device in inventory {
+                    let mut groups: std::collections::BTreeMap<String, Vec<_>> =
+                        std::collections::BTreeMap::new();
+                    for device in &inventory {
+                        groups
+                            .entry(inventory_model_name(device))
+                            .or_default()
+                            .push(*device);
+                    }
+                    for (row, (label, matching)) in groups.into_iter().enumerate() {
+                        if row >= 9 {
+                            break;
+                        }
+                        let Some(device) = matching.first() else {
+                            continue;
+                        };
+                        let key = [
+                            egui::Key::Num1,
+                            egui::Key::Num2,
+                            egui::Key::Num3,
+                            egui::Key::Num4,
+                            egui::Key::Num5,
+                            egui::Key::Num6,
+                            egui::Key::Num7,
+                            egui::Key::Num8,
+                            egui::Key::Num9,
+                        ][row];
+                        let shortcut = !ui.ctx().egui_wants_keyboard_input()
+                            && ui.input(|input| input.key_pressed(key));
+                        if shortcut {
+                            actions.write(UiAction::SelectDevice(device.id));
+                        }
                         if ui
                             .selectable_label(
                                 state.selected == Selection::Device(device.id),
-                                &device.name,
+                                format!("{}  {label} × {}", row + 1, matching.len()),
                             )
                             .clicked()
                         {
@@ -650,6 +704,9 @@ fn port_inspector(
                 actions.write(UiAction::ApplyRouter(id));
             }
         }
+        PortConfig::PatchPanel | PortConfig::CableManager => {
+            ui.label("Passive physical interface; paired ports follow the rack side.");
+        }
     }
     ui.separator();
     if ui
@@ -694,6 +751,61 @@ fn link_inspector(
     ui.label(endpoint(link.a));
     ui.label("↕");
     ui.label(endpoint(link.b));
+    ui.separator();
+    ui.strong("Manual route");
+    ui.weak("Ordered rack anchors shape the physical cable path.");
+    let route = link.route.clone();
+    for (index, point) in route.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.monospace(format!(
+                "{}: U{} {:?} {} cm",
+                index + 1,
+                point.unit,
+                point.side,
+                point.offset_cm
+            ));
+            if ui.small_button("×").clicked() {
+                actions.write(UiAction::RemoveCableRoutePoint { link: id, index });
+            }
+            if index > 0 && ui.small_button("↑").clicked() {
+                let mut reordered = route.clone();
+                reordered.swap(index - 1, index);
+                actions.write(UiAction::RerouteCable {
+                    link: id,
+                    route: reordered,
+                });
+            }
+            if index + 1 < route.len() && ui.small_button("↓").clicked() {
+                let mut reordered = route.clone();
+                reordered.swap(index, index + 1);
+                actions.write(UiAction::RerouteCable {
+                    link: id,
+                    route: reordered,
+                });
+            }
+            if ui.small_button("Left").clicked() {
+                let mut moved = *point;
+                moved.offset_cm = 0;
+                actions.write(UiAction::MoveCableRoutePoint {
+                    link: id,
+                    index,
+                    point: moved,
+                });
+            }
+            if ui.small_button("Right").clicked() {
+                let mut moved = *point;
+                moved.offset_cm = 48;
+                actions.write(UiAction::MoveCableRoutePoint {
+                    link: id,
+                    index,
+                    point: moved,
+                });
+            }
+        });
+    }
+    if route.is_empty() {
+        ui.label("No anchors; click a rack anchor to add one.");
+    }
     if ui.button("Disconnect").clicked() {
         actions.write(UiAction::Disconnect(id));
     }
@@ -916,7 +1028,24 @@ fn rack_view(
             return;
         };
         ui.vertical_centered(|ui| {
-            ui.heading(format!("{} · NETWORK SIDE", rack.name));
+            ui.heading(format!("{} · {:?} SIDE", rack.name, state.rack_side));
+            ui.horizontal(|ui| {
+                for side in [RackSide::Front, RackSide::Rear] {
+                    if ui
+                        .selectable_label(state.rack_side == side, format!("{side:?}"))
+                        .clicked()
+                    {
+                        state.rack_side = side;
+                    }
+                }
+                ui.separator();
+                ui.label("Cables:");
+                for visibility in [CableVisibility::All, CableVisibility::Selected, CableVisibility::Hidden] {
+                    if ui.selectable_label(state.cable_visibility == visibility, format!("{visibility:?}")).clicked() {
+                        state.cable_visibility = visibility;
+                    }
+                }
+            });
             ui.weak(
                 "Buy cable + RJ45 plugs, then click two sockets. Drag a wire to move its slack.",
             );
@@ -940,6 +1069,7 @@ fn rack_view(
                 let row_height = panel_height + gap;
                 let mut port_visuals = Vec::new();
                 let mut led_visuals = Vec::new();
+                let mut route_anchors: Vec<(RackId, u8, RackSide, u16, egui::Pos2)> = Vec::new();
                 let rack_frame = egui::Frame::group(ui.style())
                     .fill(egui::Color32::from_rgb(8, 10, 13))
                     .inner_margin(egui::Margin::same(10))
@@ -958,6 +1088,22 @@ fn rack_view(
                                 ),
                                 egui::pos2(row_rect.right() - 5.0, row_rect.bottom() - gap * 0.5),
                             );
+                            if selected_link_id(state).is_some() {
+                                route_anchors.push((
+                                    rack.id,
+                                    unit,
+                                    state.rack_side,
+                                    0,
+                                    egui::pos2(panel_rect.left() - 8.0, panel_rect.center().y),
+                                ));
+                                route_anchors.push((
+                                    rack.id,
+                                    unit,
+                                    state.rack_side,
+                                    48,
+                                    egui::pos2(panel_rect.right() + 8.0, panel_rect.center().y),
+                                ));
+                            }
                             ui.painter().text(
                                 egui::pos2(row_rect.left() + 21.0, row_rect.center().y),
                                 egui::Align2::CENTER_CENTER,
@@ -967,23 +1113,91 @@ fn rack_view(
                             );
                             if let Some(device_id) = rack.occupies(unit) {
                                 let device = sim.device(device_id).expect("rack device exists");
-                                let texture = match device.kind {
-                                    DeviceKind::Server(_) => textures.server,
-                                    DeviceKind::Switch(_) => textures.switch,
-                                    DeviceKind::Router(_) => textures.router,
-                                };
+                                if matches!(device.kind, DeviceKind::CableManager(_))
+                                    && state.rack_side == RackSide::Front
+                                    && selected_link_id(state).is_some()
+                                {
+                                    for slot in 0..6u16 {
+                                        let offset_cm = slot * 48 / 5;
+                                        route_anchors.push((
+                                            rack.id,
+                                            unit,
+                                            RackSide::Front,
+                                            offset_cm,
+                                            egui::pos2(
+                                                panel_rect.left() + panel_rect.width() * slot as f32 / 5.0,
+                                                panel_rect.center().y,
+                                            ),
+                                        ));
+                                    }
+                                }
                                 ui.painter()
                                     .rect_filled(panel_rect, 2.0, egui::Color32::BLACK);
-                                ui.painter().image(
-                                    texture,
-                                    panel_rect,
-                                    equipment_uv(&device.kind),
-                                    if device.powered {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_gray(90)
-                                    },
-                                );
+                                match device.kind {
+                                    DeviceKind::PatchPanel(_) => {
+                                        ui.painter().rect_filled(
+                                            panel_rect.shrink(3.0),
+                                            1.0,
+                                            egui::Color32::from_rgb(43, 48, 54),
+                                        );
+                                        let sides: Vec<_> = device.ports().iter().map(|id| sim.port(*id).expect("patch port exists").side).collect();
+                                        for (slot, index) in visible_patch_port_indices(&sides, state.rack_side).into_iter().enumerate() {
+                                            let port_id = &device.ports()[index];
+                                            let port = sim.port(*port_id).expect("patch port exists");
+                                            let socket = rack_port_rect(&device.kind, panel_rect, index, port.connector);
+                                            ui.painter().rect_filled(
+                                                socket,
+                                                1.0,
+                                                egui::Color32::from_rgb(12, 15, 18),
+                                            );
+                                            ui.painter().text(
+                                                egui::pos2(socket.center().x, socket.top() - 1.0),
+                                                egui::Align2::CENTER_BOTTOM,
+                                                format!("{:02}", slot + 1),
+                                                egui::FontId::monospace(6.0),
+                                                egui::Color32::from_gray(170),
+                                            );
+                                        }
+                                    }
+                                    DeviceKind::CableManager(_) => {
+                                        ui.painter().rect_filled(
+                                            panel_rect.shrink(3.0),
+                                            1.0,
+                                            egui::Color32::from_rgb(31, 37, 42),
+                                        );
+                                        for slot in 0..6 {
+                                            let center = egui::pos2(
+                                                panel_rect.left() + panel_rect.width() * slot as f32 / 5.0,
+                                                panel_rect.center().y,
+                                            );
+                                            ui.painter().circle_stroke(
+                                                center,
+                                                5.0,
+                                                egui::Stroke::new(2.0, egui::Color32::from_rgb(82, 92, 99)),
+                                            );
+                                        }
+                                    }
+                                    _ => {
+                                        let textured = matches!(device.kind, DeviceKind::Server(_) if state.rack_side == RackSide::Rear)
+                                            || matches!(device.kind, DeviceKind::Switch(_) | DeviceKind::Router(_) if state.rack_side == RackSide::Front);
+                                        if textured {
+                                            let texture = match device.kind {
+                                                DeviceKind::Server(_) => textures.server,
+                                                DeviceKind::Switch(_) => textures.switch,
+                                                DeviceKind::Router(_) => textures.router,
+                                                _ => unreachable!(),
+                                            };
+                                            ui.painter().image(texture, panel_rect, equipment_uv(&device.kind), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
+                                        } else {
+                                            ui.painter().rect_filled(panel_rect.shrink(3.0), 1.0, egui::Color32::from_rgb(38, 44, 50));
+                                            ui.painter().rect_stroke(panel_rect.shrink(8.0), 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(75)), egui::StrokeKind::Inside);
+                                            ui.painter().circle_filled(egui::pos2(panel_rect.left() + 14.0, panel_rect.center().y), 4.0, if device.powered { egui::Color32::GREEN } else { egui::Color32::from_gray(35) });
+                                            if matches!(device.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)) {
+                                                for fan in 0..3 { ui.painter().circle_stroke(egui::pos2(panel_rect.center().x + (fan as f32 - 1.0) * 18.0, panel_rect.center().y), 7.0, egui::Stroke::new(1.0, egui::Color32::from_gray(85))); }
+                                            }
+                                        }
+                                    }
+                                }
                                 ui.painter().rect_stroke(
                                     panel_rect,
                                     2.0,
@@ -997,22 +1211,6 @@ fn rack_view(
                                     ),
                                     egui::StrokeKind::Outside,
                                 );
-                                let label_rect = egui::Rect::from_min_max(
-                                    egui::pos2(row_rect.left() + 43.0, panel_rect.top()),
-                                    egui::pos2(panel_rect.left() - 7.0, panel_rect.bottom()),
-                                );
-                                ui.painter().rect_filled(
-                                    label_rect,
-                                    2.0,
-                                    egui::Color32::from_rgb(17, 21, 26),
-                                );
-                                ui.painter().text(
-                                    label_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    rack_device_label(device),
-                                    egui::FontId::monospace(10.0),
-                                    egui::Color32::from_gray(210),
-                                );
                                 ui.painter().circle_filled(
                                     egui::pos2(panel_rect.right() - 10.0, panel_rect.top() + 10.0),
                                     4.0,
@@ -1022,8 +1220,20 @@ fn rack_view(
                                         egui::Color32::from_gray(45)
                                     },
                                 );
+                                if matches!(device.kind, DeviceKind::Server(_)) && state.rack_side == RackSide::Front {
+                                    let power_rect = egui::Rect::from_center_size(
+                                        egui::pos2(panel_rect.left() + 14.0, panel_rect.center().y),
+                                        egui::vec2(18.0, 18.0),
+                                    );
+                                    if ui.interact(power_rect, egui::Id::new(("rack-power", device_id.0)), egui::Sense::click()).clicked() {
+                                        actions.write(UiAction::TogglePower(device_id, !device.powered));
+                                    }
+                                }
                                 for (index, port_id) in device.ports().iter().enumerate() {
                                     let port = sim.port(*port_id).expect("device port exists");
+                                    if port.side != state.rack_side {
+                                        continue;
+                                    }
                                     let port_rect = rack_port_rect(
                                         &device.kind,
                                         panel_rect,
@@ -1093,7 +1303,7 @@ fn rack_view(
                                     if installing {
                                         egui::Color32::from_rgb(24, 45, 40)
                                     } else {
-                                        egui::Color32::from_rgb(20, 23, 27)
+                                        egui::Color32::from_rgba_premultiplied(20, 23, 27, 38)
                                     },
                                 );
                                 ui.painter().rect_stroke(
@@ -1102,17 +1312,15 @@ fn rack_view(
                                     egui::Stroke::new(1.0, egui::Color32::from_gray(48)),
                                     egui::StrokeKind::Inside,
                                 );
-                                ui.painter().text(
-                                    panel_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    if installing {
-                                        "+ INSTALL SELECTED DEVICE"
-                                    } else {
-                                        "EMPTY"
-                                    },
-                                    egui::FontId::monospace(11.0),
-                                    egui::Color32::from_gray(110),
-                                );
+                                if installing {
+                                    ui.painter().text(
+                                        panel_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        "+ INSTALL SELECTED DEVICE",
+                                        egui::FontId::monospace(11.0),
+                                        egui::Color32::from_gray(110),
+                                    );
+                                }
                                 if row_response.clicked()
                                     && let Some(device) = selected_inventory
                                 {
@@ -1126,7 +1334,99 @@ fn rack_view(
                         }
                     });
 
+                // A neutral scalable cabinet face: heavy vertical mounting rails,
+                // repeating cage-nut holes, and cable-management channels beside
+                // the equipment face. These are presentation anchors for the
+                // flexible leads below and remain independent of device sprites.
+                let frame = rack_frame.response.rect;
+                let cabinet = egui::Rect::from_min_max(
+                    egui::pos2(frame.left() + RACK_METADATA_WIDTH, frame.top()),
+                    frame.right_bottom(),
+                );
+                let panel_right = cabinet.right() - RACK_MANAGER_WIDTH - RACK_RAIL_WIDTH;
+                let panel_left = panel_right - panel_width;
+                for manager in [
+                    egui::Rect::from_min_max(
+                        egui::pos2(panel_left - RACK_MANAGER_WIDTH, cabinet.top()),
+                        egui::pos2(panel_left, cabinet.bottom()),
+                    ),
+                    egui::Rect::from_min_max(
+                        egui::pos2(panel_right, cabinet.top()),
+                        egui::pos2(panel_right + RACK_MANAGER_WIDTH, cabinet.bottom()),
+                    ),
+                ] {
+                    let x = manager.center().x;
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(x, cabinet.top() + 4.0),
+                            egui::pos2(x, cabinet.bottom() - 4.0),
+                        ],
+                        egui::Stroke::new(3.0, egui::Color32::from_rgb(24, 29, 34)),
+                    );
+                    for unit in 0..rack.units {
+                        let y = cabinet.top() + (unit as f32 + 0.5) * row_height;
+                        ui.painter().circle_filled(
+                            egui::pos2(x, y),
+                            3.0,
+                            egui::Color32::from_rgb(67, 76, 83),
+                        );
+                    }
+                }
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
+                if let Some(link_id) = selected_link_id(state) {
+                    let route = sim
+                        .link(link_id)
+                        .map(|link| link.route.clone())
+                        .unwrap_or_default();
+                    for (rack_id, unit, side, offset_cm, position) in route_anchors {
+                        let used = route.iter().position(|point| {
+                            point.rack == rack_id
+                                && point.unit == unit
+                                && point.side == side
+                                && point.offset_cm == offset_cm
+                        });
+                        let anchor_rect =
+                            egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                        let response = ui.interact(
+                            anchor_rect,
+                            egui::Id::new((
+                                "route-anchor",
+                                rack_id.0,
+                                unit,
+                                side == RackSide::Front,
+                                offset_cm,
+                            )),
+                            egui::Sense::click(),
+                        );
+                        ui.painter().circle_filled(
+                            position,
+                            4.0,
+                            if used.is_some() || response.hovered() {
+                                egui::Color32::from_rgb(255, 196, 64)
+                            } else {
+                                egui::Color32::from_rgb(92, 112, 125)
+                            },
+                        );
+                        if response.clicked() {
+                            if let Some(index) = used {
+                                actions.write(UiAction::RemoveCableRoutePoint {
+                                    link: link_id,
+                                    index,
+                                });
+                            } else {
+                                actions.write(UiAction::AddCableRoutePoint {
+                                    link: link_id,
+                                    point: CableRoutePoint {
+                                        rack: rack_id,
+                                        unit,
+                                        side,
+                                        offset_cm,
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
                 // Space below the rack is the floor for hanging service loops.
                 ui.allocate_space(egui::vec2(rack_width, 120.0));
                 if let Some(link) = cables.show(
@@ -1141,8 +1441,16 @@ fn rack_view(
                         plug: textures.plug,
                         selected: match state.selected {
                             Selection::Link(id) => Some(id),
+                            Selection::Port(port) => sim.link_for_port(port).map(|link| link.id),
                             _ => None,
                         },
+                        visibility: state.cable_visibility,
+                        route_left_px: panel_left,
+                        route_top_px: frame.top() + 10.0 + gap * 0.5,
+                        route_width_px: panel_width,
+                        route_row_height_px: row_height,
+                        rack_units: rack.units,
+                        route_side: state.rack_side,
                     },
                 ) {
                     actions.write(UiAction::SelectLink(link));
@@ -1175,6 +1483,10 @@ fn rack_view(
                 for (port_id, port_rect) in port_visuals {
                     let port = sim.port(port_id).expect("visualized port exists");
                     let link = sim.link_for_port(port_id);
+                    let paired_selected = sim
+                        .port(port_id)
+                        .and_then(|port| port.paired_port)
+                        .is_some_and(|paired| state.selected == Selection::Port(paired));
                     let is_pending = state.pending_cable == Some(port_id);
                     let supported = port.connector.supports_cabling();
                     let response = ui.interact(
@@ -1194,12 +1506,23 @@ fn rack_view(
                             egui::Color32::from_rgba_premultiplied(255, 196, 64, 42),
                         );
                     }
-                    if is_pending || hovered {
+                    if is_pending
+                        || hovered
+                        || paired_selected
+                        || state.selected == Selection::Port(port_id)
+                    {
                         ui.painter().rect_stroke(
                             port_rect,
                             1.5,
                             egui::Stroke::new(
-                                if is_pending { 2.0 } else { 1.0 },
+                                if is_pending
+                                    || paired_selected
+                                    || state.selected == Selection::Port(port_id)
+                                {
+                                    2.0
+                                } else {
+                                    1.0
+                                },
                                 if is_pending || !supported {
                                     egui::Color32::from_rgb(255, 196, 64)
                                 } else if hovered {
@@ -1281,6 +1604,14 @@ fn rack_port_position(kind: &DeviceKind, rect: egui::Rect, index: usize) -> egui
     )
 }
 
+fn visible_patch_port_indices(sides: &[RackSide], side: RackSide) -> Vec<usize> {
+    sides
+        .iter()
+        .enumerate()
+        .filter_map(|(index, candidate)| (*candidate == side).then_some(index))
+        .collect()
+}
+
 fn rack_port_rect(
     kind: &DeviceKind,
     panel: egui::Rect,
@@ -1310,14 +1641,6 @@ fn connector_label(connector: PortConnector) -> &'static str {
     }
 }
 
-fn rack_device_label(device: &Device) -> String {
-    device
-        .name
-        .replace("Dell PowerEdge ", "Dell ")
-        .replace("Cisco Catalyst ", "Cisco ")
-        .replace("Cisco ISR ", "Cisco ")
-}
-
 fn cable_color_value(color: CableColor) -> egui::Color32 {
     match color {
         CableColor::White => egui::Color32::from_rgb(235, 238, 236),
@@ -1340,6 +1663,7 @@ fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut Messag
         for (i, device) in devices.iter().enumerate() {
             let kind_y = match device.kind {
                 DeviceKind::Router(_) => center.y - 180.0,
+                DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_) => center.y,
                 DeviceKind::Switch(_) => center.y,
                 DeviceKind::Server(_) => center.y + 190.0,
             };
@@ -1423,5 +1747,31 @@ mod tests {
         let panel_width = panel_height * RACK_FACE_ASPECT;
 
         assert!((panel_width / panel_height - 19.0 / 1.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn patch_panel_has_24_unique_slots_per_side() {
+        let sides: Vec<_> = (0..24)
+            .flat_map(|_| [RackSide::Front, RackSide::Rear])
+            .collect();
+        let front = visible_patch_port_indices(&sides, RackSide::Front);
+        let rear = visible_patch_port_indices(&sides, RackSide::Rear);
+        assert_eq!(front.len(), 24);
+        assert_eq!(rear.len(), 24);
+        assert_eq!(
+            front
+                .iter()
+                .map(|index| index / 2)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            24
+        );
+        assert_eq!(
+            rear.iter()
+                .map(|index| index / 2)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            24
+        );
     }
 }

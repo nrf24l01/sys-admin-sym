@@ -134,7 +134,7 @@ fn real_device_templates_expose_expected_network_panels() {
     assert_eq!(sim.port(ports(&sim, router)[1]).unwrap().name, "WAN2");
     assert_eq!(sim.port(ports(&sim, router)[9]).unwrap().name, "LAN8");
     assert!(sim.device(server).unwrap().name.contains("PowerEdge R360"));
-    assert_eq!(ports(&sim, server).len(), 2);
+    assert_eq!(ports(&sim, server).len(), 3);
 }
 
 #[test]

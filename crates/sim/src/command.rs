@@ -1,6 +1,6 @@
 use crate::{
-    DeviceId, DeviceTemplate, Ipv4InterfaceConfig, LinkId, LinkSpeed, PortId, RackId, Route,
-    SwitchPortMode, Vlan, VlanId,
+    CableRoutePoint, DeviceId, DeviceTemplate, Ipv4InterfaceConfig, LinkId, LinkSpeed, PortId,
+    RackId, Route, SwitchPortMode, Vlan, VlanId,
 };
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -41,6 +41,23 @@ pub enum Command {
     },
     Disconnect {
         link: LinkId,
+    },
+    AddCableRoutePoint {
+        link: LinkId,
+        point: CableRoutePoint,
+    },
+    RemoveCableRoutePoint {
+        link: LinkId,
+        index: usize,
+    },
+    MoveCableRoutePoint {
+        link: LinkId,
+        index: usize,
+        point: CableRoutePoint,
+    },
+    RerouteCable {
+        link: LinkId,
+        route: Vec<CableRoutePoint>,
     },
     SetSwitchPortMode {
         port: PortId,

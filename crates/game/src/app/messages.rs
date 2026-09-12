@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use cloud_provider_sim::{
-    Command, DeviceId, DeviceTemplate, LinkId, NetworkSim, PortId, RackId, SimEvent, TerminalOutput,
+    CableRoutePoint, Command, DeviceId, DeviceTemplate, LinkId, NetworkSim, PortId, RackId,
+    SimEvent, TerminalOutput,
 };
 
 #[derive(Message, Debug, Clone)]
@@ -24,6 +25,23 @@ pub enum UiAction {
     ApplySwitch(PortId),
     ApplyRouter(PortId),
     FlushPortConfig(PortId),
+    AddCableRoutePoint {
+        link: LinkId,
+        point: CableRoutePoint,
+    },
+    RemoveCableRoutePoint {
+        link: LinkId,
+        index: usize,
+    },
+    MoveCableRoutePoint {
+        link: LinkId,
+        index: usize,
+        point: CableRoutePoint,
+    },
+    RerouteCable {
+        link: LinkId,
+        route: Vec<CableRoutePoint>,
+    },
     RunTerminal(DeviceId, String),
     LaunchExternalTerminal(DeviceId),
     Save,

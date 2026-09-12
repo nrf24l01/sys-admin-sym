@@ -275,6 +275,7 @@ impl NetworkSim {
                     }
                 }
                 PortConfig::Switch(_) => {}
+                PortConfig::PatchPanel | PortConfig::CableManager => {}
             }
         }
         false
@@ -463,9 +464,14 @@ impl NetworkSim {
             .is_some_and(|x| x.enabled && self.device_active(x.device) && self.port_link_up(p))
     }
     fn device_active(&self, d: DeviceId) -> bool {
-        self.devices
-            .get(&d)
-            .is_some_and(|x| x.powered && x.rack.is_some())
+        self.devices.get(&d).is_some_and(|x| {
+            x.rack.is_some()
+                && (x.powered
+                    || matches!(
+                        x.kind,
+                        DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+                    ))
+        })
     }
     fn hop(
         &self,

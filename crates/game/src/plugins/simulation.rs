@@ -352,6 +352,10 @@ fn translate_ui_actions(
                 None
             }
             UiAction::FlushPortConfig(port) => Some(Command::ResetPortConfig { port: *port }),
+            UiAction::AddCableRoutePoint { link, point } => Some(Command::AddCableRoutePoint { link: *link, point: *point }),
+            UiAction::RemoveCableRoutePoint { link, index } => Some(Command::RemoveCableRoutePoint { link: *link, index: *index }),
+            UiAction::MoveCableRoutePoint { link, index, point } => Some(Command::MoveCableRoutePoint { link: *link, index: *index, point: *point }),
+            UiAction::RerouteCable { link, route } => Some(Command::RerouteCable { link: *link, route: route.clone() }),
             UiAction::LaunchExternalTerminal(device) => {
                 state.terminal_windows.insert(*device);
                 state.terminal_window_focus.insert(*device);

@@ -2089,6 +2089,7 @@ dependencies = [
 name = "cloud-provider-sim"
 version = "0.1.0"
 dependencies = [
+ "ron",
  "serde",
  "thiserror 2.0.20",
 ]

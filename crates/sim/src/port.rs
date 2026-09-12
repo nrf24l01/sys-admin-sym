@@ -31,6 +31,13 @@ pub enum PortConnector {
     Sfp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RackSide {
+    #[default]
+    Rear,
+    Front,
+}
+
 impl PortConnector {
     pub fn supports_cabling(self) -> bool {
         matches!(self, Self::Rj45)
@@ -42,6 +49,10 @@ pub struct Port {
     pub id: PortId,
     pub device: DeviceId,
     pub name: String,
+    #[serde(default)]
+    pub side: RackSide,
+    #[serde(default)]
+    pub paired_port: Option<PortId>,
     pub enabled: bool,
     #[serde(default)]
     pub connector: PortConnector,
@@ -59,6 +70,8 @@ pub enum PortConfig {
     Server(ServerPortConfig),
     Switch(SwitchPortConfig),
     Router(RouterPortConfig),
+    PatchPanel,
+    CableManager,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

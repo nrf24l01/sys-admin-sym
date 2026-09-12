@@ -1,5 +1,6 @@
+use crate::app::CableVisibility;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
-use cloud_provider_sim::{LinkId, NetworkSim, PortId};
+use cloud_provider_sim::{LinkId, NetworkSim, PortId, RackSide};
 use std::collections::HashMap;
 
 const SEGMENTS: usize = 64;
@@ -106,6 +107,13 @@ pub(super) struct CableView {
     pub jacket: egui::TextureId,
     pub plug: egui::TextureId,
     pub selected: Option<LinkId>,
+    pub visibility: CableVisibility,
+    pub route_left_px: f32,
+    pub route_top_px: f32,
+    pub route_width_px: f32,
+    pub route_row_height_px: f32,
+    pub rack_units: u8,
+    pub route_side: RackSide,
 }
 
 impl CableScene {
@@ -132,9 +140,23 @@ impl CableScene {
         // End-on projection: the seated plug and its cable outlet share the
         // socket center. Only the flexible jacket is affected by gravity.
         let exit = |rect: Rect| rect.center();
+        let selected_ports: std::collections::HashSet<_> = view
+            .selected
+            .and_then(|id| sim.link(id))
+            .map(|link| sim.physical_path(link.a).into_iter().collect())
+            .unwrap_or_default();
         let mut links: Vec<_> = sim
             .links()
             .filter(|link| ports.contains_key(&link.a) && ports.contains_key(&link.b))
+            .filter(|link| match view.visibility {
+                CableVisibility::All => true,
+                CableVisibility::Selected => {
+                    view.selected == Some(link.id)
+                        || selected_ports.contains(&link.a)
+                        || selected_ports.contains(&link.b)
+                }
+                CableVisibility::Hidden => false,
+            })
             .collect();
         links.sort_by_key(|l| l.id);
         for link in &links {
@@ -250,24 +272,59 @@ impl CableScene {
                 .iter()
                 .map(|p| screen(*p))
                 .collect();
+            let routed: Vec<_> = std::iter::once(screen(local(exit(ports[&link.a]))))
+                .chain(
+                    link.route
+                        .iter()
+                        .filter(|point| point.side == view.route_side)
+                        .map(|point| {
+                            Pos2::new(
+                                view.route_left_px
+                                    + point.offset_cm.min(48) as f32 / 48.0 * view.route_width_px,
+                                view.route_top_px
+                                    + view.rack_units.saturating_sub(point.unit) as f32
+                                        * view.route_row_height_px
+                                    + view.route_row_height_px * 0.5,
+                            )
+                        }),
+                )
+                .chain(std::iter::once(screen(local(exit(ports[&link.b])))))
+                .collect();
             let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
-            let color = super::cable_color_value(link.color);
-            let shadow: Vec<_> = path.iter().map(|p| *p + Vec2::new(2.0, 3.0)).collect();
+            let in_selected_path =
+                selected_ports.contains(&link.a) || selected_ports.contains(&link.b);
+            let mut color = super::cable_color_value(link.color);
+            if view.visibility == CableVisibility::All
+                && view.selected.is_some()
+                && view.selected != Some(link.id)
+                && !in_selected_path
+            {
+                color = color.gamma_multiply(0.35);
+            }
+            let display_path = if link.route.is_empty() {
+                path.clone()
+            } else {
+                routed.clone()
+            };
+            let shadow: Vec<_> = display_path
+                .iter()
+                .map(|p| *p + Vec2::new(2.0, 3.0))
+                .collect();
             ui.painter().add(egui::Shape::line(
                 shadow,
                 egui::Stroke::new(width + 3.0, Color32::from_black_alpha(150)),
             ));
-            if view.selected == Some(link.id) {
+            if view.selected == Some(link.id) || in_selected_path {
                 ui.painter().add(egui::Shape::line(
-                    path.clone(),
+                    display_path.clone(),
                     egui::Stroke::new(width + 3.0, Color32::from_rgb(255, 196, 64)),
                 ));
             }
             ui.painter().add(egui::Shape::line(
-                path.clone(),
+                display_path.clone(),
                 egui::Stroke::new(width, color),
             ));
-            paint_jacket(ui.painter(), &path, width, view.jacket);
+            paint_jacket(ui.painter(), &display_path, width, view.jacket);
         }
         if !links.is_empty() {
             ui.ctx()
@@ -384,6 +441,13 @@ mod tests {
                         jacket: egui::TextureId::User(1),
                         plug: egui::TextureId::User(2),
                         selected: None,
+                        visibility: CableVisibility::All,
+                        route_left_px: 0.0,
+                        route_top_px: 0.0,
+                        route_width_px: 0.0,
+                        route_row_height_px: 0.0,
+                        rack_units: 0,
+                        route_side: RackSide::Front,
                     },
                 );
             });
