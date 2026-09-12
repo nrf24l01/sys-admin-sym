@@ -55,6 +55,9 @@ pub struct UiState {
     pub terminals: HashMap<DeviceId, ConsoleState>,
     pub new_vlan_id: String,
     pub new_vlan_name: String,
+    pub power_source: Option<cloud_provider_sim::SourceId>,
+    pub power_outlet: u8,
+    pub pending_power_outlet: Option<cloud_provider_sim::OutletId>,
 }
 
 #[derive(Default)]

@@ -165,6 +165,10 @@ fn translate_ui_actions(
                 device: *device,
                 powered: *powered,
             }),
+            UiAction::ConnectPower(outlet, endpoint) => Some(Command::ConnectPower { outlet: *outlet, endpoint: *endpoint }),
+            UiAction::DisconnectPower(outlet) => Some(Command::DisconnectPower { outlet: *outlet }),
+            UiAction::ResetPower(source) => Some(Command::ResetPowerBreaker { source: *source }),
+            UiAction::RackMains(rack, on) => Some(Command::SetRackMains { rack: *rack, on: *on }),
             UiAction::Disconnect(link) => Some(Command::Disconnect { link: *link }),
             UiAction::CreateVlan(device) => match state.new_vlan_id.parse::<u16>() {
                 Ok(id) => Some(Command::CreateVlan {
@@ -539,7 +543,9 @@ fn poll_worker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cloud_provider_sim::{DeviceTemplate, SimEvent};
+    use cloud_provider_sim::{
+        Command, DeviceTemplate, OutletId, PowerEndpoint, RackId, SimEvent, SourceId,
+    };
 
     #[test]
     fn console_worker_keeps_device_identity_and_stops_scripts_on_error() {
@@ -550,6 +556,20 @@ mod tests {
                 SimEvent::DeviceAdded(id) => id,
                 _ => unreachable!(),
             };
+            sim.execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit: devices.len() as u8 + 1,
+            })
+            .unwrap();
+            sim.execute(Command::ConnectPower {
+                outlet: OutletId {
+                    source: SourceId::Rack(RackId(1)),
+                    index: devices.len() as u8,
+                },
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
             sim.execute(Command::SetPower {
                 device,
                 powered: true,

@@ -1,4 +1,4 @@
-use crate::{DeviceId, PortId, RackPlacement, Route, RouterInterface, Vlan};
+use crate::{DeviceId, PortId, RackPlacement, Route, RouterInterface, SourceId, Vlan};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +18,8 @@ impl Device {
             DeviceKind::Router(v) => &v.ports,
             DeviceKind::PatchPanel(v) => &v.ports,
             DeviceKind::CableManager(v) => &v.ports,
+            DeviceKind::Ups(v) => &v.ports,
+            DeviceKind::Pdu(v) => &v.ports,
         }
     }
 
@@ -28,6 +30,8 @@ impl Device {
             DeviceKind::Router(_) => DeviceTemplate::Router,
             DeviceKind::PatchPanel(_) => DeviceTemplate::PatchPanel,
             DeviceKind::CableManager(_) => DeviceTemplate::CableManager,
+            DeviceKind::Ups(_) => DeviceTemplate::Ups,
+            DeviceKind::Pdu(_) => DeviceTemplate::Pdu,
         }
     }
 }
@@ -39,6 +43,21 @@ pub enum DeviceKind {
     Router(Router),
     PatchPanel(PatchPanel),
     CableManager(CableManager),
+    Ups(Ups),
+    Pdu(Pdu),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Ups {
+    pub ports: Vec<PortId>,
+    #[serde(default)]
+    pub source: Option<SourceId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Pdu {
+    pub ports: Vec<PortId>,
+    #[serde(default)]
+    pub source: Option<SourceId>,
 }
 
 pub const RACK_FACE_WIDTH_CM: f32 = 48.26;
@@ -71,6 +90,7 @@ impl DeviceKind {
                 )
             }
             Self::CableManager(_) => (0.5, 0.5),
+            Self::Ups(_) | Self::Pdu(_) => (0.5, 0.5),
         }
     }
 }
@@ -111,6 +131,8 @@ pub enum DeviceTemplate {
     Router,
     PatchPanel,
     CableManager,
+    Ups,
+    Pdu,
 }
 
 impl DeviceTemplate {
@@ -120,10 +142,12 @@ impl DeviceTemplate {
             Self::Switch | Self::Router => 500,
             Self::PatchPanel => 150,
             Self::CableManager => 75,
+            Self::Ups => 1_200,
+            Self::Pdu => 250,
         }
     }
 
     pub fn rack_units(self) -> u8 {
-        1
+        if matches!(self, Self::Ups) { 2 } else { 1 }
     }
 }

@@ -148,7 +148,10 @@ impl NetworkSim {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Command, DeviceTemplate, Ipv4InterfaceConfig, RackId, SimEvent};
+    use crate::{
+        Command, DeviceTemplate, Ipv4InterfaceConfig, OutletId, PowerEndpoint, RackId, SimEvent,
+        SourceId,
+    };
 
     fn router() -> (NetworkSim, PortId) {
         let mut sim = NetworkSim::new();
@@ -165,6 +168,14 @@ mod tests {
             device: router,
             rack: RackId(1),
             unit: 1,
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Device(router),
         })
         .unwrap();
         sim.execute(Command::SetPower {
@@ -219,6 +230,14 @@ mod tests {
                 device: server,
                 rack: RackId(1),
                 unit,
+            })
+            .unwrap();
+            sim.execute(Command::ConnectPower {
+                outlet: OutletId {
+                    source: SourceId::Rack(RackId(1)),
+                    index: unit - 1,
+                },
+                endpoint: PowerEndpoint::Device(server),
             })
             .unwrap();
             sim.execute(Command::SetPower {

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use cloud_provider_sim::{
-    CableRoutePoint, Command, DeviceId, DeviceTemplate, LinkId, NetworkSim, PortId, RackId,
-    SimEvent, TerminalOutput,
+    CableRoutePoint, Command, DeviceId, DeviceTemplate, LinkId, NetworkSim, OutletId, PortId,
+    PowerEndpoint, RackId, SimEvent, SourceId, TerminalOutput,
 };
 
 #[derive(Message, Debug, Clone)]
@@ -18,6 +18,12 @@ pub enum UiAction {
     },
     Remove(DeviceId),
     TogglePower(DeviceId, bool),
+    #[allow(dead_code)]
+    ConnectPower(OutletId, PowerEndpoint),
+    #[allow(dead_code)]
+    DisconnectPower(OutletId),
+    ResetPower(SourceId),
+    RackMains(RackId, bool),
     CablePort(PortId),
     AddPendingCableRoutePoint(CableRoutePoint),
     Disconnect(LinkId),

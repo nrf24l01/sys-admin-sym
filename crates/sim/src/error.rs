@@ -60,4 +60,6 @@ pub enum SimError {
     DeviceInstalled,
     #[error("invalid hostname")]
     InvalidHostname,
+    #[error("power error: {0}")]
+    Power(String),
 }

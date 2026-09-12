@@ -209,7 +209,10 @@ impl NetworkSim {
                         });
                     }
                 }
-                Some(DeviceKind::PatchPanel(_)) | Some(DeviceKind::CableManager(_)) => {}
+                Some(DeviceKind::PatchPanel(_))
+                | Some(DeviceKind::CableManager(_))
+                | Some(DeviceKind::Ups(_))
+                | Some(DeviceKind::Pdu(_)) => {}
                 None => {}
             }
         }
@@ -401,7 +404,8 @@ fn is_broadcast(mac: MacAddress) -> bool {
 mod tests {
     use super::*;
     use crate::{
-        ArpPacket, Command, DeviceId, DeviceTemplate, EthernetPayload, Ipv4InterfaceConfig, RackId,
+        ArpPacket, Command, DeviceId, DeviceTemplate, EthernetPayload, Ipv4InterfaceConfig,
+        OutletId, PowerEndpoint, RACK_C13_OUTLETS, RackId, SourceId,
     };
     use std::net::Ipv4Addr;
 
@@ -427,6 +431,24 @@ mod tests {
             device: id,
             rack: RackId(1),
             unit,
+        })
+        .unwrap();
+        if matches!(
+            template,
+            DeviceTemplate::PatchPanel | DeviceTemplate::CableManager
+        ) {
+            return id;
+        }
+        let outlet = (0..RACK_C13_OUTLETS as u8)
+            .map(|index| OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index,
+            })
+            .find(|outlet| !sim.power.connections.contains_key(outlet))
+            .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet,
+            endpoint: PowerEndpoint::Device(id),
         })
         .unwrap();
         sim.execute(Command::SetPower {

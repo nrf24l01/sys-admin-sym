@@ -13,4 +13,5 @@ pub enum SimEvent {
     PortConfigChanged(PortId),
     TopologyChanged { revision: u64 },
     ConnectivityChanged,
+    PowerChanged,
 }

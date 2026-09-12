@@ -67,7 +67,8 @@ impl SaveStore {
 mod tests {
     use super::*;
     use cloud_provider_sim::{
-        CableColor, CableSupply, Command, DeviceKind, DeviceTemplate, RackId, SimEvent,
+        CableColor, CableSupply, Command, DeviceKind, DeviceTemplate, OutletId, PowerEndpoint,
+        RackId, SimEvent, SourceId,
     };
 
     #[test]
@@ -92,6 +93,22 @@ mod tests {
             })
             .unwrap();
         let device = before.devices().next().unwrap().id;
+        before
+            .execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit: 1,
+            })
+            .unwrap();
+        before
+            .execute(Command::ConnectPower {
+                outlet: OutletId {
+                    source: SourceId::Rack(RackId(1)),
+                    index: 0,
+                },
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
         before
             .execute(Command::SetPower {
                 device,
@@ -151,6 +168,15 @@ mod tests {
                 unit,
             })
             .unwrap();
+            let index = unit - 1;
+            sim.execute(Command::ConnectPower {
+                outlet: OutletId {
+                    source: SourceId::Rack(RackId(1)),
+                    index,
+                },
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
         }
         sim.execute(Command::BuyCableSupply {
             supply: CableSupply::CableBox305m,
@@ -205,6 +231,119 @@ mod tests {
         assert_eq!(
             legacy_loaded.cable_inventory().patch_cable_colors,
             vec![CableColor::White]
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+    }
+
+    #[test]
+    fn sqlite_round_trip_preserves_power_wiring_battery_requests_and_breakers() {
+        let path =
+            std::env::temp_dir().join(format!("cloud-provider-power-{}.db", std::process::id()));
+        let store = SaveStore::new(&path);
+        let mut sim = NetworkSim::new();
+        let ups = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Ups,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        let pdu = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Pdu,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        let server = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Server,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        for (device, unit) in [(ups, 1), (pdu, 3), (server, 4)] {
+            sim.execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit,
+            })
+            .unwrap();
+        }
+        let ups_source = match &sim.device(ups).unwrap().kind {
+            DeviceKind::Ups(x) => x.source.unwrap(),
+            _ => unreachable!(),
+        };
+        let pdu_source = match &sim.device(pdu).unwrap().kind {
+            DeviceKind::Pdu(x) => x.source.unwrap(),
+            _ => unreachable!(),
+        };
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Source(ups_source),
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: ups_source,
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Source(pdu_source),
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: pdu_source,
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Device(server),
+        })
+        .unwrap();
+        sim.execute(Command::SetPower {
+            device: server,
+            powered: false,
+        })
+        .unwrap();
+        sim.execute(Command::SetRackMains {
+            rack: RackId(1),
+            on: false,
+        })
+        .unwrap();
+        sim.advance_time(60 * 60 * 1000);
+        if let SourceId::Ups(id) = ups_source {
+            sim.power.ups.get_mut(&id).unwrap().tripped = true;
+        }
+        if let SourceId::Pdu(id) = pdu_source {
+            sim.power.pdus.get_mut(&id).unwrap().tripped = true;
+        }
+        let expected = sim.power.clone();
+        store.save(&sim).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.power.connections, expected.connections);
+        if let SourceId::Ups(id) = ups_source {
+            assert_eq!(
+                loaded.power.ups[&id].battery_mwh,
+                expected.ups[&id].battery_mwh
+            );
+            assert_eq!(loaded.power.ups[&id].tripped, expected.ups[&id].tripped);
+        }
+        if let SourceId::Pdu(id) = pdu_source {
+            assert_eq!(loaded.power.pdus[&id].tripped, expected.pdus[&id].tripped);
+        }
+        assert_eq!(
+            loaded.power.devices[&server].requested,
+            expected.devices[&server].requested
         );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-shm"));

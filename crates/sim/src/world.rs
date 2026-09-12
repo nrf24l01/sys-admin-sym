@@ -9,6 +9,8 @@ pub struct NetworkSim {
     pub(crate) ports: HashMap<PortId, Port>,
     pub(crate) links: HashMap<LinkId, Link>,
     pub(crate) racks: HashMap<RackId, Rack>,
+    #[serde(default)]
+    pub power: PowerSystem,
     pub money: i64,
     #[serde(default)]
     pub(crate) cable_inventory: CableInventory,
@@ -43,6 +45,7 @@ impl NetworkSim {
             ports: HashMap::new(),
             links: HashMap::new(),
             racks: HashMap::new(),
+            power: PowerSystem::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
             topology_revision: 0,
@@ -62,6 +65,68 @@ impl NetworkSim {
     }
 
     pub fn rebuild_indexes(&mut self) {
+        self.power
+            .devices
+            .retain(|id, _| self.devices.contains_key(id));
+        self.power.connections.retain(|_, endpoint| match endpoint {
+            PowerEndpoint::Device(id) => self.devices.contains_key(id),
+            PowerEndpoint::Source(_) => true,
+        });
+        for rack in self.racks.keys().copied().collect::<Vec<_>>() {
+            self.power.add_rack(rack);
+        }
+        for (id, device) in &self.devices {
+            if matches!(
+                device.kind,
+                DeviceKind::Ups(_)
+                    | DeviceKind::Pdu(_)
+                    | DeviceKind::PatchPanel(_)
+                    | DeviceKind::CableManager(_)
+            ) {
+                continue;
+            }
+            if !self.power.devices.contains_key(id) {
+                let watts = match device.kind {
+                    DeviceKind::Server(_) => 180,
+                    DeviceKind::Switch(_) => 80,
+                    DeviceKind::Router(_) => 60,
+                    _ => 0,
+                };
+                self.power.add_device(*id, watts, 90);
+                if let Some(p) = self.power.devices.get_mut(id) {
+                    p.requested = device.powered;
+                }
+            }
+        }
+        let source_devices: Vec<_> = self
+            .devices
+            .iter()
+            .filter_map(|(id, d)| match d.kind {
+                DeviceKind::Ups(_) | DeviceKind::Pdu(_) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        for id in source_devices {
+            let missing = match &self.devices[&id].kind {
+                DeviceKind::Ups(x) => x.source.is_none(),
+                DeviceKind::Pdu(x) => x.source.is_none(),
+                _ => false,
+            };
+            if missing {
+                let source = if matches!(self.devices[&id].kind, DeviceKind::Ups(_)) {
+                    SourceId::Ups(self.power.add_ups(UpsSpec::default()))
+                } else {
+                    SourceId::Pdu(self.power.add_pdu(PduState::default()))
+                };
+                match &mut self.devices.get_mut(&id).unwrap().kind {
+                    DeviceKind::Ups(x) => x.source = Some(source),
+                    DeviceKind::Pdu(x) => x.source = Some(source),
+                    _ => {}
+                }
+            }
+        }
+        self.power.recompute_now();
+        self.sync_effective_power();
         // Migrate legacy servers that predate the dedicated management NIC.
         let legacy_servers: Vec<_> = self
             .devices
@@ -265,6 +330,8 @@ impl NetworkSim {
     /// Advance the deterministic packet clock used for port activity LEDs.
     pub fn advance_time(&mut self, ms: u64) {
         self.runtime.advance_time(ms);
+        self.power.tick_ms(ms);
+        self.sync_effective_power();
     }
 
     pub fn simulation_time_ms(&self) -> u64 {
@@ -306,6 +373,7 @@ impl NetworkSim {
                 placements: Vec::new(),
             },
         );
+        self.power.add_rack(id);
         id
     }
 
@@ -447,7 +515,34 @@ impl NetworkSim {
             }
             Command::SetPower { device, powered } => {
                 self.set_power(device, powered)?;
-                vec![SimEvent::DevicePowerChanged { device, powered }]
+                let effective = self.device(device).is_some_and(|d| d.powered);
+                vec![SimEvent::DevicePowerChanged {
+                    device,
+                    powered: effective,
+                }]
+            }
+            Command::ConnectPower { outlet, endpoint } => {
+                self.validate_power_endpoint(outlet.source, endpoint)?;
+                self.power
+                    .connect(outlet, endpoint)
+                    .map_err(|e| SimError::Power(e.to_string()))?;
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
+            Command::DisconnectPower { outlet } => {
+                self.power.disconnect(outlet);
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
+            Command::ResetPowerBreaker { source } => {
+                self.power.reset_breaker(source);
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
+            Command::SetRackMains { rack, on } => {
+                self.power.set_rack_mains(rack, on);
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
             }
             Command::ResetPortConfig { port } => {
                 self.reset_port_config(port)?;
@@ -638,6 +733,20 @@ impl NetworkSim {
                 format!("1U Horizontal Cable Manager #{index:02}"),
                 DeviceKind::CableManager(CableManager { ports: Vec::new() }),
             ),
+            DeviceTemplate::Ups => (
+                format!("APC Smart-UPS SMT1500RMI2U #{index:02}"),
+                DeviceKind::Ups(Ups {
+                    ports: Vec::new(),
+                    source: None,
+                }),
+            ),
+            DeviceTemplate::Pdu => (
+                format!("Rack PDU 8x C13 #{index:02}"),
+                DeviceKind::Pdu(Pdu {
+                    ports: Vec::new(),
+                    source: None,
+                }),
+            ),
         };
         self.devices.insert(
             id,
@@ -649,6 +758,29 @@ impl NetworkSim {
                 kind,
             },
         );
+        let watts = match template {
+            DeviceTemplate::Server => 180,
+            DeviceTemplate::Switch => 80,
+            DeviceTemplate::Router => 60,
+            _ => 0,
+        };
+        match template {
+            DeviceTemplate::Ups => {
+                let source = self.power.add_ups(UpsSpec::default());
+                if let DeviceKind::Ups(x) = &mut self.devices.get_mut(&id).unwrap().kind {
+                    x.source = Some(SourceId::Ups(source));
+                }
+            }
+            DeviceTemplate::Pdu => {
+                let source = self.power.add_pdu(PduState::default());
+                if let DeviceKind::Pdu(x) = &mut self.devices.get_mut(&id).unwrap().kind {
+                    x.source = Some(SourceId::Pdu(source));
+                }
+            }
+            _ => {
+                self.power.add_device(id, watts, 90);
+            }
+        }
         Ok(id)
     }
 
@@ -658,12 +790,36 @@ impl NetworkSim {
             return Err(SimError::DeviceInstalled);
         }
         let ports = device.ports().to_vec();
+        let source = match &device.kind {
+            DeviceKind::Ups(x) => x.source,
+            DeviceKind::Pdu(x) => x.source,
+            _ => None,
+        };
         for port in &ports {
             if let Some(link) = self.port_links.get(port).copied() {
                 self.disconnect(link)?;
             }
         }
         let device = self.devices.remove(&id).expect("checked");
+        self.power.devices.remove(&id);
+        self.power
+            .connections
+            .retain(|_, endpoint| !matches!(endpoint, PowerEndpoint::Device(d) if *d == id));
+        if let Some(source) = source {
+            self.power.connections.retain(|outlet, endpoint| {
+                outlet.source != source
+                    && !matches!(endpoint, PowerEndpoint::Source(s) if *s == source)
+            });
+            match source {
+                SourceId::Ups(s) => {
+                    self.power.ups.remove(&s);
+                }
+                SourceId::Pdu(s) => {
+                    self.power.pdus.remove(&s);
+                }
+                SourceId::Rack(_) => {}
+            }
+        }
         self.ios_configs.remove(&id);
         self.startup_configs.remove(&id);
         self.console_modes.remove(&id);
@@ -748,6 +904,73 @@ impl NetworkSim {
                 self.disconnect(link)?;
             }
         }
+        self.disconnect_device_power(id);
+        Ok(())
+    }
+
+    fn disconnect_device_power(&mut self, id: DeviceId) {
+        let source = match &self.devices[&id].kind {
+            DeviceKind::Ups(x) => x.source,
+            DeviceKind::Pdu(x) => x.source,
+            _ => None,
+        };
+        self.power.connections.retain(|outlet, endpoint| {
+            outlet.source != source.unwrap_or(SourceId::Rack(RackId(0)))
+                && !matches!(endpoint, PowerEndpoint::Device(d) if *d == id)
+                && !matches!(endpoint, PowerEndpoint::Source(s) if Some(*s) == source)
+        });
+        self.power.recompute_now();
+        self.sync_effective_power();
+    }
+
+    fn validate_power_endpoint(
+        &self,
+        outlet_source: SourceId,
+        endpoint: PowerEndpoint,
+    ) -> Result<(), SimError> {
+        if let SourceId::Ups(_) | SourceId::Pdu(_) = outlet_source {
+            let owner = self.devices.values().find(|d| match &d.kind {
+                DeviceKind::Ups(x) => x.source == Some(outlet_source),
+                DeviceKind::Pdu(x) => x.source == Some(outlet_source),
+                _ => false,
+            });
+            if owner.is_some_and(|d| d.rack.is_none()) {
+                return Err(SimError::Power("power source must be installed".into()));
+            }
+        }
+        match endpoint {
+            PowerEndpoint::Device(id) => {
+                let d = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
+                if d.rack.is_none()
+                    || matches!(
+                        d.kind,
+                        DeviceKind::PatchPanel(_)
+                            | DeviceKind::CableManager(_)
+                            | DeviceKind::Ups(_)
+                            | DeviceKind::Pdu(_)
+                    )
+                {
+                    return Err(SimError::Power(
+                        "power endpoint must be an installed active device".into(),
+                    ));
+                }
+            }
+            PowerEndpoint::Source(source) => {
+                if !self.power.source_exists_public(source) {
+                    return Err(SimError::Power("power source does not exist".into()));
+                }
+                let owner = self.devices.values().find(|d| match &d.kind {
+                    DeviceKind::Ups(x) => x.source == Some(source),
+                    DeviceKind::Pdu(x) => x.source == Some(source),
+                    _ => false,
+                });
+                if let Some(owner) = owner
+                    && owner.rack.is_none()
+                {
+                    return Err(SimError::Power("power source must be installed".into()));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -825,11 +1048,53 @@ impl NetworkSim {
     }
 
     fn set_power(&mut self, id: DeviceId, powered: bool) -> Result<(), SimError> {
-        self.devices
-            .get_mut(&id)
-            .ok_or(SimError::DeviceNotFound(id))?
-            .powered = powered;
+        if !self.devices.contains_key(&id) {
+            return Err(SimError::DeviceNotFound(id));
+        }
+        let source = match &self.devices[&id].kind {
+            DeviceKind::Ups(x) => x.source,
+            DeviceKind::Pdu(x) => x.source,
+            _ => None,
+        };
+        if let Some(source) = source {
+            self.power.set_source_enabled(source, powered);
+            self.sync_effective_power();
+            return Ok(());
+        }
+        self.power
+            .set_requested(id, powered)
+            .map_err(|e| SimError::Power(e.to_string()))?;
+        self.sync_effective_power();
         Ok(())
+    }
+
+    fn sync_effective_power(&mut self) {
+        let mut changed = false;
+        for (id, device) in &mut self.devices {
+            let source = match &device.kind {
+                DeviceKind::Ups(x) => x.source,
+                DeviceKind::Pdu(x) => x.source,
+                _ => None,
+            };
+            if let Some(source) = source {
+                let next = device.rack.is_some()
+                    && self
+                        .power
+                        .source_telemetry(source)
+                        .is_some_and(|t| t.available);
+                changed |= device.powered != next;
+                device.powered = next;
+                continue;
+            }
+            if let Some(status) = self.power.device_status(*id) {
+                let next = device.rack.is_some() && status.effective;
+                changed |= device.powered != next;
+                device.powered = next;
+            }
+        }
+        if changed {
+            self.topology_revision = self.topology_revision.saturating_add(1);
+        }
     }
 
     fn reset_port_config(&mut self, port: PortId) -> Result<(), SimError> {

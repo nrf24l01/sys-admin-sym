@@ -307,6 +307,20 @@ mod tests {
                 unit,
             })
             .unwrap();
+            let outlet = OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: unit - 1,
+            };
+            sim.execute(Command::ConnectPower {
+                outlet,
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
+            sim.execute(Command::SetPower {
+                device,
+                powered: false,
+            })
+            .unwrap();
             devices.push(device);
         }
         sim.execute(Command::BuyCableSupply {
@@ -381,7 +395,7 @@ mod tests {
     #[test]
     fn loading_trims_automatic_leads_but_preserves_custom_cuts_and_inventory() {
         let mut sim = NetworkSim::new();
-        for unit in [1, 12] {
+        for (outlet_index, unit) in [1, 12].into_iter().enumerate() {
             let SimEvent::DeviceAdded(device) = sim
                 .execute(Command::BuyDevice {
                     kind: DeviceTemplate::Switch,
@@ -394,6 +408,20 @@ mod tests {
                 device,
                 rack: RackId(1),
                 unit,
+            })
+            .unwrap();
+            let outlet = OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: outlet_index as u8,
+            };
+            sim.execute(Command::ConnectPower {
+                outlet,
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
+            sim.execute(Command::SetPower {
+                device,
+                powered: false,
             })
             .unwrap();
         }
@@ -424,8 +452,12 @@ mod tests {
         assert_eq!(sim.link(auto).unwrap().length_cm, expected);
 
         assert!(!sim.port_link_up(devices[0][0]));
-        for device in sim.devices.values_mut() {
-            device.powered = true;
+        for device in sim.devices().map(|device| device.id).collect::<Vec<_>>() {
+            sim.execute(Command::SetPower {
+                device,
+                powered: true,
+            })
+            .unwrap();
         }
         assert!(sim.port_link_up(devices[0][0]));
         sim.ports.get_mut(&devices[1][0]).unwrap().enabled = false;

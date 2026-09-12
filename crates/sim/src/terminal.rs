@@ -199,9 +199,10 @@ impl NetworkSim {
                     .is_some_and(|p| matches!(&p.config, PortConfig::Server(c) if c.ipv4.is_some()))
         });
         match command {
-            TerminalCommand::Help => {
-                output(true, "commands: ip addr|link|route (show, add, del, flush, set), route, arp, ping <ip>, traceroute <ip>")
-            }
+            TerminalCommand::Help => output(
+                true,
+                "commands: ip addr|link|route (show, add, del, flush, set), route, arp, ping <ip>, traceroute <ip>",
+            ),
             TerminalCommand::Ip => {
                 let lines = server
                     .ports
@@ -401,7 +402,10 @@ impl NetworkSim {
                     .flatten()
                     .collect();
                 if which.is_some() && ids.is_empty() {
-                    return output(false, format!("Cannot find device \"{}\"", which.as_deref().unwrap_or("")));
+                    return output(
+                        false,
+                        format!("Cannot find device \"{}\"", which.as_deref().unwrap_or("")),
+                    );
                 }
                 let ids = if which.is_some() {
                     ids
@@ -421,7 +425,10 @@ impl NetworkSim {
                     .flatten()
                     .collect();
                 if which.is_some() && ids.is_empty() {
-                    return output(false, format!("Cannot find device \"{}\"", which.as_deref().unwrap_or("")));
+                    return output(
+                        false,
+                        format!("Cannot find device \"{}\"", which.as_deref().unwrap_or("")),
+                    );
                 }
                 let ids = if which.is_some() {
                     ids
@@ -433,12 +440,22 @@ impl NetworkSim {
                         .iter()
                         .filter_map(|id| self.port(*id))
                         .map(|p| {
-                            let flags = if !p.enabled { "DOWN" } else if self.port_link_up(p.id) { "UP,LOWER_UP" } else { "UP,NO-CARRIER" };
+                            let flags = if !p.enabled {
+                                "DOWN"
+                            } else if self.port_link_up(p.id) {
+                                "UP,LOWER_UP"
+                            } else {
+                                "UP,NO-CARRIER"
+                            };
                             format!(
                                 "{}: <{}> state {}",
                                 p.name,
                                 flags,
-                                if p.enabled && self.port_link_up(p.id) { "UP" } else { "DOWN" }
+                                if p.enabled && self.port_link_up(p.id) {
+                                    "UP"
+                                } else {
+                                    "DOWN"
+                                }
                             )
                         })
                         .collect(),
@@ -497,7 +514,14 @@ impl NetworkSim {
                 replace,
             } => {
                 if delete {
-                    return self.change_gateway(server, &interface, name.as_deref(), gateway, true, true);
+                    return self.change_gateway(
+                        server,
+                        &interface,
+                        name.as_deref(),
+                        gateway,
+                        true,
+                        true,
+                    );
                 }
                 if !replace && name.as_deref().and_then(&interface).and_then(|p| self.port(p)).is_some_and(|p| matches!(&p.config, PortConfig::Server(c) if c.ipv4.as_ref().is_some_and(|v| v.gateway.is_some()))) {
                     return output(false, "File exists: default route already configured; use replace");
@@ -523,15 +547,17 @@ impl NetworkSim {
             PortConfig::Server(c) => c.ipv4.clone(),
             _ => None,
         });
-        if !delete && old.as_ref().is_some_and(|v| address.is_some_and(|a| v.address != a.0 || v.prefix != a.1)) {
-            return output(false, "RTNETLINK answers: address already configured; flush or delete it first");
-        }
-        if delete
-            && address.is_some()
+        if !delete
             && old
                 .as_ref()
-                .map(|v| (v.address, v.prefix)) != address
+                .is_some_and(|v| address.is_some_and(|a| v.address != a.0 || v.prefix != a.1))
         {
+            return output(
+                false,
+                "RTNETLINK answers: address already configured; flush or delete it first",
+            );
+        }
+        if delete && address.is_some() && old.as_ref().map(|v| (v.address, v.prefix)) != address {
             return output(false, "address not found");
         }
         let Some((ip, prefix)) = (if delete { None } else { address }) else {
@@ -567,7 +593,8 @@ impl NetworkSim {
                 self.port(*id)
                     .and_then(|p| match &p.config {
                         PortConfig::Server(c) => c.ipv4.as_ref().filter(|v| {
-                            (!clear || v.gateway.is_some()) && gateway.is_none_or(|g| v.gateway == Some(g))
+                            (!clear || v.gateway.is_some())
+                                && gateway.is_none_or(|g| v.gateway == Some(g))
                         }),
                         _ => None,
                     })
@@ -595,7 +622,12 @@ impl NetworkSim {
         if clear && old.gateway.is_none() {
             return output(false, "default route not found");
         }
-        let config = Ipv4InterfaceConfig { address: old.address, prefix: old.prefix, gateway: if clear { None } else { gateway }, vlan: old.vlan };
+        let config = Ipv4InterfaceConfig {
+            address: old.address,
+            prefix: old.prefix,
+            gateway: if clear { None } else { gateway },
+            vlan: old.vlan,
+        };
         self.execute(Command::SetIpv4 { port, config })
             .map(|_| {
                 output(
@@ -621,34 +653,85 @@ fn output(success: bool, line: impl Into<String>) -> TerminalOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CableSupply, DeviceTemplate, RackId, SimEvent};
+    use crate::{CableSupply, DeviceTemplate, OutletId, PowerEndpoint, RackId, SimEvent, SourceId};
 
     fn server() -> (NetworkSim, DeviceId) {
         let mut sim = NetworkSim::new();
-        let id = match sim.execute(Command::BuyDevice { kind: DeviceTemplate::Server }).unwrap()[0] {
+        let id = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Server,
+            })
+            .unwrap()[0]
+        {
             SimEvent::DeviceAdded(id) => id,
             _ => unreachable!(),
         };
-        sim.execute(Command::PlaceDevice { device: id, rack: RackId(1), unit: 1 }).unwrap();
-        sim.execute(Command::SetPower { device: id, powered: true }).unwrap();
+        sim.execute(Command::PlaceDevice {
+            device: id,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Device(id),
+        })
+        .unwrap();
+        sim.execute(Command::SetPower {
+            device: id,
+            powered: true,
+        })
+        .unwrap();
         (sim, id)
     }
 
     #[test]
     fn linux_ip_config_preserves_untagged_and_rejects_wrong_interface_without_mutation() {
         let (mut sim, id) = server();
-        assert!(sim.execute_console(id, "ip addr add 192.0.2.2/24 dev eth0").success);
-        assert!(sim.execute_console(id, "ip route add default via 192.0.2.1 dev eth0").success);
-        assert!(!sim.execute_console(id, "ip route add default via 192.0.2.254 dev eth0").success);
-        assert!(sim.execute_console(id, "ip route replace default via 192.0.2.254 dev eth0").success);
-        assert!(!sim.execute_console(id, "ip route replace default via 192.0.2.1 dev missing").success);
+        assert!(
+            sim.execute_console(id, "ip addr add 192.0.2.2/24 dev eth0")
+                .success
+        );
+        assert!(
+            sim.execute_console(id, "ip route add default via 192.0.2.1 dev eth0")
+                .success
+        );
+        assert!(
+            !sim.execute_console(id, "ip route add default via 192.0.2.254 dev eth0")
+                .success
+        );
+        assert!(
+            sim.execute_console(id, "ip route replace default via 192.0.2.254 dev eth0")
+                .success
+        );
+        assert!(
+            !sim.execute_console(id, "ip route replace default via 192.0.2.1 dev missing")
+                .success
+        );
         let port = sim.device(id).unwrap().ports()[0];
-        assert!(matches!(&sim.port(port).unwrap().config, PortConfig::Server(c) if c.ipv4.as_ref().is_some_and(|v| v.vlan.is_none() && v.gateway == Some("192.0.2.254".parse().unwrap()))));
-        assert!(sim.execute_console(id, "ip route del default via 192.0.2.254 dev eth0").success);
+        assert!(
+            matches!(&sim.port(port).unwrap().config, PortConfig::Server(c) if c.ipv4.as_ref().is_some_and(|v| v.vlan.is_none() && v.gateway == Some("192.0.2.254".parse().unwrap())))
+        );
+        assert!(
+            sim.execute_console(id, "ip route del default via 192.0.2.254 dev eth0")
+                .success
+        );
         let routes = sim.execute_console(id, "ip route show");
-        assert!(!routes.lines.iter().any(|line| line.contains("default")), "{routes:?}");
-        assert!(!sim.execute_console(id, "ip addr add 198.51.100.2/24 dev eth0").success);
-        assert!(!sim.execute_console(id, "ip addr del 198.51.100.2/24 dev eth0").success);
+        assert!(
+            !routes.lines.iter().any(|line| line.contains("default")),
+            "{routes:?}"
+        );
+        assert!(
+            !sim.execute_console(id, "ip addr add 198.51.100.2/24 dev eth0")
+                .success
+        );
+        assert!(
+            !sim.execute_console(id, "ip addr del 198.51.100.2/24 dev eth0")
+                .success
+        );
     }
 
     #[test]
@@ -666,7 +749,15 @@ mod tests {
     #[test]
     fn passive_devices_have_no_console_even_when_powered_off() {
         let mut sim = NetworkSim::new();
-        let id = match sim.execute(Command::BuyDevice { kind: DeviceTemplate::PatchPanel }).unwrap()[0] { SimEvent::DeviceAdded(id) => id, _ => unreachable!() };
+        let id = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::PatchPanel,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
         assert_eq!(sim.terminal_prompt(id), "no-console");
         assert!(!sim.execute_console(id, "show version").success);
         assert!(sim.console_help(id, "").is_empty());
@@ -675,16 +766,56 @@ mod tests {
     #[test]
     fn linux_network_configuration_drives_ping_and_flush() {
         let (mut sim, a) = server();
-        let (_, b) = ((), match sim.execute(Command::BuyDevice { kind: DeviceTemplate::Server }).unwrap()[0] { SimEvent::DeviceAdded(id) => id, _ => unreachable!() });
-        sim.execute(Command::PlaceDevice { device: b, rack: RackId(1), unit: 2 }).unwrap();
-        sim.execute(Command::SetPower { device: b, powered: true }).unwrap();
-        sim.execute(Command::BuyCableSupply { supply: CableSupply::CableBox305m }).unwrap();
-        sim.execute(Command::BuyCableSupply { supply: CableSupply::Rj45Pack20 }).unwrap();
+        let (_, b) = (
+            (),
+            match sim
+                .execute(Command::BuyDevice {
+                    kind: DeviceTemplate::Server,
+                })
+                .unwrap()[0]
+            {
+                SimEvent::DeviceAdded(id) => id,
+                _ => unreachable!(),
+            },
+        );
+        sim.execute(Command::PlaceDevice {
+            device: b,
+            rack: RackId(1),
+            unit: 2,
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 1,
+            },
+            endpoint: PowerEndpoint::Device(b),
+        })
+        .unwrap();
+        sim.execute(Command::SetPower {
+            device: b,
+            powered: true,
+        })
+        .unwrap();
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::CableBox305m,
+        })
+        .unwrap();
+        sim.execute(Command::BuyCableSupply {
+            supply: CableSupply::Rj45Pack20,
+        })
+        .unwrap();
         let ap = sim.device(a).unwrap().ports()[0];
         let bp = sim.device(b).unwrap().ports()[0];
         sim.execute(Command::Connect { a: ap, b: bp }).unwrap();
-        assert!(sim.execute_console(a, "ip addr add 10.0.0.1/24 dev eth0").success);
-        assert!(sim.execute_console(b, "ip addr add 10.0.0.2/24 dev eth0").success);
+        assert!(
+            sim.execute_console(a, "ip addr add 10.0.0.1/24 dev eth0")
+                .success
+        );
+        assert!(
+            sim.execute_console(b, "ip addr add 10.0.0.2/24 dev eth0")
+                .success
+        );
         assert!(sim.ping(ap, "10.0.0.2".parse().unwrap()).reachable);
         assert!(sim.execute_console(a, "ip link set dev eth0 down").success);
         assert!(!sim.ping(ap, "10.0.0.2".parse().unwrap()).reachable);
@@ -697,9 +828,18 @@ mod tests {
     #[test]
     fn deleting_default_route_without_dev_targets_configured_gateway() {
         let (mut sim, id) = server();
-        assert!(sim.execute_console(id, "ip addr add 10.0.0.2/24 dev eth0").success);
-        assert!(sim.execute_console(id, "ip addr add 10.0.1.2/24 dev eth1").success);
-        assert!(sim.execute_console(id, "ip route replace default via 10.0.1.1 dev eth1").success);
+        assert!(
+            sim.execute_console(id, "ip addr add 10.0.0.2/24 dev eth0")
+                .success
+        );
+        assert!(
+            sim.execute_console(id, "ip addr add 10.0.1.2/24 dev eth1")
+                .success
+        );
+        assert!(
+            sim.execute_console(id, "ip route replace default via 10.0.1.1 dev eth1")
+                .success
+        );
         assert!(sim.execute_console(id, "ip route del default").success);
         let missing = sim.execute_console(id, "ip route del default");
         assert!(!missing.success);

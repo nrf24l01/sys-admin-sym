@@ -16,7 +16,9 @@ The game starts with one empty 12U rack and $6,000.
 1. Buy a Cisco ISR C1111-8P, Cisco Catalyst C1000-24T-4G-L, and Dell
    PowerEdge R360 servers in the shop.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
-3. Power devices from the inspector.
+3. Buy an APC Smart-UPS or PDU, place it in the rack, then connect active
+   devices to rack C13, UPS, or PDU outlets. Use the inspector to request
+   device power; an unplugged device remains off.
 4. In **RACK**, left-click an RJ45 socket and then another RJ45
    socket. Buy a 305 m cable box and RJ45 connector packs in the shop first;
    each new lead consumes its cut length and two plugs. Choose white, gray, blue,
@@ -58,3 +60,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 The real-equipment reference textures and their sources are documented in
 [`assets/equipment/ATTRIBUTION.md`](assets/equipment/ATTRIBUTION.md).
+## Power model
+
+The simulation exposes a deterministic `PowerSystem` domain model. Active
+loads connect explicitly to one of four rack C13 outlets, a PDU outlet, or an
+APC Smart-UPS inspired outlet; PDUs may themselves be fed by a UPS. Electrical
+limits are evaluated at 230 V using integer W, VA and mA values. UPS defaults
+are 1,000 W / 1,500 VA with four outlets; battery capacity and efficiency are
+simulation parameters. Rack breakers and source trips latch until reset, and
+`tick` advances battery discharge or recharge in simulated seconds.
+The default UPS uses a synthetic 900 Wh battery and 90% efficiency. The
+reference APC SMT1500RMI2U is rated 230 V, 1,000 W / 1,500 VA with four C13
+outlets: https://www.se.com/au/en/product/SMT1500RMI2U/.

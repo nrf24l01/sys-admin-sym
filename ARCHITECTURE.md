@@ -73,3 +73,12 @@ network.
 L1–L3 behavior is implemented. The simulator has no TCP/UDP sessions, transport
 reliability, presentation encoding, application protocols, wire serialization,
 or wall-clock packet timing (L4–L7).
+## Power
+
+Power is represented by the pure `PowerSystem` domain in `crates/sim`. Rack
+mains expose exactly four C13 outlets. UPS and PDU outlets are explicit graph
+edges, so a PDU can be downstream of a UPS. Loads are calculated at 230 V in
+integer W, VA, and mA; source limits latch trips until reset. UPS battery
+energy is persisted and advanced through `NetworkSim::advance_time` using
+millisecond simulation time, including transfer, discharge, and recharge.
+Legacy saves receive empty wiring and no implicit power source.

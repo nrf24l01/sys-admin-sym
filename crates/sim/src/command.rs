@@ -110,6 +110,20 @@ pub enum Command {
         device: DeviceId,
         powered: bool,
     },
+    ConnectPower {
+        outlet: crate::OutletId,
+        endpoint: crate::PowerEndpoint,
+    },
+    DisconnectPower {
+        outlet: crate::OutletId,
+    },
+    ResetPowerBreaker {
+        source: crate::SourceId,
+    },
+    SetRackMains {
+        rack: RackId,
+        on: bool,
+    },
     ResetPortConfig {
         port: PortId,
     },

@@ -240,7 +240,10 @@ impl NetworkSim {
         let Some(dev) = self.device(device) else {
             return reply(false, "% Device not found.");
         };
-        if !matches!(dev.kind, DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)) {
+        if !matches!(
+            dev.kind,
+            DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)
+        ) {
             return reply(false, "% This device has no console.");
         }
         if !dev.powered {

@@ -11,6 +11,18 @@ fn installed(sim: &mut NetworkSim, kind: DeviceTemplate, unit: u8) -> DeviceId {
         unit,
     })
     .unwrap();
+    let outlet = (0..RACK_C13_OUTLETS as u8)
+        .map(|index| OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index,
+        })
+        .find(|outlet| !sim.power.connections.contains_key(outlet))
+        .expect("rack has a free C13 outlet");
+    sim.execute(Command::ConnectPower {
+        outlet,
+        endpoint: PowerEndpoint::Device(device),
+    })
+    .unwrap();
     device
 }
 fn endpoints(sim: &mut NetworkSim) -> (PortId, PortId) {
