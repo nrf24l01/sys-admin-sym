@@ -373,6 +373,10 @@ impl NetworkSim {
                 self.set_port_speed(port, speed)?;
                 vec![SimEvent::PortConfigChanged(port)]
             }
+            Command::SetPortEnabled { port, enabled } => {
+                self.set_port_enabled(port, enabled)?;
+                vec![SimEvent::PortConfigChanged(port)]
+            }
             Command::CreateVlan { switch, vlan } => {
                 self.create_vlan(switch, vlan)?;
                 vec![SimEvent::ConnectivityChanged]
@@ -921,6 +925,16 @@ impl NetworkSim {
             }
             _ => Err(SimError::WrongPortType),
         }
+    }
+
+    fn set_port_enabled(&mut self, id: PortId, enabled: bool) -> Result<(), SimError> {
+        let port = self.ports.get_mut(&id).ok_or(SimError::PortNotFound(id))?;
+        if !matches!(port.config, PortConfig::Server(_)) {
+            return Err(SimError::WrongPortType);
+        }
+        port.enabled = enabled;
+        self.routing_revision += 1;
+        Ok(())
     }
 
     fn set_ipv4(&mut self, id: PortId, config: Ipv4InterfaceConfig) -> Result<(), SimError> {

@@ -1,6 +1,6 @@
 use crate::app::*;
 use bevy::prelude::*;
-use cloud_provider_sim::{Command, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId};
+use cloud_provider_sim::{Command, DeviceKind, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::net::Ipv4Addr;
 use std::thread::{self, JoinHandle};
@@ -357,9 +357,11 @@ fn translate_ui_actions(
             UiAction::MoveCableRoutePoint { link, index, point } => Some(Command::MoveCableRoutePoint { link: *link, index: *index, point: *point }),
             UiAction::RerouteCable { link, route } => Some(Command::RerouteCable { link: *link, route: route.clone() }),
             UiAction::LaunchExternalTerminal(device) => {
-                state.terminal_windows.insert(*device);
-                state.terminal_window_focus.insert(*device);
-                state.notice = Some(("Terminal window opened".into(), true));
+                if snapshot.0.device(*device).is_some_and(|d| matches!(d.kind, DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_))) {
+                    state.terminal_windows.insert(*device);
+                    state.terminal_window_focus.insert(*device);
+                    state.notice = Some(("Terminal window opened".into(), true));
+                }
                 None
             }
             UiAction::Save => {

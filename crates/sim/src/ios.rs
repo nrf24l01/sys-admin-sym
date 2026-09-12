@@ -201,6 +201,9 @@ impl NetworkSim {
         if let DeviceKind::Server(server) = &dev.kind {
             return format!("{}$", server.hostname);
         }
+        if !matches!(dev.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)) {
+            return "no-console".into();
+        }
         let name = self
             .ios_configs
             .get(&device)
@@ -237,6 +240,9 @@ impl NetworkSim {
         let Some(dev) = self.device(device) else {
             return reply(false, "% Device not found.");
         };
+        if !matches!(dev.kind, DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)) {
+            return reply(false, "% This device has no console.");
+        }
         if !dev.powered {
             return reply(
                 false,
@@ -265,6 +271,12 @@ impl NetworkSim {
     }
 
     pub fn console_help(&self, device: DeviceId, prefix: &str) -> Vec<String> {
+        if !self
+            .device(device)
+            .is_some_and(|d| matches!(d.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)))
+        {
+            return Vec::new();
+        }
         let switch = self
             .device(device)
             .is_some_and(|d| matches!(d.kind, DeviceKind::Switch(_)));

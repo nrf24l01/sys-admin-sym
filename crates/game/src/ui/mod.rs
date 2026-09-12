@@ -18,6 +18,18 @@ fn selected_link_id(state: &UiState) -> Option<LinkId> {
     }
 }
 
+fn console_scroll_height(available_height: f32, controls_height: f32) -> f32 {
+    (available_height - controls_height).max(0.0)
+}
+
+fn console_output_scroll(ui: &egui::Ui, controls_height: f32) -> egui::ScrollArea {
+    let height = console_scroll_height(ui.available_height(), controls_height);
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .min_scrolled_height(height)
+        .max_height(height)
+}
+
 fn inventory_model_name(device: &Device) -> String {
     device
         .name
@@ -27,9 +39,12 @@ fn inventory_model_name(device: &Device) -> String {
 
 #[derive(Resource, Default)]
 pub struct EquipmentImages {
-    server: Handle<Image>,
-    switch: Handle<Image>,
-    router: Handle<Image>,
+    server_front: Handle<Image>,
+    server_rear: Handle<Image>,
+    switch_front: Handle<Image>,
+    switch_rear: Handle<Image>,
+    router_front: Handle<Image>,
+    router_rear: Handle<Image>,
     jacket: Handle<Image>,
     plug: Handle<Image>,
     cables: CableScene,
@@ -38,17 +53,23 @@ pub struct EquipmentImages {
 
 #[derive(Clone, Copy)]
 struct EquipmentTextures {
-    server: egui::TextureId,
-    switch: egui::TextureId,
-    router: egui::TextureId,
+    server_front: egui::TextureId,
+    server_rear: egui::TextureId,
+    switch_front: egui::TextureId,
+    switch_rear: egui::TextureId,
+    router_front: egui::TextureId,
+    router_rear: egui::TextureId,
     jacket: egui::TextureId,
     plug: egui::TextureId,
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
-    images.server = assets.load("equipment/server_rear_clean.png");
-    images.switch = assets.load("equipment/switch_front_clean.png");
-    images.router = assets.load("equipment/router_rear_clean.png");
+    images.server_front = assets.load("equipment/server_front.png");
+    images.server_rear = assets.load("equipment/server_rear_clean.png");
+    images.switch_front = assets.load("equipment/switch_front_clean.png");
+    images.switch_rear = assets.load("equipment/switch_rear.png");
+    images.router_front = assets.load("equipment/router_rear_clean.png");
+    images.router_rear = assets.load("equipment/router_front_clean.png");
     images.jacket = assets.load("cables/pvc_jacket.png");
     images.plug = assets.load("cables/rj45_plug.png");
 }
@@ -63,9 +84,15 @@ pub fn main_ui(
 ) -> Result {
     if images.textures.is_none() {
         images.textures = Some(EquipmentTextures {
-            server: contexts.add_image(EguiTextureHandle::Strong(images.server.clone())),
-            switch: contexts.add_image(EguiTextureHandle::Strong(images.switch.clone())),
-            router: contexts.add_image(EguiTextureHandle::Strong(images.router.clone())),
+            server_front: contexts
+                .add_image(EguiTextureHandle::Strong(images.server_front.clone())),
+            server_rear: contexts.add_image(EguiTextureHandle::Strong(images.server_rear.clone())),
+            switch_front: contexts
+                .add_image(EguiTextureHandle::Strong(images.switch_front.clone())),
+            switch_rear: contexts.add_image(EguiTextureHandle::Strong(images.switch_rear.clone())),
+            router_front: contexts
+                .add_image(EguiTextureHandle::Strong(images.router_front.clone())),
+            router_rear: contexts.add_image(EguiTextureHandle::Strong(images.router_rear.clone())),
             jacket: contexts.add_image(EguiTextureHandle::Strong(images.jacket.clone())),
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
         });
@@ -441,6 +468,27 @@ fn inspector_panel(
     drafts: &mut EditorDrafts,
     actions: &mut MessageWriter<UiAction>,
 ) {
+    let passive_selection = match state.selected {
+        Selection::Device(id) => sim.device(id).is_some_and(|device| {
+            matches!(
+                device.kind,
+                DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+            )
+        }),
+        Selection::Port(id) => sim
+            .port(id)
+            .and_then(|port| sim.device(port.device))
+            .is_some_and(|device| {
+                matches!(
+                    device.kind,
+                    DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+                )
+            }),
+        _ => false,
+    };
+    if passive_selection {
+        return;
+    }
     egui::Panel::right("inspector")
         .default_size(360.0)
         .show(viewport, |ui| {
@@ -469,6 +517,22 @@ fn device_inspector(
         return;
     };
     ui.heading(&device.name);
+    let passive = matches!(
+        device.kind,
+        DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+    );
+    if passive {
+        if device.rack.is_some()
+            && ui.button("Eject from rack").on_hover_text(
+                "Uninstall this device; connected cables are unplugged and returned to inventory.",
+            ).clicked()
+        {
+            actions.write(UiAction::Remove(id));
+        }
+        ui.separator();
+        ui.weak("Passive rack hardware has no power, status, terminal, or configuration controls. Use its rack sockets to connect and unplug cables.");
+        return;
+    }
     ui.horizontal(|ui| {
         let color = if device.powered {
             egui::Color32::GREEN
@@ -597,6 +661,13 @@ fn port_inspector(
         && ui.button("Disconnect cable").clicked()
     {
         actions.write(UiAction::Disconnect(link.id));
+    }
+    if matches!(
+        owner.kind,
+        DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+    ) {
+        ui.weak("Passive port: cable connections are managed from the rack view.");
+        return;
     }
     ui.separator();
     match &port.config {
@@ -817,24 +888,23 @@ fn terminal_panel(
     state: &mut UiState,
     actions: &mut MessageWriter<UiAction>,
 ) {
+    // Existing terminal windows remain visible even when the rack selection is
+    // a passive device. Passive hardware itself has no console dock or action.
+    let windows = state.terminal_windows.iter().copied().collect::<Vec<_>>();
+    for window_device in windows.iter().copied() {
+        terminal_window(viewport, sim, state, window_device, actions);
+    }
     let device = match state.selected {
         Selection::Device(id) => sim.device(id).map(|d| d.id),
         Selection::Port(id) => sim.port(id).map(|p| p.device),
-        _ => state
-            .terminal_windows
-            .iter()
-            .copied()
-            .find(|id| sim.device(*id).is_some()),
+        _ => None,
     };
-    let Some(device) = device else {
+    let Some(device) = device.filter(|id| sim.device(*id).is_some_and(is_console_device)) else {
         return;
     };
     let dev = sim.device(device).unwrap();
     let server = matches!(dev.kind, DeviceKind::Server(_));
     if state.terminal_windows.contains(&device) {
-        for window_device in state.terminal_windows.iter().copied().collect::<Vec<_>>() {
-            terminal_window(viewport, sim, state, window_device, actions);
-        }
         return;
     }
     let console = state.terminals.entry(device).or_default();
@@ -852,9 +922,12 @@ fn terminal_panel(
             });
             if !server { ui.weak("? help · Up/Down history · Tab completion · Ctrl-Z end · Scripts stop at the first error"); }
             if !dev.powered { ui.colored_label(egui::Color32::YELLOW, "Power on this device in the Inspector to use its console."); }
-            egui::ScrollArea::vertical()
+            console_output_scroll(ui, if console.script_mode { 120.0 } else { 70.0 })
                 .id_salt(("console-output", device.0))
-                .max_height((ui.available_height() - if console.script_mode { 120.0 } else { 70.0 }).max(60.0))
+                .max_height(console_scroll_height(
+                    ui.available_height(),
+                    if console.script_mode { 120.0 } else { 70.0 },
+                ).max(60.0))
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     if console.lines.is_empty() {
@@ -910,11 +983,13 @@ fn terminal_panel(
                 }
             });
         });
-    for window_device in state.terminal_windows.iter().copied().collect::<Vec<_>>() {
-        if window_device != device {
-            terminal_window(viewport, sim, state, window_device, actions);
-        }
-    }
+}
+
+fn is_console_device(device: &Device) -> bool {
+    matches!(
+        device.kind,
+        DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)
+    )
 }
 
 fn terminal_window(
@@ -929,6 +1004,11 @@ fn terminal_window(
         state.terminal_window_focus.remove(&device);
         return;
     };
+    if !is_console_device(dev) {
+        state.terminal_windows.remove(&device);
+        state.terminal_window_focus.remove(&device);
+        return;
+    }
     let powered = dev.powered;
     let name = dev.name.clone();
     let server = matches!(dev.kind, DeviceKind::Server(_));
@@ -949,7 +1029,8 @@ fn terminal_window(
                     "IOS CONSOLE • LIVE"
                 },
             );
-            egui::ScrollArea::vertical()
+            console_output_scroll(ui, 58.0)
+                .max_height((ui.available_height() - 58.0).max(0.0))
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     if console.lines.is_empty() {
@@ -1047,12 +1128,12 @@ fn rack_view(
                 }
             });
             ui.weak(
-                "Buy cable + RJ45 plugs, then click two sockets. Drag a wire to move its slack.",
+                "Buy cable + RJ45 plugs, then click two sockets. Select a cable, then click the visible left/right rail anchors to add or remove route points. Drag a wire to move its slack.",
             );
         });
-        egui::ScrollArea::vertical()
-            .id_salt("rack-scroll")
-            .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("rack-scroll")
+                .show(ui, |ui| {
                 let selected_inventory = match state.selected {
                     Selection::Device(id) if sim.device(id).is_some_and(|d| d.rack.is_none()) => {
                         Some(id)
@@ -1088,22 +1169,20 @@ fn rack_view(
                                 ),
                                 egui::pos2(row_rect.right() - 5.0, row_rect.bottom() - gap * 0.5),
                             );
-                            if selected_link_id(state).is_some() {
-                                route_anchors.push((
-                                    rack.id,
-                                    unit,
-                                    state.rack_side,
-                                    0,
-                                    egui::pos2(panel_rect.left() - 8.0, panel_rect.center().y),
-                                ));
-                                route_anchors.push((
-                                    rack.id,
-                                    unit,
-                                    state.rack_side,
-                                    48,
-                                    egui::pos2(panel_rect.right() + 8.0, panel_rect.center().y),
-                                ));
-                            }
+                            route_anchors.push((
+                                rack.id,
+                                unit,
+                                state.rack_side,
+                                0,
+                                egui::pos2(panel_rect.left() - 8.0, panel_rect.center().y),
+                            ));
+                            route_anchors.push((
+                                rack.id,
+                                unit,
+                                state.rack_side,
+                                48,
+                                egui::pos2(panel_rect.right() + 8.0, panel_rect.center().y),
+                            ));
                             ui.painter().text(
                                 egui::pos2(row_rect.left() + 21.0, row_rect.center().y),
                                 egui::Align2::CENTER_CENTER,
@@ -1113,9 +1192,15 @@ fn rack_view(
                             );
                             if let Some(device_id) = rack.occupies(unit) {
                                 let device = sim.device(device_id).expect("rack device exists");
+                                row_response.context_menu(|menu| {
+                                    menu.label(device.name.as_str());
+                                    if menu.button("Eject from rack").clicked() {
+                                        actions.write(UiAction::Remove(device_id));
+                                        menu.close();
+                                    }
+                                });
                                 if matches!(device.kind, DeviceKind::CableManager(_))
                                     && state.rack_side == RackSide::Front
-                                    && selected_link_id(state).is_some()
                                 {
                                     for slot in 0..6u16 {
                                         let offset_cm = slot * 48 / 5;
@@ -1178,16 +1263,19 @@ fn rack_view(
                                         }
                                     }
                                     _ => {
-                                        let textured = matches!(device.kind, DeviceKind::Server(_) if state.rack_side == RackSide::Rear)
-                                            || matches!(device.kind, DeviceKind::Switch(_) | DeviceKind::Router(_) if state.rack_side == RackSide::Front);
+                                        let textured = matches!(device.kind, DeviceKind::Server(_)
+                                            | DeviceKind::Switch(_) | DeviceKind::Router(_));
                                         if textured {
                                             let texture = match device.kind {
-                                                DeviceKind::Server(_) => textures.server,
-                                                DeviceKind::Switch(_) => textures.switch,
-                                                DeviceKind::Router(_) => textures.router,
+                                                DeviceKind::Server(_) if state.rack_side == RackSide::Front => textures.server_front,
+                                                DeviceKind::Server(_) => textures.server_rear,
+                                                DeviceKind::Switch(_) if state.rack_side == RackSide::Front => textures.switch_front,
+                                                DeviceKind::Switch(_) => textures.switch_rear,
+                                                DeviceKind::Router(_) if state.rack_side == RackSide::Front => textures.router_front,
+                                                DeviceKind::Router(_) => textures.router_rear,
                                                 _ => unreachable!(),
                                             };
-                                            ui.painter().image(texture, panel_rect, equipment_uv(&device.kind), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
+                                            ui.painter().image(texture, panel_rect, equipment_uv(&device.kind, state.rack_side), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
                                         } else {
                                             ui.painter().rect_filled(panel_rect.shrink(3.0), 1.0, egui::Color32::from_rgb(38, 44, 50));
                                             ui.painter().rect_stroke(panel_rect.shrink(8.0), 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(75)), egui::StrokeKind::Inside);
@@ -1211,21 +1299,19 @@ fn rack_view(
                                     ),
                                     egui::StrokeKind::Outside,
                                 );
-                                ui.painter().circle_filled(
-                                    egui::pos2(panel_rect.right() - 10.0, panel_rect.top() + 10.0),
-                                    4.0,
-                                    if device.powered {
-                                        egui::Color32::GREEN
-                                    } else {
-                                        egui::Color32::from_gray(45)
-                                    },
-                                );
+                                if !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)) {
+                                    ui.painter().circle_filled(
+                                        egui::pos2(panel_rect.right() - 10.0, panel_rect.top() + 10.0),
+                                        4.0,
+                                        if device.powered { egui::Color32::GREEN } else { egui::Color32::from_gray(45) },
+                                    );
+                                }
                                 if matches!(device.kind, DeviceKind::Server(_)) && state.rack_side == RackSide::Front {
                                     let power_rect = egui::Rect::from_center_size(
-                                        egui::pos2(panel_rect.left() + 14.0, panel_rect.center().y),
+                                        egui::pos2(panel_rect.right() - panel_rect.width() * 0.04, panel_rect.top() + panel_rect.height() * 0.14),
                                         egui::vec2(18.0, 18.0),
                                     );
-                                    if ui.interact(power_rect, egui::Id::new(("rack-power", device_id.0)), egui::Sense::click()).clicked() {
+                                    if ui.interact(power_rect, egui::Id::new(("rack-power", device_id.0)), egui::Sense::click()).on_hover_text("Power on/off").clicked() {
                                         actions.write(UiAction::TogglePower(device_id, !device.powered));
                                     }
                                 }
@@ -1241,7 +1327,9 @@ fn rack_view(
                                         port.connector,
                                     );
                                     port_visuals.push((*port_id, port_rect));
-                                    if port.connector.supports_cabling() {
+                                    if port.connector.supports_cabling()
+                                        && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
+                                    {
                                         let led_size = egui::vec2(2.0, 2.0);
                                         // Switch LEDs are printed beside each jack on the
                                         // generated front panel. Keep those calibrated positions;
@@ -1355,30 +1443,38 @@ fn rack_view(
                         egui::pos2(panel_right + RACK_MANAGER_WIDTH, cabinet.bottom()),
                     ),
                 ] {
+                    ui.painter().rect_filled(
+                        manager,
+                        1.0,
+                        egui::Color32::from_rgb(20, 31, 38),
+                    );
                     let x = manager.center().x;
                     ui.painter().line_segment(
                         [
                             egui::pos2(x, cabinet.top() + 4.0),
                             egui::pos2(x, cabinet.bottom() - 4.0),
                         ],
-                        egui::Stroke::new(3.0, egui::Color32::from_rgb(24, 29, 34)),
+                        egui::Stroke::new(5.0, egui::Color32::from_rgb(62, 91, 103)),
                     );
                     for unit in 0..rack.units {
                         let y = cabinet.top() + (unit as f32 + 0.5) * row_height;
                         ui.painter().circle_filled(
                             egui::pos2(x, y),
-                            3.0,
-                            egui::Color32::from_rgb(67, 76, 83),
+                            4.0,
+                            egui::Color32::from_rgb(116, 145, 157),
                         );
                     }
                 }
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
-                if let Some(link_id) = selected_link_id(state) {
-                    let route = sim
-                        .link(link_id)
-                        .map(|link| link.route.clone())
-                        .unwrap_or_default();
-                    for (rack_id, unit, side, offset_cm, position) in route_anchors {
+                let selected_route = selected_link_id(state).and_then(|link_id| sim.link(link_id).map(|link| (link_id, link.route.clone())));
+                for (rack_id, unit, side, offset_cm, position) in route_anchors {
+                    let Some((link_id, route)) = selected_route.as_ref() else {
+                        let anchor_rect = egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                        ui.interact(anchor_rect, egui::Id::new(("route-anchor", rack_id.0, unit, side == RackSide::Front, offset_cm)), egui::Sense::hover())
+                            .on_hover_text("Cable route anchor · select a cable to add or remove this anchor");
+                        ui.painter().circle_filled(position, 5.0, egui::Color32::from_rgb(76, 104, 115));
+                        continue;
+                    };
                         let used = route.iter().position(|point| {
                             point.rack == rack_id
                                 && point.unit == unit
@@ -1397,7 +1493,7 @@ fn rack_view(
                                 offset_cm,
                             )),
                             egui::Sense::click(),
-                        );
+                        ).on_hover_text("Click to add or remove this anchor for the selected cable");
                         ui.painter().circle_filled(
                             position,
                             4.0,
@@ -1410,12 +1506,12 @@ fn rack_view(
                         if response.clicked() {
                             if let Some(index) = used {
                                 actions.write(UiAction::RemoveCableRoutePoint {
-                                    link: link_id,
+                                    link: *link_id,
                                     index,
                                 });
                             } else {
                                 actions.write(UiAction::AddCableRoutePoint {
-                                    link: link_id,
+                                    link: *link_id,
                                     point: CableRoutePoint {
                                         rack: rack_id,
                                         unit,
@@ -1425,7 +1521,6 @@ fn rack_view(
                                 });
                             }
                         }
-                    }
                 }
                 // Space below the rack is the floor for hanging service loops.
                 ui.allocate_space(egui::vec2(rack_width, 120.0));
@@ -1505,7 +1600,7 @@ fn rack_view(
                             1.5,
                             egui::Color32::from_rgba_premultiplied(255, 196, 64, 42),
                         );
-                    }
+                }
                     if is_pending
                         || hovered
                         || paired_selected
@@ -1573,6 +1668,18 @@ fn rack_view(
                             "SFP cabling is not implemented yet"
                         }
                     ));
+                    response.context_menu(|menu| {
+                        menu.label("Cable actions");
+                        if let Some(link) = link {
+                            if menu.button("Unplug cable").clicked() {
+                                actions.write(UiAction::Disconnect(link.id));
+                                menu.close();
+                            }
+                        } else if supported && menu.button("Connect RJ45 cable").clicked() {
+                            actions.write(UiAction::CablePort(port_id));
+                            menu.close();
+                        }
+                    });
                     if supported && link.is_some() && response.clicked() {
                         actions.write(UiAction::SelectPort(port_id));
                     } else if supported && response.clicked() {
@@ -1586,14 +1693,17 @@ fn rack_view(
     });
 }
 
-fn equipment_uv(kind: &DeviceKind) -> egui::Rect {
+fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
     // Crop the generated photographs to their front panels at render time.
-    let (top, bottom) = match kind {
-        DeviceKind::Switch(_) => (210.0 / 666.0, 434.0 / 666.0),
-        DeviceKind::Router(_) => (193.0 / 683.0, 480.0 / 683.0),
-        _ => (0.0, 1.0),
+    let (left, top, right, bottom) = match kind {
+        DeviceKind::Server(_) if side == RackSide::Front => (0.009, 0.48, 0.995, 0.84),
+        DeviceKind::Switch(_) if side == RackSide::Rear => (0.002, 0.45, 0.997, 0.755),
+        DeviceKind::Switch(_) => (0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
+        DeviceKind::Router(_) if side == RackSide::Rear => (0.0, 0.31, 1.0, 0.70),
+        DeviceKind::Router(_) => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
+        _ => (0.0, 0.0, 1.0, 1.0),
     };
-    egui::Rect::from_min_max(egui::pos2(0.0, top), egui::pos2(1.0, bottom))
+    egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
 }
 
 fn rack_port_position(kind: &DeviceKind, rect: egui::Rect, index: usize) -> egui::Pos2 {
@@ -1773,5 +1883,50 @@ mod tests {
                 .len(),
             24
         );
+    }
+
+    #[test]
+    fn console_scroll_area_grows_with_window_and_keeps_input_visible() {
+        fn layout(height: f32, line_count: usize) -> (egui::Rect, egui::Rect, egui::Rect) {
+            let ctx = egui::Context::default();
+            let mut output = egui::Rect::NOTHING;
+            let mut input = egui::Rect::NOTHING;
+            let mut parent = egui::Rect::NOTHING;
+            let mut full_output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, height),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        parent = ui.max_rect();
+                        output = console_output_scroll(ui, 58.0)
+                            .show(ui, |ui| {
+                                for _ in 0..line_count {
+                                    ui.label("long console output");
+                                }
+                            })
+                            .inner_rect;
+                        let mut input_text = String::new();
+                        input = ui.add(egui::TextEdit::singleline(&mut input_text)).rect;
+                    });
+                },
+            );
+            full_output.textures_delta.clear();
+            (parent, output, input)
+        }
+
+        let (small_parent, small_output, small_input) = layout(240.0, 0);
+        let (large_parent, large_output, large_input) = layout(480.0, 0);
+        let (_, long_small_output, _) = layout(240.0, 100);
+        let (_, long_large_output, _) = layout(480.0, 100);
+        assert!(large_output.height() > small_output.height());
+        assert!(long_small_output.height() > 0.0);
+        assert!(long_large_output.height() > long_small_output.height());
+        assert!(small_input.bottom() <= small_parent.bottom());
+        assert!(large_input.bottom() <= large_parent.bottom());
     }
 }

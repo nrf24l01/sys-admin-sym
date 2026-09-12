@@ -5,12 +5,14 @@ names and trademarks belong to their respective owners. The source-code license
 does not grant rights to these images; review the manufacturer terms before
 redistributing a packaged build.
 
-The game loads `server_rear_clean.png`, `switch_front_clean.png`, and
-`router_rear_clean.png`. The server remains a cleanup derivative of the Dell
-reference below. The Cisco textures are AI-upscaled derivatives of the two
-user-provided product photographs, with the front panels cropped at render time.
-Small labels and details may differ from the source photos. Socket hitboxes are
-aligned to the displayed derivatives.
+The game currently loads `server_rear_clean.png`, `switch_front_clean.png`, and
+`router_rear_clean.png`. In the simulation, the connector-bearing
+`router_rear_clean.png` is presented as the router's interactive/front face;
+`router_front_clean.png` is the physical bezel side and is an opposite-face
+reference. The additional opposite-face references are `server_front.png`,
+`switch_rear.png`, and `router_front_clean.png`. Small labels and details may
+differ from the source images. Socket hitboxes are aligned to the displayed
+derivatives.
 
 ## Current Cisco rack textures
 
@@ -55,3 +57,29 @@ The older reference assets below are retained for reference.
 - URL: https://www.cisco.com/c/en/us/td/docs/routers/access/1100/hardware/installation/guide/b-cisco-1100-series-hig/isr1k-hig-overview.html
 - Direct image: https://www.cisco.com/c/dam/en/us/td/i/300001-400000/360001-370000/366001-367000/366944.jpg
 - Copyright: Cisco Systems, Inc.
+
+## Additional opposite-face references
+
+- `server_front.png`: Dell PowerEdge R360 4 x 3.5-inch front product photograph.
+  Source: Dell Technologies Official Store UAE product listing
+  (direct image: https://www.dellonline.ae/cdn/shop/files/b6f2c4eb-071e-402b-8be3-4480bdfb8aad-2.jpg?crop=center&height=1200&v=1755248709&width=1200).
+  No explicit reuse license was stated on the listing; Dell and the
+  photographer retain their rights.
+- `switch_rear.png`: Cisco Catalyst 1000 rear panel product photograph,
+  C1000-24P-4G-L chassis (same rear enclosure family as C1000-24T-4G-L).
+  Source: TelQuest International product gallery (direct image:
+  https://www.telquestintl.com/site/images/products/C1000-24P-4G-L-RF.Media-3.jpg?resizeh=1000&resizeid=4&resizew=4000).
+  No reuse license was stated on the retailer listing; Cisco and the
+  photographer retain their rights. Cisco's official rear-panel figure is
+  linked above as the model-reference source.
+- `router_front_clean.png`: Cisco ISR 1100 Series C1111-8P bezel/front product
+  photograph. Source: Network Devices Inc. product gallery (direct image:
+  https://networkdevicesinc.com/cdn/shop/files/c1111-8p_1.webp?v=1737716613).
+  No reuse license was stated on the retailer listing; Cisco and the
+  photographer retain their rights. This is the physical bezel side and has no
+  network sockets; keep the connector-bearing C1111-8P I/O face for any
+  interactive socket overlay.
+- Processing for these three files: scale to the rack panel aspect ratio and
+  PNG conversion only; the source photos retain their white margins and server
+  lid perspective. The UI applies the final face UV crop at render time. No
+  generated or stylized content was added.

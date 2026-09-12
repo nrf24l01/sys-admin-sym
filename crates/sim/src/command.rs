@@ -67,6 +67,10 @@ pub enum Command {
         port: PortId,
         speed: LinkSpeed,
     },
+    SetPortEnabled {
+        port: PortId,
+        enabled: bool,
+    },
     CreateVlan {
         switch: DeviceId,
         vlan: Vlan,
