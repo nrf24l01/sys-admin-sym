@@ -72,6 +72,33 @@ impl NetworkSim {
             PowerEndpoint::Device(id) => self.devices.contains_key(id),
             PowerEndpoint::Source(_) => true,
         });
+        // Saves written before typed cords existed used IEC implicitly. Routers
+        // are the sole device supplied with the Cisco DC adapter.
+        self.power
+            .cord_kinds
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
+        let missing_cords: Vec<_> = self
+            .power
+            .connections
+            .iter()
+            .filter_map(|(outlet, endpoint)| {
+                (!self.power.cord_kinds.contains_key(outlet)).then_some((*outlet, *endpoint))
+            })
+            .collect();
+        for (outlet, endpoint) in missing_cords {
+            let kind = match endpoint {
+                PowerEndpoint::Device(id)
+                    if self
+                        .devices
+                        .get(&id)
+                        .is_some_and(|d| matches!(d.kind, DeviceKind::Router(_))) =>
+                {
+                    PowerCordKind::Cisco66WAdapter
+                }
+                _ => PowerCordKind::IecC13C14,
+            };
+            self.power.cord_kinds.insert(outlet, kind);
+        }
         for rack in self.racks.keys().copied().collect::<Vec<_>>() {
             self.power.add_rack(rack);
         }
@@ -522,9 +549,24 @@ impl NetworkSim {
                 }]
             }
             Command::ConnectPower { outlet, endpoint } => {
+                let kind = self.inferred_power_cord(endpoint);
+                self.validate_power_cord(endpoint, kind)?;
                 self.validate_power_endpoint(outlet.source, endpoint)?;
                 self.power
-                    .connect(outlet, endpoint)
+                    .connect_with_kind(outlet, endpoint, kind)
+                    .map_err(|e| SimError::Power(e.to_string()))?;
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
+            Command::ConnectPowerCord {
+                outlet,
+                endpoint,
+                kind,
+            } => {
+                self.validate_power_cord(endpoint, kind)?;
+                self.validate_power_endpoint(outlet.source, endpoint)?;
+                self.power
+                    .connect_with_kind(outlet, endpoint, kind)
                     .map_err(|e| SimError::Power(e.to_string()))?;
                 self.sync_effective_power();
                 vec![SimEvent::PowerChanged]
@@ -805,6 +847,9 @@ impl NetworkSim {
         self.power
             .connections
             .retain(|_, endpoint| !matches!(endpoint, PowerEndpoint::Device(d) if *d == id));
+        self.power
+            .cord_kinds
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
         if let Some(source) = source {
             self.power.connections.retain(|outlet, endpoint| {
                 outlet.source != source
@@ -919,6 +964,9 @@ impl NetworkSim {
                 && !matches!(endpoint, PowerEndpoint::Device(d) if *d == id)
                 && !matches!(endpoint, PowerEndpoint::Source(s) if Some(*s) == source)
         });
+        self.power
+            .cord_kinds
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
         self.power.recompute_now();
         self.sync_effective_power();
     }
@@ -969,6 +1017,42 @@ impl NetworkSim {
                 {
                     return Err(SimError::Power("power source must be installed".into()));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn inferred_power_cord(&self, endpoint: PowerEndpoint) -> PowerCordKind {
+        match endpoint {
+            PowerEndpoint::Device(id)
+                if self
+                    .devices
+                    .get(&id)
+                    .is_some_and(|d| matches!(d.kind, DeviceKind::Router(_))) =>
+            {
+                PowerCordKind::Cisco66WAdapter
+            }
+            _ => PowerCordKind::IecC13C14,
+        }
+    }
+
+    fn validate_power_cord(
+        &self,
+        endpoint: PowerEndpoint,
+        kind: PowerCordKind,
+    ) -> Result<(), SimError> {
+        if matches!(endpoint, PowerEndpoint::Source(_))
+            && matches!(kind, PowerCordKind::Cisco66WAdapter)
+        {
+            return Err(SimError::Power(
+                "Cisco adapter cords terminate at a device, not a power source".into(),
+            ));
+        }
+        if let PowerEndpoint::Device(id) = endpoint {
+            let d = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
+            let router = matches!(d.kind, DeviceKind::Router(_));
+            if router != matches!(kind, PowerCordKind::Cisco66WAdapter) {
+                return Err(SimError::Power("Cisco routers require the supplied 66 W DC adapter; other devices require an IEC C13/C14 cord".into()));
             }
         }
         Ok(())

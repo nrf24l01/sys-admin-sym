@@ -5,7 +5,7 @@ use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
 mod rack;
-use cables::{CableScene, CableView};
+use cables::{CableScene, CableView, PowerCableView};
 use rack::RackLayout;
 
 fn selected_link_id(state: &UiState, sim: &NetworkSim) -> Option<LinkId> {
@@ -60,8 +60,18 @@ fn source_label(sim: &NetworkSim, source: SourceId) -> String {
 fn power_sources(sim: &NetworkSim) -> Vec<SourceId> {
     sim.racks()
         .map(|r| SourceId::Rack(r.id))
-        .chain(sim.power.ups.keys().copied().map(SourceId::Ups))
-        .chain(sim.power.pdus.keys().copied().map(SourceId::Pdu))
+        .chain(sim.devices().filter_map(|d| {
+            (d.rack.is_some()).then_some(match d.kind {
+                DeviceKind::Ups(ref x) => x.source,
+                _ => None,
+            })?
+        }))
+        .chain(sim.devices().filter_map(|d| {
+            (d.rack.is_some()).then_some(match d.kind {
+                DeviceKind::Pdu(ref x) => x.source,
+                _ => None,
+            })?
+        }))
         .collect()
 }
 
@@ -69,6 +79,7 @@ fn device_power_endpoint(device: &Device) -> Option<PowerEndpoint> {
     match device.kind {
         DeviceKind::Ups(ref x) => x.source.map(PowerEndpoint::Source),
         DeviceKind::Pdu(ref x) => x.source.map(PowerEndpoint::Source),
+        DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_) => None,
         _ => Some(PowerEndpoint::Device(device.id)),
     }
 }
@@ -81,6 +92,8 @@ pub struct EquipmentImages {
     switch_rear: Handle<Image>,
     router_front: Handle<Image>,
     router_rear: Handle<Image>,
+    ups_faces: Handle<Image>,
+    pdu_faces: Handle<Image>,
     jacket: Handle<Image>,
     plug: Handle<Image>,
     cables: CableScene,
@@ -95,6 +108,8 @@ struct EquipmentTextures {
     switch_rear: egui::TextureId,
     router_front: egui::TextureId,
     router_rear: egui::TextureId,
+    ups_faces: egui::TextureId,
+    pdu_faces: egui::TextureId,
     jacket: egui::TextureId,
     plug: egui::TextureId,
 }
@@ -106,6 +121,8 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.switch_rear = assets.load("equipment/switch_rear.png");
     images.router_front = assets.load("equipment/router_rear_clean.png");
     images.router_rear = assets.load("equipment/router_front_clean.png");
+    images.ups_faces = assets.load("equipment/ups_faces.png");
+    images.pdu_faces = assets.load("equipment/pdu_faces.png");
     images.jacket = assets.load("cables/pvc_jacket.png");
     images.plug = assets.load("cables/rj45_plug.png");
 }
@@ -129,11 +146,19 @@ pub fn main_ui(
             router_front: contexts
                 .add_image(EguiTextureHandle::Strong(images.router_front.clone())),
             router_rear: contexts.add_image(EguiTextureHandle::Strong(images.router_rear.clone())),
+            ups_faces: contexts.add_image(EguiTextureHandle::Strong(images.ups_faces.clone())),
+            pdu_faces: contexts.add_image(EguiTextureHandle::Strong(images.pdu_faces.clone())),
             jacket: contexts.add_image(EguiTextureHandle::Strong(images.jacket.clone())),
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
         });
     }
     let ctx = contexts.ctx_mut()?;
+    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+        state.pending_cable = None;
+        state.pending_cable_route.clear();
+        state.pending_power_outlet = None;
+        state.pending_power_inlet = None;
+    }
     configure_style(ctx);
     let mut viewport_ui = egui::Ui::new(
         ctx.clone(),
@@ -236,6 +261,17 @@ fn top_bar(
                     }
                     ui.separator();
                 }
+                if state.pending_power_outlet.is_some() || state.pending_power_inlet.is_some() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 196, 64),
+                        "POWER CABLE: SELECT COMPLEMENTARY SOCKET",
+                    );
+                    if ui.small_button("Cancel power").clicked() {
+                        state.pending_power_outlet = None;
+                        state.pending_power_inlet = None;
+                    }
+                    ui.separator();
+                }
                 if ui.button("Save").clicked() {
                     actions.write(UiAction::Save);
                 }
@@ -280,7 +316,7 @@ fn shop_panel(
                         (
                             DeviceTemplate::Router,
                             "Cisco ISR C1111-8P — $500",
-                            "2 × WAN RJ45 + 8 × GE LAN RJ45",
+                            "2 × WAN RJ45 + 8 × GE LAN RJ45 · supplied 66 W adapter",
                         ),
                         (
                             DeviceTemplate::Switch,
@@ -310,7 +346,7 @@ fn shop_panel(
                         (
                             DeviceTemplate::Pdu,
                             "Rack PDU 8×C13 — $250",
-                            "3680 W / 16 A · feed from UPS or mains",
+                            "2300 W / 10 A · feed from UPS or mains",
                         ),
                     ] {
                         ui.group(|ui| {
@@ -556,8 +592,38 @@ fn inspector_panel(
                 Selection::Device(id) => device_inspector(ui, sim, id, state, actions),
                 Selection::Port(id) => port_inspector(ui, sim, id, drafts, actions),
                 Selection::Link(id) => link_inspector(ui, sim, id, actions),
+                Selection::PowerCable(outlet) => power_cable_inspector(ui, sim, outlet, actions),
             }
         });
+}
+
+fn power_cable_inspector(
+    ui: &mut egui::Ui,
+    sim: &NetworkSim,
+    outlet: OutletId,
+    actions: &mut MessageWriter<UiAction>,
+) {
+    ui.heading("Power cable");
+    let Some(endpoint) = sim.power.connections.get(&outlet).copied() else {
+        ui.label("Power cable no longer connected.");
+        return;
+    };
+    let destination = match endpoint {
+        PowerEndpoint::Device(id) => sim
+            .device(id)
+            .map_or_else(|| format!("Device {id:?}"), |d| d.name.clone()),
+        PowerEndpoint::Source(source) => source_label(sim, source),
+    };
+    ui.label(format!(
+        "Source: {} C13-{}",
+        source_label(sim, outlet.source),
+        outlet.index + 1
+    ));
+    ui.label(format!("Destination: {destination}"));
+    ui.label(format!("Cord: {:?}", sim.power.cord_kind(outlet)));
+    if ui.button("Unplug cable").clicked() {
+        actions.write(UiAction::DisconnectPower(outlet));
+    }
 }
 
 fn device_inspector(
@@ -572,7 +638,7 @@ fn device_inspector(
         return;
     };
     ui.heading(&device.name);
-    power_controls(ui, sim, device, state, actions);
+    power_controls(ui, sim, device, actions);
     let actual_powered = device.powered
         || match device.kind {
             DeviceKind::Ups(ref x) => x
@@ -686,7 +752,6 @@ fn power_controls(
     ui: &mut egui::Ui,
     sim: &NetworkSim,
     device: &Device,
-    state: &mut UiState,
     actions: &mut MessageWriter<UiAction>,
 ) {
     let source = match device.kind {
@@ -695,12 +760,24 @@ fn power_controls(
         _ => None,
     };
     if let Some(power) = sim.power.device_status(device.id) {
-        ui.label(format!(
-            "Load: {} W / {} VA / {:.2} A",
-            power.load.watts,
-            power.load.va,
-            power.load.current_ma as f32 / 1000.0
-        ));
+        if matches!(device.kind, DeviceKind::Router(_)) {
+            let ac = PowerCordKind::Cisco66WAdapter.input_load(power.load);
+            ui.label(format!(
+                "Cisco adapter: 66 W max · 12 V · 5.5 A max · Router: {} W DC / {:.2} A · AC: {} W / {} VA / {:.2} A",
+                power.load.watts,
+                power.load.watts as f32 / 12.0,
+                ac.watts,
+                ac.va,
+                ac.current_ma as f32 / 1000.0,
+            ));
+        } else {
+            ui.label(format!(
+                "Load: {} W / {} VA / {:.2} A",
+                power.load.watts,
+                power.load.va,
+                power.load.current_ma as f32 / 1000.0
+            ));
+        }
         ui.colored_label(
             if power.effective {
                 egui::Color32::LIGHT_GREEN
@@ -822,69 +899,7 @@ fn power_controls(
             }
         });
     } else if endpoint.is_some() {
-        let sources = power_sources(sim);
-        if state.power_source.is_none() || !sources.contains(&state.power_source.unwrap()) {
-            state.power_source = sources.first().copied();
-            state.power_outlet = 0;
-        }
-        egui::ComboBox::from_id_salt(("power-source", device.id.0))
-            .selected_text(
-                state
-                    .power_source
-                    .map_or_else(|| "No power sources".into(), |s| source_label(sim, s)),
-            )
-            .show_ui(ui, |ui| {
-                for s in &sources {
-                    if ui
-                        .selectable_value(&mut state.power_source, Some(*s), source_label(sim, *s))
-                        .changed()
-                    {
-                        state.power_outlet = 0;
-                    }
-                }
-            });
-        if let Some(s) = state.power_source {
-            let max = sim.power.outlets(s) as u8;
-            if state.power_outlet >= max {
-                state.power_outlet = 0;
-            }
-            egui::ComboBox::from_id_salt(("power-outlet", device.id.0))
-                .selected_text(format!("C13-{}", state.power_outlet + 1))
-                .show_ui(ui, |ui| {
-                    for n in 0..max {
-                        let occupied = sim.power.connections.contains_key(&OutletId {
-                            source: s,
-                            index: n,
-                        });
-                        ui.add_enabled_ui(!occupied, |ui| {
-                            ui.selectable_value(
-                                &mut state.power_outlet,
-                                n,
-                                format!(
-                                    "C13-{}{}",
-                                    n + 1,
-                                    if occupied { " (occupied)" } else { "" }
-                                ),
-                            );
-                        });
-                    }
-                });
-            if ui.button("Connect power").clicked()
-                && !sim.power.connections.contains_key(&OutletId {
-                    source: s,
-                    index: state.power_outlet,
-                })
-                && let Some(endpoint) = endpoint
-            {
-                actions.write(UiAction::ConnectPower(
-                    OutletId {
-                        source: s,
-                        index: state.power_outlet,
-                    },
-                    endpoint,
-                ));
-            }
-        }
+        ui.weak("Power inlet · click the device socket, then a compatible C13 outlet in the rack.");
     }
 }
 
@@ -1403,16 +1418,6 @@ fn rack_view(
                 for source in power_sources(sim).into_iter().filter(|s| !matches!(s, SourceId::Rack(_))) {
                     if let Some(t) = sim.power.source_telemetry(source) { ui.label(format!("{}: {} W / {} VA · {}", source_label(sim, source), t.output.watts, t.output.va, if t.available { "ONLINE" } else { "OFFLINE" })); }
                 }
-                ui.horizontal(|ui| {
-                    for n in 0..4u8 {
-                        let outlet = OutletId { source: SourceId::Rack(rack.id), index: n };
-                        let occupied = sim.power.connections.contains_key(&outlet);
-                        if ui.add_enabled(!occupied, egui::Button::new(format!("C13-{} {}", n + 1, if occupied { "●" } else { "○" }))).on_hover_text(if occupied { "Occupied · use Unplug in the device inspector" } else { "Select this outlet, then click a rear C14 inlet" }).clicked() { state.pending_power_outlet = Some(outlet); state.pending_cable = None; state.pending_cable_route.clear(); }
-                        if occupied && ui.small_button("×").clicked() { actions.write(UiAction::DisconnectPower(outlet)); }
-                    }
-                });
-                if let Some(outlet) = state.pending_power_outlet { ui.colored_label(egui::Color32::LIGHT_YELLOW, format!("Selected {} C13-{} · click a rear C14 inlet", source_label(sim, outlet.source), outlet.index + 1)); }
-                if state.pending_power_outlet.is_some() && (ui.button("Cancel power lead").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape))) { state.pending_power_outlet = None; }
             }
         });
             egui::ScrollArea::both()
@@ -1432,6 +1437,7 @@ fn rack_view(
                 let mut led_visuals = Vec::new();
                 let mut power_endpoints: Vec<(PowerEndpoint, egui::Pos2)> = Vec::new();
                 let mut power_outlets: HashMap<OutletId, egui::Pos2> = HashMap::new();
+                let mut power_socket_rects: Vec<(PowerSocket, egui::Rect)> = Vec::new();
                 let mut route_anchors: Vec<(RackId, u8, RackSide, u16, egui::Pos2)> = Vec::new();
                 let rack_frame = egui::Frame::group(ui.style())
                     .fill(egui::Color32::from_rgb(8, 10, 13))
@@ -1445,9 +1451,19 @@ fn rack_view(
                             for n in 0..4u8 {
                                 let outlet = OutletId { source: SourceId::Rack(rack.id), index: n };
                                 let occupied = sim.power.connections.contains_key(&outlet);
-                                let response = ui.add_enabled(!occupied, egui::Button::new(format!("C13-{}", n + 1))).on_hover_text("Select rack outlet, then click a rear C14 inlet");
+                                let response = ui.add(egui::Button::new(egui::RichText::new(" ").size(18.0))).on_hover_text(if occupied { "C13 occupied · right-click to unplug" } else { "C13 outlet · click to connect" });
+                                paint_power_socket(ui.painter(), response.rect.shrink(2.0), occupied, false);
+                                power_socket_rects.push((PowerSocket::Outlet(outlet), response.rect));
+                                if state.pending_power_outlet == Some(outlet)
+                                    || state.pending_power_inlet.is_some()
+                                    || state.selected == Selection::PowerCable(outlet)
+                                    || response.hovered()
+                                {
+                                    ui.painter().rect_stroke(response.rect.shrink(1.0), 2.0, egui::Stroke::new(2.0, if state.selected == Selection::PowerCable(outlet) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                }
                                 power_outlets.insert(outlet, response.rect.center());
-                                if response.clicked() { state.pending_power_outlet = Some(outlet); state.pending_cable = None; state.pending_cable_route.clear(); }
+                                if response.clicked() { actions.write(if occupied { UiAction::SelectPowerCable(outlet) } else { UiAction::PowerSocket(crate::app::PowerSocket::Outlet(outlet)) }); }
+                                response.context_menu(|menu| { if occupied && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(outlet)); menu.close(); } });
                             }
                         });
                         for unit in (1..=rack.units).rev() {
@@ -1456,12 +1472,31 @@ fn rack_view(
                                 egui::Sense::click(),
                             );
                             let row = layout.row(row_rect);
-                            let panel_rect = row.face;
+                            let panel_rect = rack_device_panel_rect(
+                                rack,
+                                layout.row_height,
+                                unit,
+                                row.face,
+                            );
                             row.paint(ui.painter(), unit, rack.occupies(unit).is_some());
                             for (offset_cm, position) in [0, 48].into_iter().zip(row.anchors) {
                                 route_anchors.push((rack.id, unit, state.rack_side, offset_cm, position));
                             }
                             if let Some(device_id) = rack.occupies(unit) {
+                                // A 2U chassis occupies two rack placements but has one
+                                // continuous face. Paint and interact with it only at the
+                                // placement's first unit; the following row remains part of
+                                // the same panel span.
+                                if rack
+                                    .placements
+                                    .iter()
+                                    .find(|(id, _)| *id == device_id)
+                                    .is_some_and(|(_, placement)| {
+                                        placement.unit.saturating_add(placement.height.max(1) - 1) != unit
+                                    })
+                                {
+                                    continue;
+                                }
                                 let device = sim.device(device_id).expect("rack device exists");
                                 row_response.context_menu(|menu| {
                                     menu.label(device.name.as_str());
@@ -1541,7 +1576,8 @@ fn rack_view(
                                     }
                                     _ => {
                                         let textured = matches!(device.kind, DeviceKind::Server(_)
-                                            | DeviceKind::Switch(_) | DeviceKind::Router(_));
+                                            | DeviceKind::Switch(_) | DeviceKind::Router(_)
+                                            | DeviceKind::Ups(_) | DeviceKind::Pdu(_));
                                         if textured {
                                             let texture = match device.kind {
                                                 DeviceKind::Server(_) if state.rack_side == RackSide::Front => textures.server_front,
@@ -1550,9 +1586,38 @@ fn rack_view(
                                                 DeviceKind::Switch(_) => textures.switch_rear,
                                                 DeviceKind::Router(_) if state.rack_side == RackSide::Front => textures.router_front,
                                                 DeviceKind::Router(_) => textures.router_rear,
+                                                DeviceKind::Ups(_) => textures.ups_faces,
+                                                DeviceKind::Pdu(_) => textures.pdu_faces,
                                                 _ => unreachable!(),
                                             };
                                             ui.painter().image(texture, panel_rect, equipment_uv(&device.kind, state.rack_side), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
+                                            if matches!(device.kind, DeviceKind::Ups(_)) && state.rack_side == RackSide::Front {
+                                                let lcd = ups_lcd_rect(panel_rect);
+                                                ui.painter().rect_filled(lcd, 1.0, egui::Color32::from_rgb(12, 25, 28));
+                                                let telemetry = match device.kind {
+                                                    DeviceKind::Ups(ref ups) => ups.source.and_then(|s| sim.power.source_telemetry(s)),
+                                                    _ => None,
+                                                };
+                                                let (battery, load) = telemetry.map_or((0, 0), |t| {
+                                                    let cap = match device.kind {
+                                                        DeviceKind::Ups(ref ups) => ups.source.and_then(|s| match s { SourceId::Ups(id) => sim.power.ups.get(&id).map(|u| u.spec.battery_wh), _ => None }),
+                                                        _ => None,
+                                                    }.unwrap_or(0);
+                                                    (if cap == 0 { 0 } else { (t.battery_mwh / 1000 * 100 / u64::from(cap)) as u32 }, t.output.watts)
+                                                });
+                                                let font = egui::FontId::monospace((lcd.height() * 0.22).clamp(5.0, 9.0));
+                                                ui.painter().text(egui::pos2(lcd.center().x, lcd.center().y - font.size), egui::Align2::CENTER_CENTER, format!("BAT {battery}%"), font.clone(), egui::Color32::from_rgb(112, 235, 184));
+                                                ui.painter().text(egui::pos2(lcd.center().x, lcd.center().y + font.size), egui::Align2::CENTER_CENTER, format!("LOAD {load}W"), font, egui::Color32::from_rgb(112, 235, 184));
+                                                let button = egui::Rect::from_center_size(normalized_panel_position(panel_rect, (0.814, 0.29)), egui::vec2(18.0, 18.0));
+                                                let response = ui.interact(button, egui::Id::new(("ups-power-button", device_id.0)), egui::Sense::click());
+                                                if response.clicked() {
+                                                    let enabled = match device.kind {
+                                                        DeviceKind::Ups(ref ups) => ups.source.is_some_and(|s| sim.power.source_enabled(s)),
+                                                        _ => false,
+                                                    };
+                                                    actions.write(UiAction::TogglePower(device_id, !enabled));
+                                                }
+                                            }
                                         } else {
                                             ui.painter().rect_filled(panel_rect.shrink(3.0), 1.0, egui::Color32::from_rgb(38, 44, 50));
                                             ui.painter().rect_stroke(panel_rect.shrink(8.0), 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(75)), egui::StrokeKind::Inside);
@@ -1563,29 +1628,52 @@ fn rack_view(
                                         }
                                     }
                                 }
-                                if state.rack_side == RackSide::Rear && device.rack.is_some_and(|p| p.unit == unit) && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)) {
-                                    let inlet = egui::Rect::from_center_size(egui::pos2(panel_rect.right() - 13.0, panel_rect.center().y), egui::vec2(16.0, 22.0));
+                                let inlet_meta = device.kind.power_inlet();
+                                if inlet_meta.is_some_and(|inlet| inlet.side == state.rack_side)
+                                    && device.rack.is_some_and(|p| p.unit == unit)
+                                    && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
+                                {
+                                    let inlet_center = normalized_panel_position(panel_rect, inlet_meta.unwrap().position);
+                                    let inlet = egui::Rect::from_center_size(inlet_center, egui::vec2(16.0, 22.0));
                                     let endpoint = device_power_endpoint(device);
+                                    if let Some(endpoint) = endpoint {
+                                        power_socket_rects.push((PowerSocket::Inlet(endpoint), inlet));
+                                    }
                                     let fed = endpoint.and_then(|e| sim.power.connections.iter().find(|(_, x)| **x == e).map(|(o, _)| *o));
-                                    if let Some(endpoint) = endpoint { power_endpoints.push((endpoint, inlet.center())); }
-                                    ui.painter().rect_filled(inlet, 2.0, if fed.is_some() { egui::Color32::from_rgb(35, 105, 77) } else { egui::Color32::from_rgb(30, 35, 40) });
-                                    ui.painter().rect_stroke(inlet, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(170, 180, 185)), egui::StrokeKind::Inside);
-                                    ui.painter().text(inlet.center(), egui::Align2::CENTER_CENTER, "C14", egui::FontId::monospace(6.0), egui::Color32::WHITE);
-                                    let response = ui.interact(inlet, egui::Id::new(("power-inlet", device_id.0)), egui::Sense::click()).on_hover_text(if fed.is_some() { "Powered · select in inspector to unplug" } else { "C14 inlet · click to connect selected C13 source" });
-                                    if response.clicked() && let Some(outlet) = state.pending_power_outlet.take() && let Some(endpoint) = endpoint { actions.write(UiAction::ConnectPower(outlet, endpoint)); state.pending_cable = None; state.pending_cable_route.clear(); }
+                                    let cable_end = inlet.center();
+                                    if let Some(endpoint) = endpoint { power_endpoints.push((endpoint, cable_end)); }
+                                    let response = ui.interact(inlet, egui::Id::new(("power-inlet", device_id.0)), egui::Sense::click()).on_hover_text(if fed.is_some() { "Occupied · right-click to unplug" } else { "Power inlet · click to connect" });
+                                    if endpoint.is_some_and(|e| state.pending_power_inlet == Some(e))
+                                        || state.pending_power_outlet.is_some()
+                                        || fed.is_some_and(|outlet| state.selected == Selection::PowerCable(outlet))
+                                        || response.hovered()
+                                    {
+                                        ui.painter().rect_stroke(inlet, 2.0, egui::Stroke::new(2.0, if fed.is_some_and(|outlet| state.selected == Selection::PowerCable(outlet)) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                    }
+                                    if response.clicked() && let Some(endpoint) = endpoint { actions.write(UiAction::PowerSocket(crate::app::PowerSocket::Inlet(endpoint))); }
+                                    response.context_menu(|menu| { if let Some(outlet) = fed && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(outlet)); menu.close(); } });
                                 }
                                 if state.rack_side == RackSide::Rear && device.rack.is_some_and(|p| p.unit == unit) {
                                     let source = match device.kind { DeviceKind::Ups(ref x) => x.source, DeviceKind::Pdu(ref x) => x.source, _ => None };
                                     if let Some(source) = source {
                                         let count = sim.power.outlets(source);
                                         for n in 0..count {
-                                            let socket = egui::Rect::from_center_size(egui::pos2(panel_rect.left() + panel_rect.width() * (0.18 + 0.64 * (n as f32 / count.max(1) as f32)), panel_rect.bottom() - 10.0), egui::vec2(12.0, 12.0));
+                                            let socket = source_outlet_rect(&device.kind, panel_rect, n);
                                             let occupied = sim.power.connections.contains_key(&OutletId { source, index: n as u8 });
-                                            ui.painter().rect_filled(socket, 2.0, if occupied { egui::Color32::from_rgb(110, 74, 30) } else { egui::Color32::from_rgb(25, 30, 35) });
-                                            ui.painter().text(socket.center(), egui::Align2::CENTER_CENTER, format!("{}", n + 1), egui::FontId::monospace(6.0), egui::Color32::WHITE);
+                                            let outlet_id = OutletId { source, index: n as u8 };
+                                            power_socket_rects.push((PowerSocket::Outlet(outlet_id), socket));
+                                            let outlet_end = socket.center();
                                             let response = ui.interact(socket, egui::Id::new(("power-outlet", device_id.0, n)), egui::Sense::click()).on_hover_text(if occupied { "C13 occupied" } else { "C13 outlet · select as source" });
-                                            power_outlets.insert(OutletId { source, index: n as u8 }, socket.center());
-                                            if response.clicked() && !occupied { state.pending_power_outlet = Some(OutletId { source, index: n as u8 }); state.pending_cable = None; state.pending_cable_route.clear(); }
+                                            if state.pending_power_outlet == Some(outlet_id)
+                                                || state.pending_power_inlet.is_some()
+                                                || state.selected == Selection::PowerCable(outlet_id)
+                                                || response.hovered()
+                                            {
+                                                ui.painter().rect_stroke(socket, 2.0, egui::Stroke::new(2.0, if state.selected == Selection::PowerCable(outlet_id) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                            }
+                                            power_outlets.insert(OutletId { source, index: n as u8 }, outlet_end);
+                                            if response.clicked() { actions.write(if occupied { UiAction::SelectPowerCable(outlet_id) } else { UiAction::PowerSocket(crate::app::PowerSocket::Outlet(outlet_id)) }); }
+                                            response.context_menu(|menu| { if occupied && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(OutletId { source, index: n as u8 })); menu.close(); } });
                                         }
                                     }
                                 }
@@ -1716,13 +1804,132 @@ fn rack_view(
                         layout.paint_crossbar(ui, "CABLE SERVICE SPACE");
                     });
 
-                // Power leads follow the same physical rack view as network cables.  Rack
-                // outlets are drawn on the power bar; device and UPS/PDU inlets are on rear faces.
+                // Power leads follow the same physical rack view and rope solver as network cables.
+                let mut power_rope_cables = Vec::new();
                 for (outlet, endpoint) in &sim.power.connections {
-                    let Some((_, target)) = power_endpoints.iter().find(|(e, _)| e == endpoint) else { continue };
-                    let Some(source_pos) = power_outlets.get(outlet).copied() else { continue };
-                    ui.painter().line_segment([source_pos, *target], egui::Stroke::new(3.0, egui::Color32::from_rgb(211, 150, 48)));
-                    ui.painter().circle_filled(*target, 3.0, egui::Color32::from_rgb(255, 196, 64));
+                    let target_pos = power_endpoints.iter().find(|(e, _)| e == endpoint).map(|(_, p)| *p);
+                    let source_pos = power_outlets.get(outlet).copied();
+                    let endpoint_rack = power_endpoint_rack(sim, *endpoint);
+                    let source_rack = power_source_rack(sim, outlet.source);
+                    let rail = |rack_unit: Option<(RackId, u8)>| {
+                        route_anchors.iter().find(|(candidate_rack, candidate_unit, side, _, _)| {
+                            rack_unit == Some((*candidate_rack, *candidate_unit))
+                                && *candidate_rack == rack.id
+                                && *side == state.rack_side
+                        }).map(|(_, _, _, _, p)| *p)
+                    };
+                    let Some(target) = target_pos.or_else(|| rail(endpoint_rack)) else { continue };
+                    let Some(source) = source_pos.or_else(|| rail(source_rack)) else { continue };
+                    power_rope_cables.push((*outlet, source, target, 120u32));
+                }
+                // While placing a lead, show a lightweight jacket preview. Socket centers are
+                // taken from the photographed face hitboxes; a rail anchor keeps the preview
+                // alive when its other end is on the opposite rack face.
+                if let Some(pointer) = ui.input(|input| input.pointer.hover_pos()) {
+                    let pending = state
+                        .pending_power_outlet
+                        .map(|outlet| (PowerSocket::Outlet(outlet), power_outlets.get(&outlet).copied()))
+                        .or_else(|| {
+                            state.pending_power_inlet.map(|endpoint| {
+                                let visible = power_endpoints
+                                    .iter()
+                                    .find(|(candidate, _)| *candidate == endpoint)
+                                    .map(|(_, position)| *position);
+                                (PowerSocket::Inlet(endpoint), visible)
+                            })
+                        });
+                    if let Some((socket, start)) = pending {
+                        let start = start.or_else(|| {
+                            let unit = match socket {
+                                PowerSocket::Outlet(outlet) => power_source_rack(sim, outlet.source),
+                                PowerSocket::Inlet(endpoint) => power_endpoint_rack(sim, endpoint),
+                            }?;
+                            route_anchors
+                                .iter()
+                                .find(|(candidate_rack, candidate_unit, side, _, _)| {
+                                        *candidate_rack == rack.id
+                                        && Some((*candidate_rack, *candidate_unit)) == Some(unit)
+                                        && *side == state.rack_side
+                                })
+                                .map(|(_, _, _, _, position)| *position)
+                        });
+                        if let Some(start) = start {
+                            let mut target = pointer;
+                            let mut valid = true;
+                            let mut hovered_target = false;
+                            let mut cancel_target = false;
+                            match socket {
+                                PowerSocket::Outlet(outlet) => {
+                                    if let Some((role, rect)) = power_socket_rects
+                                        .iter()
+                                        .find(|(_, rect)| rect.contains(pointer))
+                                    {
+                                        target = rect.center();
+                                        hovered_target = true;
+                                        match role {
+                                            PowerSocket::Outlet(candidate) => {
+                                                cancel_target = *candidate == outlet;
+                                                valid = false;
+                                            }
+                                            PowerSocket::Inlet(endpoint) => {
+                                                valid = power_preview_is_valid(sim, outlet, *endpoint);
+                                            }
+                                        }
+                                    }
+                                }
+                                PowerSocket::Inlet(endpoint) => {
+                                    if let Some((role, rect)) = power_socket_rects
+                                        .iter()
+                                        .find(|(_, rect)| rect.contains(pointer))
+                                    {
+                                        target = rect.center();
+                                        hovered_target = true;
+                                        match role {
+                                            PowerSocket::Outlet(outlet) => {
+                                                valid = power_preview_is_valid(sim, *outlet, endpoint);
+                                            }
+                                            PowerSocket::Inlet(candidate) => {
+                                                cancel_target = *candidate == endpoint;
+                                                valid = false;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            let color = if cancel_target {
+                                egui::Color32::from_rgb(255, 196, 64)
+                            } else if hovered_target && !valid {
+                                egui::Color32::from_rgb(235, 70, 70)
+                            } else {
+                                egui::Color32::from_rgb(70, 110, 120)
+                            };
+                            cables::paint_preview(ui, vec![start, target], color);
+                        }
+                    }
+                }
+                if let Some(outlet) = cables.show_power(
+                    ui,
+                    &power_rope_cables,
+                    PowerCableView {
+                        origin: rack_frame.response.rect.left_top(),
+                        pixels_per_cm: panel_width / 48.26,
+                        floor_y: rack_frame.response.rect.bottom() + 110.0,
+                        selected: match state.selected {
+                            Selection::PowerCable(outlet) => Some(outlet),
+                            _ => None,
+                        },
+                        visibility: state.cable_visibility,
+                        socket_rects: power_socket_rects
+                            .iter()
+                            .map(|(_, rect)| *rect)
+                            .chain(port_visuals.iter().map(|(_, rect)| *rect))
+                            .collect(),
+                        interaction_enabled: state.pending_power_outlet.is_none()
+                            && state.pending_power_inlet.is_none()
+                            && state.pending_cable.is_none(),
+                    },
+                ) {
+                    actions.write(UiAction::SelectPowerCable(outlet));
                 }
 
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
@@ -1865,6 +2072,14 @@ fn rack_view(
                         visibility: state.cable_visibility,
                         anchors: anchors.clone(),
                         preview,
+                        socket_rects: port_visuals
+                            .iter()
+                            .map(|(_, rect)| *rect)
+                            .chain(power_socket_rects.iter().map(|(_, rect)| *rect))
+                            .collect(),
+                        interaction_enabled: state.pending_power_outlet.is_none()
+                            && state.pending_power_inlet.is_none()
+                            && state.pending_cable.is_none(),
                     },
                 ) {
                     actions.write(UiAction::SelectLink(link));
@@ -2034,9 +2249,131 @@ fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
         DeviceKind::Switch(_) => (0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
         DeviceKind::Router(_) if side == RackSide::Rear => (0.0, 0.31, 1.0, 0.70),
         DeviceKind::Router(_) => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
+        DeviceKind::Ups(_) if side == RackSide::Front => (0.0, 0.0, 1.0, 0.5),
+        DeviceKind::Ups(_) => (0.0, 0.5, 1.0, 1.0),
+        DeviceKind::Pdu(_) if side == RackSide::Front => (0.0, 128.0 / 768.0, 1.0, 370.0 / 768.0),
+        DeviceKind::Pdu(_) => (0.0, 375.0 / 768.0, 1.0, 619.0 / 768.0),
         _ => (0.0, 0.0, 1.0, 1.0),
     };
     egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
+}
+
+fn normalized_panel_position(panel: egui::Rect, normalized: (f32, f32)) -> egui::Pos2 {
+    egui::pos2(
+        panel.left() + panel.width() * normalized.0,
+        panel.top() + panel.height() * normalized.1,
+    )
+}
+
+fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egui::Rect {
+    let (x, y, w, h) = match kind {
+        DeviceKind::Ups(_) => (
+            [0.611, 0.679, 0.748, 0.816][index.min(3)],
+            0.479,
+            0.064,
+            0.40,
+        ),
+        DeviceKind::Pdu(_) => (0.105 + 0.0928 * index.min(7) as f32, 0.50, 0.073, 0.64),
+        _ => (0.5, 0.5, 0.06, 0.4),
+    };
+    egui::Rect::from_center_size(
+        normalized_panel_position(panel, (x, y)),
+        egui::vec2(panel.width() * w, panel.height() * h),
+    )
+}
+
+/// Power sockets are part of the equipment face interaction layer. They stay
+/// deliberately simple so the photographed UPS/PDU/device faces remain the
+/// only raster artwork used for connectors.
+fn paint_power_socket(painter: &egui::Painter, rect: egui::Rect, occupied: bool, inlet: bool) {
+    let fill = if occupied {
+        egui::Color32::from_rgb(22, 25, 28)
+    } else {
+        egui::Color32::from_rgb(8, 10, 12)
+    };
+    painter.rect_filled(rect, 2.0, fill);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(
+            1.2,
+            if inlet {
+                egui::Color32::from_rgb(142, 154, 163)
+            } else {
+                egui::Color32::from_rgb(82, 98, 108)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+    if occupied {
+        painter.circle_filled(
+            rect.center(),
+            rect.width().min(rect.height()) * 0.22,
+            egui::Color32::from_rgb(35, 39, 42),
+        );
+    }
+}
+
+fn ups_lcd_rect(panel: egui::Rect) -> egui::Rect {
+    egui::Rect::from_min_max(
+        normalized_panel_position(panel, (0.681, 0.25)),
+        normalized_panel_position(panel, (0.781, 0.71)),
+    )
+}
+
+fn power_endpoint_rack(sim: &NetworkSim, endpoint: PowerEndpoint) -> Option<(RackId, u8)> {
+    match endpoint {
+        PowerEndpoint::Device(id) => sim
+            .device(id)
+            .and_then(|d| d.rack)
+            .map(|p| (p.rack, p.unit)),
+        PowerEndpoint::Source(source) => power_source_rack(sim, source),
+    }
+}
+
+fn power_source_rack(sim: &NetworkSim, source: SourceId) -> Option<(RackId, u8)> {
+    sim.devices().find_map(|d| {
+        let matches = match d.kind {
+            DeviceKind::Ups(ref ups) => ups.source == Some(source),
+            DeviceKind::Pdu(ref pdu) => pdu.source == Some(source),
+            _ => false,
+        };
+        matches
+            .then_some(d.rack)
+            .flatten()
+            .map(|p| (p.rack, p.unit))
+    })
+}
+
+fn power_preview_is_valid(sim: &NetworkSim, outlet: OutletId, endpoint: PowerEndpoint) -> bool {
+    let mut probe = sim.clone();
+    probe
+        .execute(cloud_provider_sim::Command::ConnectPower { outlet, endpoint })
+        .is_ok()
+}
+
+/// Return the one continuous face occupied by a device, including the rack gap
+/// between rows when its placement is taller than one unit.
+fn rack_device_panel_rect(
+    rack: &Rack,
+    row_height: f32,
+    unit: u8,
+    row_face: egui::Rect,
+) -> egui::Rect {
+    let height = rack
+        .placements
+        .iter()
+        .find(|(_, placement)| {
+            unit >= placement.unit && unit < placement.unit.saturating_add(placement.height.max(1))
+        })
+        .map_or(1, |(_, placement)| placement.height.max(1));
+    egui::Rect::from_min_max(
+        egui::pos2(
+            row_face.left(),
+            row_face.top() - row_height * (height - 1) as f32,
+        ),
+        row_face.right_bottom(),
+    )
 }
 
 fn rack_port_position(kind: &DeviceKind, rect: egui::Rect, index: usize) -> egui::Pos2 {
@@ -2091,6 +2428,105 @@ fn cable_color_value(color: CableColor) -> egui::Color32 {
         CableColor::Blue => egui::Color32::from_rgb(45, 125, 225),
         CableColor::Orange => egui::Color32::from_rgb(232, 125, 35),
         CableColor::Red => egui::Color32::from_rgb(205, 48, 52),
+    }
+}
+
+#[cfg(test)]
+mod power_geometry_tests {
+    use super::*;
+
+    #[test]
+    fn two_u_panel_is_one_coherent_span() {
+        let rack = Rack {
+            id: RackId(1),
+            name: "test".into(),
+            units: 4,
+            placements: vec![(
+                DeviceId(7),
+                RackPlacement {
+                    rack: RackId(1),
+                    unit: 2,
+                    height: 2,
+                },
+            )],
+        };
+        let face = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(480.0, 40.0));
+        let panel = rack_device_panel_rect(&rack, 41.0, 3, face);
+        assert_eq!(panel.top(), face.top() - 41.0);
+        assert_eq!(panel.bottom(), face.bottom());
+        assert_eq!(panel.height(), 81.0);
+    }
+
+    #[test]
+    fn router_power_inlet_uses_requested_front_normalized_position() {
+        let panel = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(480.0, 40.0));
+        let inlet = normalized_panel_position(panel, (0.146, 0.63));
+        assert!((inlet.x - (10.0 + 480.0 * 0.146)).abs() < f32::EPSILON);
+        assert!((inlet.y - (20.0 + 40.0 * 0.63)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn power_preview_uses_canonical_cord_validation() {
+        let mut sim = NetworkSim::new();
+        let device = match sim
+            .execute(cloud_provider_sim::Command::BuyDevice {
+                kind: DeviceTemplate::Router,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        sim.execute(cloud_provider_sim::Command::PlaceDevice {
+            device,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        let outlet = OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        };
+        assert!(power_preview_is_valid(
+            &sim,
+            outlet,
+            PowerEndpoint::Device(device)
+        ));
+
+        let pdu = match sim
+            .execute(cloud_provider_sim::Command::BuyDevice {
+                kind: DeviceTemplate::Pdu,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        sim.execute(cloud_provider_sim::Command::PlaceDevice {
+            device: pdu,
+            rack: RackId(1),
+            unit: 2,
+        })
+        .unwrap();
+        let source = match sim.device(pdu).unwrap().kind {
+            DeviceKind::Pdu(ref pdu) => pdu.source.unwrap(),
+            _ => unreachable!(),
+        };
+        assert!(!power_preview_is_valid(
+            &sim,
+            OutletId { source, index: 0 },
+            PowerEndpoint::Source(source),
+        ));
+    }
+
+    #[test]
+    fn ups_lcd_uses_real_screen_bounds() {
+        let panel = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(480.0, 40.0));
+        let lcd = ups_lcd_rect(panel);
+        assert!((lcd.left() - (10.0 + 480.0 * 0.681)).abs() < f32::EPSILON);
+        assert!((lcd.right() - (10.0 + 480.0 * 0.781)).abs() < f32::EPSILON);
+        assert!((lcd.top() - (20.0 + 40.0 * 0.25)).abs() < f32::EPSILON);
+        assert!((lcd.bottom() - (20.0 + 40.0 * 0.71)).abs() < f32::EPSILON);
     }
 }
 

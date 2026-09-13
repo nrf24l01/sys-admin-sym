@@ -1,5 +1,17 @@
 # Equipment reference image attribution
 
+## Generated power equipment artwork
+
+- `ups_faces.png`: representative APC Smart-UPS front/rear texture atlas.
+- `pdu_faces.png`: representative eight-outlet rack PDU front/rear atlas.
+- `power_connectors.png`: transparent IEC sockets/plugs, Cisco four-pin DC plug,
+  and external adapter sprite atlas.
+- Created for this project using the built-in OpenAI image generation tool.
+  These are game illustrations, not manufacturer photos; tiny rendered labels
+  are decorative. Electrical ratings are supplied by the simulator and UI.
+- The prompts are preserved in [POWER_TEXTURE_PROMPTS.md](POWER_TEXTURE_PROMPTS.md).
+- Cisco connector reference: [Cisco 1000 hardware installation guide](https://www.cisco.com/c/en/us/td/docs/routers/access/1100/hardware/installation/guide/b-cisco-1100-series-hig/isr1k-hig-overview.html).
+
 These manufacturer images are used as visual references in the rack UI. Product
 names and trademarks belong to their respective owners. The source-code license
 does not grant rights to these images; review the manufacturer terms before

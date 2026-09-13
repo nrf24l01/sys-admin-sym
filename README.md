@@ -17,8 +17,11 @@ The game starts with one empty 12U rack and $6,000.
    PowerEdge R360 servers in the shop.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
 3. Buy an APC Smart-UPS or PDU, place it in the rack, then connect active
-   devices to rack C13, UPS, or PDU outlets. Use the inspector to request
-   device power; an unplugged device remains off.
+   devices by clicking an empty power outlet or inlet and then its complementary
+   socket. Click the same pending socket to cancel. Right-click an occupied
+   socket and choose **Unplug cable**. Use the inspector to request device power;
+   an unplugged device remains off. Press Escape to cancel an in-progress power
+   or Ethernet connection.
 4. In **RACK**, left-click an RJ45 socket and then another RJ45
    socket. Buy a 305 m cable box and RJ45 connector packs in the shop first;
    each new lead consumes its cut length and two plugs. Choose white, gray, blue,
@@ -69,6 +72,13 @@ limits are evaluated at 230 V using integer W, VA and mA values. UPS defaults
 are 1,000 W / 1,500 VA with four outlets; battery capacity and efficiency are
 simulation parameters. Rack breakers and source trips latch until reset, and
 `tick` advances battery discharge or recharge in simulated seconds.
+The rack PDU uses a C14 inlet and is limited to 2,300 W / 10 A.
 The default UPS uses a synthetic 900 Wh battery and 90% efficiency. The
 reference APC SMT1500RMI2U is rated 230 V, 1,000 W / 1,500 VA with four C13
 outlets: https://www.se.com/au/en/product/SMT1500RMI2U/.
+
+Cisco ISR C1111-8P routers are supplied with a dedicated four-pin 66 W,
+12 V / 5.5 A DC adapter. The adapter is modeled as a 90%-efficient, PF 0.90
+AC load and is selected automatically by legacy `ConnectPower` commands;
+explicit `ConnectPowerCord` commands validate that routers use the adapter and
+other active devices use an IEC C13/C14 cord.

@@ -114,6 +114,11 @@ pub enum Command {
         outlet: crate::OutletId,
         endpoint: crate::PowerEndpoint,
     },
+    ConnectPowerCord {
+        outlet: crate::OutletId,
+        endpoint: crate::PowerEndpoint,
+        kind: crate::PowerCordKind,
+    },
     DisconnectPower {
         outlet: crate::OutletId,
     },

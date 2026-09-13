@@ -82,3 +82,10 @@ integer W, VA, and mA; source limits latch trips until reset. UPS battery
 energy is persisted and advanced through `NetworkSim::advance_time` using
 millisecond simulation time, including transfer, discharge, and recharge.
 Legacy saves receive empty wiring and no implicit power source.
+
+Power connections retain their endpoint map for compatibility and persist a
+parallel cord-kind map. Missing cord entries in older saves migrate to IEC for
+ordinary devices and the supplied Cisco 66 W adapter for ISR C1111 routers.
+The router adapter has a four-pin inlet (not a barrel jack), 12 V / 5.5 A
+output, 90% efficiency, and PF 0.90; its upstream draw is calculated once at
+the adapter boundary.

@@ -153,6 +153,14 @@ fn translate_ui_actions(
                 state.selected = Selection::Link(*id);
                 None
             }
+            UiAction::SelectPowerCable(outlet) => {
+                state.pending_cable = None;
+                state.pending_cable_route.clear();
+                state.pending_power_outlet = None;
+                state.pending_power_inlet = None;
+                state.selected = Selection::PowerCable(*outlet);
+                None
+            }
             UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
             UiAction::BuyCableSupply(supply) => Some(Command::BuyCableSupply { supply: *supply }),
             UiAction::Place { device, rack, unit } => Some(Command::PlaceDevice {
@@ -165,7 +173,7 @@ fn translate_ui_actions(
                 device: *device,
                 powered: *powered,
             }),
-            UiAction::ConnectPower(outlet, endpoint) => Some(Command::ConnectPower { outlet: *outlet, endpoint: *endpoint }),
+            UiAction::PowerSocket(socket) => power_socket_action(&snapshot.0, &mut state, *socket),
             UiAction::DisconnectPower(outlet) => Some(Command::DisconnectPower { outlet: *outlet }),
             UiAction::ResetPower(source) => Some(Command::ResetPowerBreaker { source: *source }),
             UiAction::RackMains(rack, on) => Some(Command::SetRackMains { rack: *rack, on: *on }),
@@ -184,6 +192,7 @@ fn translate_ui_actions(
                 }
             },
             UiAction::CablePort(port) => {
+                begin_ethernet_gesture(&mut state);
                 if snapshot.0.link_for_port(*port).is_some() {
                     state.notice = Some((
                         "This port already has a cable. Disconnect it first.".into(),
@@ -409,6 +418,87 @@ fn set_error(state: &mut UiState, message: impl Into<String>) {
     state.notice = Some((message, false));
 }
 
+fn begin_ethernet_gesture(state: &mut UiState) {
+    state.pending_power_outlet = None;
+    state.pending_power_inlet = None;
+}
+
+/// Applies one power-socket click to the local gesture state.  The returned
+/// command is only emitted after the cloned simulation accepts it.
+fn power_socket_action(
+    snapshot: &NetworkSim,
+    state: &mut UiState,
+    socket: PowerSocket,
+) -> Option<Command> {
+    state.pending_cable = None;
+    state.pending_cable_route.clear();
+    match socket {
+        PowerSocket::Outlet(outlet) => {
+            if state.pending_power_outlet == Some(outlet) {
+                state.pending_power_outlet = None;
+                state.notice = Some(("Power cable selection cancelled".into(), true));
+            } else if snapshot.power.connections.contains_key(&outlet) {
+                state.pending_power_outlet = None;
+                state.pending_power_inlet = None;
+                state.selected = Selection::PowerCable(outlet);
+                state.notice = Some(("Power cable selected".into(), true));
+            } else if state.pending_power_inlet.is_none() && state.pending_power_outlet.is_some() {
+                set_error(state, "Select a power inlet to finish the cable.");
+            } else if let Some(endpoint) = state.pending_power_inlet.take() {
+                state.pending_power_outlet = None;
+                let command = Command::ConnectPower { outlet, endpoint };
+                let mut check = snapshot.clone();
+                match check.execute(command.clone()) {
+                    Ok(_) => return Some(command),
+                    Err(error) => {
+                        state.pending_power_inlet = Some(endpoint);
+                        set_error(state, error.to_string());
+                    }
+                }
+            } else {
+                state.pending_power_outlet = Some(outlet);
+                state.notice = Some(("Select a power inlet to finish the cable".into(), true));
+            }
+        }
+        PowerSocket::Inlet(endpoint) => {
+            if state.pending_power_inlet == Some(endpoint) {
+                state.pending_power_inlet = None;
+                state.notice = Some(("Power cable selection cancelled".into(), true));
+            } else if let Some(outlet) = snapshot
+                .power
+                .connections
+                .iter()
+                .find_map(|(outlet, target)| (*target == endpoint).then_some(*outlet))
+            {
+                state.pending_power_outlet = None;
+                state.pending_power_inlet = None;
+                state.selected = Selection::PowerCable(outlet);
+                state.notice = Some(("Power cable selected".into(), true));
+            } else if state.pending_power_outlet.is_none() && state.pending_power_inlet.is_some() {
+                set_error(state, "Select a power outlet to finish the cable.");
+            } else if let Some(outlet) = state.pending_power_outlet.take() {
+                state.pending_power_inlet = None;
+                let command = Command::ConnectPower { outlet, endpoint };
+                let mut check = snapshot.clone();
+                match check.execute(command.clone()) {
+                    Ok(_) => return Some(command),
+                    Err(error) => {
+                        state.pending_power_outlet = Some(outlet);
+                        set_error(state, error.to_string());
+                    }
+                }
+            } else {
+                state.pending_power_inlet = Some(endpoint);
+                state.notice = Some((
+                    "Select a free power outlet to finish the cable".into(),
+                    true,
+                ));
+            }
+        }
+    }
+    None
+}
+
 fn parse_server_draft(draft: &ServerDraft) -> Result<(String, Ipv4InterfaceConfig), &'static str> {
     let address: Ipv4Addr = draft
         .address
@@ -471,6 +561,9 @@ fn poll_worker(
                 let selection_gone = match state.selected {
                     Selection::Port(port) => snapshot.0.port(port).is_none(),
                     Selection::Link(link) => snapshot.0.link(link).is_none(),
+                    Selection::PowerCable(outlet) => {
+                        !snapshot.0.power.connections.contains_key(&outlet)
+                    }
                     _ => false,
                 };
                 if selection_gone {
@@ -503,6 +596,10 @@ fn poll_worker(
                     (message, true)
                 });
                 for event in &events {
+                    if matches!(event, cloud_provider_sim::SimEvent::PowerChanged) {
+                        state.pending_power_outlet = None;
+                        state.pending_power_inlet = None;
+                    }
                     if matches!(
                         event,
                         cloud_provider_sim::SimEvent::DeviceMoved { .. }
@@ -510,6 +607,8 @@ fn poll_worker(
                     ) {
                         state.pending_cable = None;
                         state.pending_cable_route.clear();
+                        state.pending_power_outlet = None;
+                        state.pending_power_inlet = None;
                     }
                 }
             }
@@ -533,6 +632,8 @@ fn poll_worker(
                 state.terminals.clear();
                 state.pending_cable = None;
                 state.pending_cable_route.clear();
+                state.pending_power_outlet = None;
+                state.pending_power_inlet = None;
                 state.selected = Selection::None;
             }
             WorkerResponse::Error(error) => set_error(&mut state, error),
@@ -546,6 +647,117 @@ mod tests {
     use cloud_provider_sim::{
         Command, DeviceTemplate, OutletId, PowerEndpoint, RackId, SimEvent, SourceId,
     };
+
+    fn outlet() -> OutletId {
+        OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        }
+    }
+
+    fn device_sim() -> (NetworkSim, cloud_provider_sim::DeviceId) {
+        let mut sim = NetworkSim::new();
+        let device = match sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Router,
+            })
+            .unwrap()[0]
+        {
+            SimEvent::DeviceAdded(id) => id,
+            _ => unreachable!(),
+        };
+        sim.execute(Command::PlaceDevice {
+            device,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        (sim, device)
+    }
+
+    #[test]
+    fn power_socket_pairs_in_both_directions_and_sim_infers_cisco_cord() {
+        let (sim, device) = device_sim();
+        let endpoint = PowerEndpoint::Device(device);
+        let mut state = UiState::default();
+        assert!(power_socket_action(&sim, &mut state, PowerSocket::Outlet(outlet())).is_none());
+        assert_eq!(state.pending_power_outlet, Some(outlet()));
+        let command = power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint)).unwrap();
+        let mut connected = sim.clone();
+        connected.execute(command).unwrap();
+        assert_eq!(
+            connected.power.cord_kind(outlet()),
+            cloud_provider_sim::PowerCordKind::Cisco66WAdapter
+        );
+
+        let mut reverse = UiState::default();
+        assert!(power_socket_action(&sim, &mut reverse, PowerSocket::Inlet(endpoint)).is_none());
+        assert!(power_socket_action(&sim, &mut reverse, PowerSocket::Outlet(outlet())).is_some());
+    }
+
+    #[test]
+    fn power_socket_same_role_and_invalid_connection_preserves_pending_selection() {
+        let sim = NetworkSim::new();
+        let first = outlet();
+        let second = OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 1,
+        };
+        let mut state = UiState::default();
+        power_socket_action(&sim, &mut state, PowerSocket::Outlet(first));
+        assert!(power_socket_action(&sim, &mut state, PowerSocket::Outlet(second)).is_none());
+        assert_eq!(state.pending_power_outlet, Some(first));
+
+        let endpoint = PowerEndpoint::Device(cloud_provider_sim::DeviceId(99));
+        let mut inlet_state = UiState::default();
+        power_socket_action(&sim, &mut inlet_state, PowerSocket::Inlet(endpoint));
+        assert!(
+            power_socket_action(
+                &sim,
+                &mut inlet_state,
+                PowerSocket::Inlet(PowerEndpoint::Device(cloud_provider_sim::DeviceId(98)))
+            )
+            .is_none()
+        );
+        assert_eq!(inlet_state.pending_power_inlet, Some(endpoint));
+        assert!(power_socket_action(&sim, &mut inlet_state, PowerSocket::Outlet(first)).is_none());
+        assert_eq!(inlet_state.pending_power_inlet, Some(endpoint));
+    }
+
+    #[test]
+    fn power_socket_same_socket_cancels_and_occupied_selects_cable() {
+        let (mut sim, device) = device_sim();
+        let endpoint = PowerEndpoint::Device(device);
+        sim.execute(Command::ConnectPower {
+            outlet: outlet(),
+            endpoint,
+        })
+        .unwrap();
+        let mut state = UiState {
+            pending_power_outlet: Some(outlet()),
+            ..Default::default()
+        };
+        power_socket_action(&sim, &mut state, PowerSocket::Outlet(outlet()));
+        assert_eq!(state.pending_power_outlet, None);
+        state.pending_power_inlet = Some(endpoint);
+        power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint));
+        assert_eq!(state.pending_power_inlet, None);
+        power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint));
+        assert_eq!(state.selected, Selection::PowerCable(outlet()));
+        assert_eq!(state.pending_power_inlet, None);
+    }
+
+    #[test]
+    fn starting_ethernet_gesture_clears_power_pending_state() {
+        let mut state = UiState {
+            pending_power_outlet: Some(outlet()),
+            pending_power_inlet: Some(PowerEndpoint::Device(cloud_provider_sim::DeviceId(1))),
+            ..Default::default()
+        };
+        begin_ethernet_gesture(&mut state);
+        assert!(state.pending_power_outlet.is_none());
+        assert!(state.pending_power_inlet.is_none());
+    }
 
     #[test]
     fn console_worker_keeps_device_identity_and_stops_scripts_on_error() {

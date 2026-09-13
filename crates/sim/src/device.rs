@@ -1,6 +1,19 @@
 use crate::{DeviceId, PortId, RackPlacement, Route, RouterInterface, SourceId, Vlan};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PowerInletConnector {
+    IecC14,
+    CiscoFourPin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PowerInlet {
+    pub connector: PowerInletConnector,
+    pub side: crate::RackSide,
+    pub position: (f32, f32),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Device {
     pub id: DeviceId,
@@ -65,6 +78,37 @@ pub const RACK_FACE_HEIGHT_CM: f32 = 4.445;
 pub const RACK_GAP_CM: f32 = 0.5;
 
 impl DeviceKind {
+    /// Authoritative physical power inlet metadata shared by simulation and UI.
+    pub fn power_inlet(&self) -> Option<PowerInlet> {
+        match self {
+            Self::Router(_) => Some(PowerInlet {
+                connector: PowerInletConnector::CiscoFourPin,
+                side: crate::RackSide::Front,
+                position: (0.146, 0.63),
+            }),
+            Self::Server(_) => Some(PowerInlet {
+                connector: PowerInletConnector::IecC14,
+                side: crate::RackSide::Rear,
+                position: (0.945, 0.52),
+            }),
+            Self::Switch(_) => Some(PowerInlet {
+                connector: PowerInletConnector::IecC14,
+                side: crate::RackSide::Rear,
+                position: (0.094, 0.42),
+            }),
+            Self::Ups(_) => Some(PowerInlet {
+                connector: PowerInletConnector::IecC14,
+                side: crate::RackSide::Rear,
+                position: (0.920, 0.48),
+            }),
+            Self::Pdu(_) => Some(PowerInlet {
+                connector: PowerInletConnector::IecC14,
+                side: crate::RackSide::Rear,
+                position: (0.887, 0.46),
+            }),
+            _ => None,
+        }
+    }
     /// Socket centers on the equipment face, shared by cable cuts and rendering.
     pub fn port_position_normalized(&self, index: usize) -> (f32, f32) {
         match self {

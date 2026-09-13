@@ -9,6 +9,7 @@ pub enum UiAction {
     SelectDevice(DeviceId),
     SelectPort(PortId),
     SelectLink(LinkId),
+    SelectPowerCable(OutletId),
     Buy(DeviceTemplate),
     BuyCableSupply(cloud_provider_sim::CableSupply),
     Place {
@@ -18,9 +19,8 @@ pub enum UiAction {
     },
     Remove(DeviceId),
     TogglePower(DeviceId, bool),
-    #[allow(dead_code)]
-    ConnectPower(OutletId, PowerEndpoint),
-    #[allow(dead_code)]
+    /// Click a power socket. A second complementary click completes the lead.
+    PowerSocket(PowerSocket),
     DisconnectPower(OutletId),
     ResetPower(SourceId),
     RackMains(RackId, bool),
@@ -54,6 +54,12 @@ pub enum UiAction {
     Save,
     Load,
     NewGame,
+}
+
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerSocket {
+    Outlet(OutletId),
+    Inlet(PowerEndpoint),
 }
 
 #[derive(Message, Debug, Clone)]

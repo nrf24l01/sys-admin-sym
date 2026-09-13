@@ -13,6 +13,36 @@ pub const RACK_C13_OUTLETS: usize = 4;
 pub const RACK_OUTLET_WATTS: u32 = 2_300;
 pub const RACK_OUTLET_MA: u32 = 10_000;
 
+/// The physical cord used between an AC outlet and a powered device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum PowerCordKind {
+    #[default]
+    IecC13C14,
+    Cisco66WAdapter,
+}
+
+impl PowerCordKind {
+    pub const CISCO_OUTPUT_WATTS: u32 = 66;
+    pub const CISCO_OUTPUT_VOLTS: u32 = 12;
+    pub const CISCO_OUTPUT_CURRENT_MA: u32 = 5_500;
+    pub const CISCO_EFFICIENCY_PERCENT: u32 = 90;
+    pub const CISCO_POWER_FACTOR_PERCENT: u16 = 90;
+
+    /// AC load presented to the upstream outlet for a DC device load.
+    pub fn input_load(self, load: ElectricalLoad) -> ElectricalLoad {
+        match self {
+            Self::IecC13C14 => load,
+            Self::Cisco66WAdapter => {
+                let watts = ceil(
+                    u64::from(load.watts) * 100,
+                    u64::from(Self::CISCO_EFFICIENCY_PERCENT),
+                );
+                ElectricalLoad::from_watts_pf(s32(watts), Self::CISCO_POWER_FACTOR_PERCENT)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SourceId {
     Rack(RackId),
@@ -127,9 +157,9 @@ pub struct PduState {
 impl Default for PduState {
     fn default() -> Self {
         Self {
-            watts: 3680,
-            va: 3680,
-            current_ma: 16000,
+            watts: 2300,
+            va: 2300,
+            current_ma: 10_000,
             outlets: 8,
             overhead_watts: 5,
             tripped: false,
@@ -159,6 +189,9 @@ pub struct PowerSystem {
     pub pdus: HashMap<u64, PduState>,
     pub devices: HashMap<DeviceId, DevicePower>,
     pub connections: HashMap<OutletId, PowerEndpoint>,
+    /// Cord type parallel to `connections`; absent legacy entries are inferred by NetworkSim.
+    #[serde(default)]
+    pub cord_kinds: HashMap<OutletId, PowerCordKind>,
     #[serde(default)]
     pub next_source_id: u64,
 }
@@ -178,6 +211,8 @@ pub enum PowerError {
     Tripped,
     #[error("device does not exist")]
     MissingDevice,
+    #[error("Cisco 66 W adapter is overloaded")]
+    AdapterOverload,
 }
 impl Default for PowerSystem {
     fn default() -> Self {
@@ -198,6 +233,7 @@ impl PowerSystem {
             pdus: HashMap::new(),
             devices: HashMap::new(),
             connections: HashMap::new(),
+            cord_kinds: HashMap::new(),
             next_source_id: 1,
         }
     }
@@ -238,6 +274,14 @@ impl PowerSystem {
         }
     }
     pub fn connect(&mut self, o: OutletId, e: PowerEndpoint) -> Result<(), PowerError> {
+        self.connect_with_kind(o, e, PowerCordKind::IecC13C14)
+    }
+    pub fn connect_with_kind(
+        &mut self,
+        o: OutletId,
+        e: PowerEndpoint,
+        kind: PowerCordKind,
+    ) -> Result<(), PowerError> {
         if !self.source_exists(o.source) {
             return Err(PowerError::MissingSource);
         }
@@ -253,6 +297,15 @@ impl PowerSystem {
         match e {
             PowerEndpoint::Device(d) if !self.devices.contains_key(&d) => {
                 return Err(PowerError::MissingDevice);
+            }
+            PowerEndpoint::Device(d)
+                if matches!(kind, PowerCordKind::Cisco66WAdapter)
+                    && self
+                        .devices
+                        .get(&d)
+                        .is_some_and(|x| x.load.watts > PowerCordKind::CISCO_OUTPUT_WATTS) =>
+            {
+                return Err(PowerError::AdapterOverload);
             }
             PowerEndpoint::Source(s) => {
                 if !self.source_exists(s) {
@@ -271,11 +324,13 @@ impl PowerSystem {
             _ => {}
         }
         self.connections.insert(o, e);
+        self.cord_kinds.insert(o, kind);
         self.recompute();
         Ok(())
     }
     pub fn disconnect(&mut self, o: OutletId) -> bool {
         let x = self.connections.remove(&o).is_some();
+        self.cord_kinds.remove(&o);
         if x {
             self.recompute()
         }
@@ -345,6 +400,9 @@ impl PowerSystem {
     pub fn device_status(&self, id: DeviceId) -> Option<DevicePower> {
         self.devices.get(&id).cloned()
     }
+    pub fn cord_kind(&self, outlet: OutletId) -> PowerCordKind {
+        self.cord_kinds.get(&outlet).copied().unwrap_or_default()
+    }
     pub fn source_telemetry(&self, s: SourceId) -> Option<PowerTelemetry> {
         if !self.source_exists(s) {
             return None;
@@ -390,12 +448,14 @@ impl PowerSystem {
             if u.tripped {
                 u.online = false
             } else if mains {
-                u.online = true;
+                u.online = u.enabled;
                 let n = u128::from(u.spec.charge_watts) * u128::from(ms) * 1000
                     + u128::from(u.charge_remainder);
                 let add = n / 3_600_000;
                 u.charge_remainder = (n % 3_600_000) as u64;
                 u.battery_mwh = u.battery_mwh.saturating_add(s64(add)).min(cap)
+            } else if !u.enabled {
+                u.online = false
             } else if out.watts > 0 && u.battery_mwh > 0 {
                 u.online = true;
                 let eff = u64::from(u.spec.efficiency_percent.clamp(1, 100));
@@ -518,7 +578,7 @@ impl PowerSystem {
                     .devices
                     .get(d)
                     .filter(|x| x.requested)
-                    .map_or_default(|x| x.load),
+                    .map_or_default(|x| self.cord_kind(*outlet).input_load(x.load)),
                 PowerEndpoint::Source(c) => self.input_load(*c, seen),
             };
             out = plus(out, l)
@@ -554,7 +614,7 @@ impl PowerSystem {
                     .devices
                     .get(d)
                     .filter(|x| x.requested)
-                    .map_or_default(|x| x.load),
+                    .map_or_default(|x| self.cord_kind(*outlet).input_load(x.load)),
                 PowerEndpoint::Source(c) => self.input_load(*c, seen),
             };
             o = plus(o, l);
@@ -566,7 +626,7 @@ impl PowerSystem {
         }
         if let SourceId::Ups(i) = s {
             if let Some(u) = self.ups.get(&i) {
-                if !u.enabled {
+                if !u.enabled || u.tripped {
                     o = ElectricalLoad::default();
                 }
                 let eff = u64::from(u.spec.efficiency_percent.clamp(1, 100));
@@ -576,9 +636,9 @@ impl PowerSystem {
                 converted.va = va;
                 converted.current_ma = s32(ceil(u64::from(va) * 1000, u64::from(MAINS_VOLTAGE)));
                 let mains = self.parent_available(s, &mut HashSet::new());
-                return if !mains {
+                return if !mains || u.tripped {
                     ElectricalLoad::default()
-                } else if !u.enabled || u.battery_mwh < u64::from(u.spec.battery_wh) * 1000 {
+                } else if u.battery_mwh < u64::from(u.spec.battery_wh) * 1000 {
                     plus(
                         converted,
                         ElectricalLoad::from_watts_pf(u.spec.charge_watts, 100),
@@ -937,12 +997,16 @@ mod tests {
             PowerEndpoint::Device(d),
         )
         .unwrap();
+        p.ups.get_mut(&u).unwrap().battery_mwh = 899_000;
         p.set_source_enabled(SourceId::Ups(u), false);
         assert!(!p.device_status(d).unwrap().effective);
         assert_eq!(
             p.source_telemetry(SourceId::Ups(u)).unwrap().input.watts,
             120
         );
+        p.ups.get_mut(&u).unwrap().battery_mwh = u64::from(p.ups[&u].spec.battery_wh) * 1000;
+        p.recompute();
+        assert_eq!(p.source_telemetry(SourceId::Ups(u)).unwrap().input.watts, 0);
         let before = p.ups[&u].battery_mwh;
         p.set_rack_mains(r, false);
         p.tick_ms(3_600_000);
