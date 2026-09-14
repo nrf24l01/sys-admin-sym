@@ -1,0 +1,72 @@
+{
+  "type": "server",
+  "texture": "equipment/server_front.png",
+  "textures": {
+    "front": "equipment/server_front.png",
+    "back": "equipment/server_rear_clean.png"
+  },
+  "ports": {
+    "rj-45": [
+      {
+        "left_down": [
+          0.137,
+          0.345
+        ],
+        "right_up": [
+          0.173,
+          0.595
+        ],
+        "speed": "1G",
+        "side": "back"
+      },
+      {
+        "left_down": [
+          0.19,
+          0.345
+        ],
+        "right_up": [
+          0.226,
+          0.595
+        ],
+        "speed": "1G",
+        "side": "back"
+      },
+      {
+        "left_down": [
+          0.243,
+          0.345
+        ],
+        "right_up": [
+          0.279,
+          0.595
+        ],
+        "speed": "1G",
+        "side": "back"
+      }
+    ],
+    "c14": [
+      {
+        "left_down": [
+          0.9095675,
+          0.14410779
+        ],
+        "right_up": [
+          0.9742785,
+          0.87608224
+        ],
+        "side": "back"
+      },
+      {
+        "left_down": [
+          0.7645118,
+          0.13765042
+        ],
+        "right_up": [
+          0.8225842,
+          0.90566385
+        ],
+        "side": "back"
+      }
+    ]
+  }
+}

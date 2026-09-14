@@ -1,0 +1,12 @@
+{
+  "type": "cable_manager",
+  "texture": "",
+  "ports": {
+    "anchor": [
+      { "left_down": [0.10, 0.35], "right_up": [0.20, 0.65], "side": "front" },
+      { "left_down": [0.30, 0.35], "right_up": [0.40, 0.65], "side": "front" },
+      { "left_down": [0.50, 0.35], "right_up": [0.60, 0.65], "side": "front" },
+      { "left_down": [0.70, 0.35], "right_up": [0.80, 0.65], "side": "front" }
+    ]
+  }
+}

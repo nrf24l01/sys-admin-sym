@@ -4,8 +4,10 @@ use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
+mod equipment;
 mod rack;
 use cables::{CableScene, CableView, PowerCableView};
+use equipment::equipment_power_port_position;
 use rack::RackLayout;
 
 fn selected_link_id(state: &UiState, sim: &NetworkSim) -> Option<LinkId> {
@@ -1487,13 +1489,15 @@ fn rack_view(
                                 // continuous face. Paint and interact with it only at the
                                 // placement's first unit; the following row remains part of
                                 // the same panel span.
+                                // A multi-U device is painted from its first (lowest)
+                                // placement unit. Painting it from the second occupied
+                                // row shifts the whole face and all socket hitboxes up by
+                                // one U, which was especially visible on the UPS.
                                 if rack
                                     .placements
                                     .iter()
                                     .find(|(id, _)| *id == device_id)
-                                    .is_some_and(|(_, placement)| {
-                                        placement.unit.saturating_add(placement.height.max(1) - 1) != unit
-                                    })
+                                    .is_some_and(|(_, placement)| placement.unit != unit)
                                 {
                                     continue;
                                 }
@@ -1540,7 +1544,13 @@ fn rack_view(
                                         for (slot, index) in visible_patch_port_indices(&sides, state.rack_side).into_iter().enumerate() {
                                             let port_id = &device.ports()[index];
                                             let port = sim.port(*port_id).expect("patch port exists");
-                                            let socket = rack_port_rect(&device.kind, panel_rect, index, port.connector);
+                                            let socket = rack_port_rect(
+                                                &device.kind,
+                                                panel_rect,
+                                                index,
+                                                port.connector,
+                                                state.rack_side,
+                                            );
                                             ui.painter().rect_filled(
                                                 socket,
                                                 1.0,
@@ -1633,7 +1643,18 @@ fn rack_view(
                                     && device.rack.is_some_and(|p| p.unit == unit)
                                     && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
                                 {
-                                    let inlet_center = normalized_panel_position(panel_rect, inlet_meta.unwrap().position);
+                                    let inlet_position = match device.kind {
+                                        DeviceKind::Ups(_)
+                                        | DeviceKind::Pdu(_)
+                                        | DeviceKind::Server(_)
+                                        | DeviceKind::Switch(_)
+                                        | DeviceKind::Router(_) => {
+                                            equipment_power_port_position(&device.kind, "c14", 0)
+                                                .unwrap_or(inlet_meta.unwrap().position)
+                                        }
+                                        _ => inlet_meta.unwrap().position,
+                                    };
+                                    let inlet_center = normalized_panel_position(panel_rect, inlet_position);
                                     let inlet = egui::Rect::from_center_size(inlet_center, egui::vec2(16.0, 22.0));
                                     let endpoint = device_power_endpoint(device);
                                     if let Some(endpoint) = endpoint {
@@ -1716,6 +1737,7 @@ fn rack_view(
                                         panel_rect,
                                         index,
                                         port.connector,
+                                        state.rack_side,
                                     );
                                     port_visuals.push((*port_id, port_rect));
                                     if port.connector.supports_cabling()
@@ -2266,6 +2288,12 @@ fn normalized_panel_position(panel: egui::Rect, normalized: (f32, f32)) -> egui:
 }
 
 fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egui::Rect {
+    if let Some((x, y)) = equipment_power_port_position(kind, "c13", index) {
+        return egui::Rect::from_center_size(
+            normalized_panel_position(panel, (x, y)),
+            egui::vec2(panel.width() * 0.064, panel.height() * 0.40),
+        );
+    }
     let (x, y, w, h) = match kind {
         DeviceKind::Ups(_) => (
             [0.611, 0.679, 0.748, 0.816][index.min(3)],
@@ -2376,8 +2404,15 @@ fn rack_device_panel_rect(
     )
 }
 
-fn rack_port_position(kind: &DeviceKind, rect: egui::Rect, index: usize) -> egui::Pos2 {
-    let (x, y) = kind.port_position_normalized(index);
+fn rack_port_position(
+    kind: &DeviceKind,
+    rect: egui::Rect,
+    index: usize,
+    connector: PortConnector,
+    side: RackSide,
+) -> egui::Pos2 {
+    let (x, y) = equipment::equipment_port_position(kind, connector, side, index)
+        .unwrap_or_else(|| kind.port_position_normalized(index));
     egui::pos2(
         rect.left() + rect.width() * x,
         rect.top() + rect.height() * y,
@@ -2397,8 +2432,9 @@ fn rack_port_rect(
     panel: egui::Rect,
     index: usize,
     connector: PortConnector,
+    side: RackSide,
 ) -> egui::Rect {
-    let center = rack_port_position(kind, panel, index);
+    let center = rack_port_position(kind, panel, index, connector, side);
     let normalized_size = match (&kind, connector) {
         (DeviceKind::Router(_), PortConnector::Rj45) => egui::vec2(0.041, 0.27),
         (DeviceKind::Server(_), PortConnector::Rj45) => egui::vec2(0.036, 0.25),

@@ -1,0 +1,363 @@
+{
+  "type": "switch",
+  "texture": "equipment/switch_front_clean.png",
+  "textures": {
+    "front": "equipment/switch_front_clean.png",
+    "back": "equipment/switch_rear.png"
+  },
+  "ports": {
+    "sfp": [
+      {
+        "left_down": [
+          0.818,
+          0.52
+        ],
+        "right_up": [
+          0.848,
+          0.88
+        ],
+        "speed": "1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.858,
+          0.52
+        ],
+        "right_up": [
+          0.888,
+          0.88
+        ],
+        "speed": "1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.898,
+          0.52
+        ],
+        "right_up": [
+          0.928,
+          0.88
+        ],
+        "speed": "1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.938,
+          0.52
+        ],
+        "right_up": [
+          0.968,
+          0.88
+        ],
+        "speed": "1G",
+        "side": "front"
+      }
+    ],
+    "c14": [
+      {
+        "left_down": [
+          0.056966178,
+          0.14385015
+        ],
+        "right_up": [
+          0.13272178,
+          0.7269057
+        ],
+        "side": "back"
+      }
+    ],
+    "rj-45": [
+      {
+        "left_down": [
+          0.328,
+          0.235
+        ],
+        "right_up": [
+          0.356,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.328,
+          0.525
+        ],
+        "right_up": [
+          0.356,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.3616,
+          0.235
+        ],
+        "right_up": [
+          0.3896,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.3616,
+          0.525
+        ],
+        "right_up": [
+          0.3896,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.3952,
+          0.235
+        ],
+        "right_up": [
+          0.4232,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.3952,
+          0.525
+        ],
+        "right_up": [
+          0.4232,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.4288,
+          0.235
+        ],
+        "right_up": [
+          0.4568,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.4288,
+          0.525
+        ],
+        "right_up": [
+          0.4568,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.4624,
+          0.235
+        ],
+        "right_up": [
+          0.4904,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.4624,
+          0.525
+        ],
+        "right_up": [
+          0.4904,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.496,
+          0.235
+        ],
+        "right_up": [
+          0.524,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.496,
+          0.525
+        ],
+        "right_up": [
+          0.524,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.591,
+          0.235
+        ],
+        "right_up": [
+          0.619,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.591,
+          0.525
+        ],
+        "right_up": [
+          0.619,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6246,
+          0.235
+        ],
+        "right_up": [
+          0.6526,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6246,
+          0.525
+        ],
+        "right_up": [
+          0.6526,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6582,
+          0.235
+        ],
+        "right_up": [
+          0.6862,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6582,
+          0.525
+        ],
+        "right_up": [
+          0.6862,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6918,
+          0.235
+        ],
+        "right_up": [
+          0.7198,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.6918,
+          0.525
+        ],
+        "right_up": [
+          0.7198,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.7254,
+          0.235
+        ],
+        "right_up": [
+          0.7534,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.7254,
+          0.525
+        ],
+        "right_up": [
+          0.7534,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.759,
+          0.235
+        ],
+        "right_up": [
+          0.787,
+          0.505
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      },
+      {
+        "left_down": [
+          0.759,
+          0.525
+        ],
+        "right_up": [
+          0.787,
+          0.795
+        ],
+        "speed": "10M/100M/1G",
+        "side": "front"
+      }
+    ]
+  }
+}

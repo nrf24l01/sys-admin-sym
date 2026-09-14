@@ -1,0 +1,19 @@
+{
+  "type": "pdu",
+  "texture": "equipment/pdu_faces.png",
+  "ports": {
+    "c13": [
+      { "left_down": [0.069, 0.18], "right_up": [0.142, 0.82], "side": "back" },
+      { "left_down": [0.161, 0.18], "right_up": [0.234, 0.82], "side": "back" },
+      { "left_down": [0.254, 0.18], "right_up": [0.327, 0.82], "side": "back" },
+      { "left_down": [0.347, 0.18], "right_up": [0.420, 0.82], "side": "back" },
+      { "left_down": [0.440, 0.18], "right_up": [0.513, 0.82], "side": "back" },
+      { "left_down": [0.533, 0.18], "right_up": [0.606, 0.82], "side": "back" },
+      { "left_down": [0.626, 0.18], "right_up": [0.699, 0.82], "side": "back" },
+      { "left_down": [0.719, 0.18], "right_up": [0.792, 0.82], "side": "back" }
+    ],
+    "c14": [
+      { "left_down": [0.884, 0.18], "right_up": [0.956, 0.82], "side": "back" }
+    ]
+  }
+}
