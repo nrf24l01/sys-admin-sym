@@ -462,17 +462,21 @@ fn power_socket_action(
                 set_error(state, "Select a power inlet to finish the cable.");
             } else if let Some(endpoint) = state.pending_power_inlet.take() {
                 state.pending_power_outlet = None;
+                let mut route = std::mem::take(&mut state.pending_power_route);
+                // Gestures run inlet -> outlet; stored cords run outlet -> inlet.
+                route.reverse();
                 let command = Command::ConnectPowerRouted {
                     outlet,
                     endpoint,
-                    route: std::mem::take(&mut state.pending_power_route),
+                    route,
                 };
                 let mut check = snapshot.clone();
                 match check.execute(command.clone()) {
                     Ok(_) => return Some(command),
                     Err(error) => {
                         state.pending_power_inlet = Some(endpoint);
-                        if let Command::ConnectPowerRouted { route, .. } = command {
+                        if let Command::ConnectPowerRouted { mut route, .. } = command {
+                            route.reverse();
                             state.pending_power_route = route;
                         }
                         set_error(state, error.to_string());
@@ -747,6 +751,28 @@ mod tests {
         let mut connected = sim.clone();
         connected.execute(command).unwrap();
         assert_eq!(connected.power.cord_routes[&outlet()], vec![anchor]);
+    }
+
+    #[test]
+    fn inlet_first_power_route_preserves_the_gesture_order() {
+        let (sim, device) = device_sim();
+        let endpoint = PowerEndpoint::Device(device);
+        let first = cloud_provider_sim::CableRoutePoint {
+            rack: RackId(1), unit: 3, side: cloud_provider_sim::RackSide::Front, offset_cm: 48,
+        };
+        let last = cloud_provider_sim::CableRoutePoint { unit: 9, side: cloud_provider_sim::RackSide::Rear, ..first };
+        let mut state = UiState::default();
+        power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint));
+        state.pending_power_route = vec![first, last];
+        let command = power_socket_action(&sim, &mut state, PowerSocket::Outlet(outlet())).unwrap();
+        let mut connected = sim.clone();
+        connected.execute(command).unwrap();
+        assert_eq!(connected.power.cord_routes[&outlet()], vec![last, first]);
+        let invalid = PowerEndpoint::Source(SourceId::Ups(9999));
+        power_socket_action(&sim, &mut state, PowerSocket::Inlet(invalid));
+        state.pending_power_route = vec![first, last];
+        assert!(power_socket_action(&sim, &mut state, PowerSocket::Outlet(outlet())).is_none());
+        assert_eq!(state.pending_power_route, vec![first, last]);
     }
 
     #[test]

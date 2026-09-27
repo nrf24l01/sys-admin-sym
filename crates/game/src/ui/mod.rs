@@ -1854,7 +1854,8 @@ fn rack_view(
                         let mut proposed = cable.route.clone();
                         if let Some(index) = used { proposed.remove(index); } else { proposed.push(point); }
                         if response.hovered() {
-                            for path in cables::visible_spans(cable.endpoints.0, cable.endpoints.1, &proposed, &anchors) {
+                            let preview_route = if used.is_some() { &cable.route } else { &proposed };
+                            for path in cables::visible_spans(cable.endpoints.0, cable.endpoints.1, preview_route, &anchors) {
                                 cables::paint_preview(ui, path, cable.color);
                             }
                         }

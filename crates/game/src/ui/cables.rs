@@ -243,13 +243,23 @@ pub(super) fn visible_spans(
         let Some(position) = position else { continue };
         let rail = |other_index: usize| {
             let other = &nodes[other_index].0;
-            // Explicit route anchors choose the rail. Unrouted crossings use
-            // the same nearest rail on both faces.
-            let offset = if index > 0 && index + 1 < nodes.len() {
-                if location.offset_cm < 24 { 0 } else { 48 }
-            } else if other_index > 0 && other_index + 1 < nodes.len() {
-                if other.offset_cm < 24 { 0 } else { 48 }
-            } else if location.offset_cm + other.offset_cm < 48 {
+            // A selected anchor is the crossing itself. Never replace it by
+            // a nearer rail or by a point at the socket's unit.
+            if index > 0 && index + 1 < nodes.len() {
+                return *position;
+            }
+            if other_index > 0 && other_index + 1 < nodes.len() && other.rack == location.rack {
+                return anchor_position(
+                    &CableRoutePoint {
+                        side: location.side,
+                        ..*other
+                    },
+                    anchors,
+                )
+                .unwrap_or(*position);
+            }
+            // Only a cable without a defined crossing needs an automatic rail.
+            let offset = if location.offset_cm + other.offset_cm < 48 {
                 0
             } else {
                 48
@@ -371,9 +381,7 @@ fn creation_preview_paths(
     } else if let Some((point, position)) = anchors.iter().find(|(_, position)| {
         Rect::from_center_size(*position, Vec2::splat(24.0)).contains(pointer)
     }) {
-        if let Some(index) = route.iter().position(|candidate| candidate == point) {
-            route.remove(index);
-        } else {
+        if !route.contains(point) {
             route.push(*point);
         }
         (*point, Some(*position))
@@ -856,6 +864,80 @@ mod tests {
     use cloud_provider_sim::{
         CableSupply, Command, DeviceTemplate, RackId, RackSide, SimEvent, SourceId,
     };
+
+    #[test]
+    fn explicit_anchor_order_and_crossing_height_are_preserved() {
+        let point = CableRoutePoint {
+            rack: RackId(1),
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 0,
+        };
+        let first = CableRoutePoint {
+            unit: 9,
+            offset_cm: 48,
+            ..point
+        };
+        let second = CableRoutePoint { unit: 3, ..point };
+        let third = CableRoutePoint { unit: 7, ..first };
+        let a = egui::pos2(100.0, 450.0);
+        let b = egui::pos2(120.0, 400.0);
+        let positions = [
+            egui::pos2(300.0, 50.0),
+            egui::pos2(20.0, 350.0),
+            egui::pos2(300.0, 150.0),
+        ];
+        let anchors = vec![
+            (first, positions[0]),
+            (second, positions[1]),
+            (third, positions[2]),
+        ];
+        assert_eq!(
+            visible_spans(
+                (point, Some(a)),
+                (point, Some(b)),
+                &[first, second, third],
+                &anchors
+            ),
+            vec![vec![a, positions[0], positions[1], positions[2], b]]
+        );
+        let rear_first = CableRoutePoint {
+            side: RackSide::Rear,
+            ..first
+        };
+        let rear_second = CableRoutePoint {
+            side: RackSide::Rear,
+            ..second
+        };
+        assert_eq!(
+            visible_spans(
+                (point, Some(a)),
+                (point, Some(b)),
+                &[rear_first, rear_second],
+                &anchors
+            ),
+            vec![vec![a, positions[0]], vec![positions[1], b]]
+        );
+        let (paths, _) = creation_preview_paths(
+            positions[0],
+            (point, Some(a)),
+            &[first, second, third],
+            Color32::WHITE,
+            &[],
+            &anchors,
+        );
+        assert_eq!(
+            paths,
+            vec![vec![
+                a,
+                positions[0],
+                positions[1],
+                positions[2],
+                positions[0]
+            ]],
+            "hovering an existing anchor must not shorten the chosen route"
+        );
+    }
 
     #[test]
     fn creation_preview_follows_pointer_through_anchors_and_across_faces() {
