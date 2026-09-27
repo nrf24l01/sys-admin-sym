@@ -13,8 +13,10 @@ cargo run --release
 
 The game starts with one empty 12U rack and $6,000.
 
-1. Buy a Cisco ISR C1111-8P, Cisco Catalyst C1000-24T-4G-L, and Dell
-   PowerEdge R360 servers in the shop.
+1. Open **SHOP** in the top bar. The separate window groups Network hardware
+   into routers, switches, and cabling; Compute contains DELL servers; Power
+   contains UPS and PDU models. Search and filter by price, affordability, rack
+   size, RJ45 port count, or C13 outlet count, then buy equipment for inventory.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
 3. Buy an APC Smart-UPS or PDU, place it in the rack, then connect active
    devices by clicking an empty power outlet or inlet and then its complementary

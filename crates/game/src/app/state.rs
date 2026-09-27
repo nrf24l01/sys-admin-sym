@@ -40,6 +40,7 @@ pub enum Selection {
 
 #[derive(Resource, Default)]
 pub struct UiState {
+    pub shop: super::ShopState,
     pub workspace: Workspace,
     pub selected: Selection,
     pub pending_cable: Option<PortId>,

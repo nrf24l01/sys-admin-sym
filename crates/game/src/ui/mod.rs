@@ -5,7 +5,9 @@ use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
 mod equipment;
+mod inventory;
 mod rack;
+mod shop;
 use cables::{CableScene, CableView, PowerCableView};
 use equipment::equipment_power_port_position;
 use rack::RackLayout;
@@ -240,7 +242,7 @@ pub fn main_ui(
             state.error_dialog = None;
         }
     }
-    shop_panel(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
+    inventory::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     inspector_panel(
         &mut viewport_ui,
         &snapshot.0,
@@ -258,6 +260,7 @@ pub fn main_ui(
         &mut images.cables,
         &mut actions,
     );
+    shop::show(&mut viewport_ui, &snapshot.0, &mut state.shop, &mut actions);
     Ok(())
 }
 
@@ -293,6 +296,10 @@ fn top_bar(
                     {
                         state.workspace = workspace;
                     }
+                }
+                ui.separator();
+                if ui.selectable_label(state.shop.open, "SHOP").clicked() {
+                    state.shop.open = !state.shop.open;
                 }
                 ui.separator();
                 if state.pending_cable.is_some() {
@@ -358,261 +365,6 @@ fn top_bar(
         });
 }
 
-fn shop_panel(
-    viewport: &mut egui::Ui,
-    sim: &NetworkSim,
-    state: &mut UiState,
-    actions: &mut MessageWriter<UiAction>,
-) {
-    egui::Panel::left("shop")
-        .resizable(false)
-        .default_size(220.0)
-        .show(viewport, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("shop-scroll")
-                .show(ui, |ui| {
-                    ui.heading("Equipment shop");
-                    ui.label("Buy real rack hardware, then install it into an empty U.");
-                    ui.add_space(8.0);
-                    for (template, label, detail) in [
-                        (
-                            DeviceTemplate::Router,
-                            "Cisco ISR C1111-8P — $500",
-                            "2 × WAN RJ45 + 8 × GE LAN RJ45 · supplied 66 W adapter",
-                        ),
-                        (
-                            DeviceTemplate::Switch,
-                            "Cisco C1000-24T-4G-L — $500",
-                            "24 × RJ45 active · 4 × SFP coming later",
-                        ),
-                        (
-                            DeviceTemplate::Server,
-                            "Dell PowerEdge R360 — $1000",
-                            "3 × rear RJ45 Ethernet: primary, secondary, management · 1U",
-                        ),
-                        (
-                            DeviceTemplate::PatchPanel,
-                            "24-port RJ45 patch panel — $150",
-                            "24 passive RJ45 passthrough ports · front/rear paired · 1U",
-                        ),
-                        (
-                            DeviceTemplate::CableManager,
-                            "1U horizontal cable manager — $75",
-                            "Front routing anchors · no network logic · 1U",
-                        ),
-                        (
-                            DeviceTemplate::Ups,
-                            "APC Smart-UPS SMT1500RMI2U — $1200",
-                            "1000 W / 1500 VA · 4 C13 · battery backup",
-                        ),
-                        (
-                            DeviceTemplate::Pdu,
-                            "Rack PDU 8×C13 — $250",
-                            "2300 W / 10 A · feed from UPS or mains",
-                        ),
-                    ] {
-                        ui.group(|ui| {
-                            ui.label(detail);
-                            if ui
-                                .add_enabled(
-                                    sim.money >= template.price(),
-                                    egui::Button::new(label),
-                                )
-                                .clicked()
-                            {
-                                actions.write(UiAction::Buy(template));
-                            }
-                        });
-                    }
-                    ui.separator();
-                    ui.heading("Cable supplies");
-                    let stock = sim.cable_inventory();
-                    ui.label(format!(
-                        "Bulk cable: {:.2} m",
-                        stock.cable_cm as f32 / 100.0
-                    ));
-                    ui.label(format!("RJ45 connectors: {}", stock.connectors));
-                    for (supply, label) in [
-                        (CableSupply::CableBox305m, "305 m Ethernet cable box"),
-                        (CableSupply::Rj45Pack20, "20 × RJ45 connectors"),
-                    ] {
-                        if ui
-                            .add_enabled(
-                                sim.money >= supply.price(),
-                                egui::Button::new(format!("{label} — ${}", supply.price())),
-                            )
-                            .clicked()
-                        {
-                            actions.write(UiAction::BuyCableSupply(supply));
-                        }
-                    }
-                    let mut automatic = state.cable_length_cm.is_none();
-                    if ui
-                        .checkbox(&mut automatic, "Auto: shortest path + 5%")
-                        .changed()
-                    {
-                        state.cable_length_cm = if automatic { None } else { Some(100) };
-                    }
-                    if let Some(cm) = &mut state.cable_length_cm {
-                        ui.horizontal(|ui| {
-                            ui.label("Cut length");
-                            ui.add(
-                                egui::DragValue::new(cm)
-                                    .range(1..=10000)
-                                    .speed(1)
-                                    .suffix(" cm"),
-                            );
-                        });
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label("Jacket color");
-                        for color in [
-                            CableColor::White,
-                            CableColor::Gray,
-                            CableColor::Blue,
-                            CableColor::Orange,
-                            CableColor::Red,
-                        ] {
-                            let selected = state.cable_color == color;
-                            let fill = cable_color_value(color);
-                            if ui
-                                .add(egui::Button::new("   ").fill(fill).selected(selected))
-                                .on_hover_text(format!("{color:?}"))
-                                .clicked()
-                            {
-                                state.cable_color = color;
-                            }
-                        }
-                    });
-                    ui.weak("A new lead uses its length + 2 plugs. Unplugged leads can be reused.");
-                    if !stock.patch_cables_cm.is_empty() {
-                        ui.label(format!("Reusable leads: {}", stock.patch_cables_cm.len()));
-                        let mut leads: Vec<_> = stock
-                            .patch_cables_cm
-                            .iter()
-                            .enumerate()
-                            .map(|(index, cm)| {
-                                (
-                                    *cm,
-                                    stock
-                                        .patch_cable_colors
-                                        .get(index)
-                                        .copied()
-                                        .unwrap_or_default(),
-                                )
-                            })
-                            .collect();
-                        leads.sort_by_key(|(cm, color)| (*cm, *color as u8));
-                        leads.dedup();
-                        for (cm, color) in leads {
-                            let count = stock
-                                .patch_cables_cm
-                                .iter()
-                                .enumerate()
-                                .filter(|(index, length)| {
-                                    **length == cm
-                                        && stock
-                                            .patch_cable_colors
-                                            .get(*index)
-                                            .copied()
-                                            .unwrap_or_default()
-                                            == color
-                                })
-                                .count();
-                            if ui
-                                .small_button(format!(
-                                    "{:.2} m {:?} × {count} — use",
-                                    cm as f32 / 100.0,
-                                    color
-                                ))
-                                .clicked()
-                            {
-                                state.cable_length_cm = Some(cm);
-                                state.cable_color = color;
-                            }
-                        }
-                    }
-                    ui.separator();
-                    ui.heading("Inventory");
-                    let inventory: Vec<_> = sim.devices().filter(|d| d.rack.is_none()).collect();
-                    if inventory.is_empty() {
-                        ui.weak("No uninstalled devices");
-                    }
-                    let mut groups: std::collections::BTreeMap<String, Vec<_>> =
-                        std::collections::BTreeMap::new();
-                    for device in &inventory {
-                        groups
-                            .entry(inventory_model_name(device))
-                            .or_default()
-                            .push(*device);
-                    }
-                    for (row, (label, matching)) in groups.into_iter().enumerate() {
-                        if row >= 9 {
-                            break;
-                        }
-                        let Some(device) = matching.first() else {
-                            continue;
-                        };
-                        let key = [
-                            egui::Key::Num1,
-                            egui::Key::Num2,
-                            egui::Key::Num3,
-                            egui::Key::Num4,
-                            egui::Key::Num5,
-                            egui::Key::Num6,
-                            egui::Key::Num7,
-                            egui::Key::Num8,
-                            egui::Key::Num9,
-                        ][row];
-                        let shortcut = !ui.ctx().egui_wants_keyboard_input()
-                            && ui.input(|input| input.key_pressed(key));
-                        if shortcut {
-                            actions.write(UiAction::SelectDevice(device.id));
-                        }
-                        if ui
-                            .selectable_label(
-                                state.selected == Selection::Device(device.id),
-                                format!("{}  {label} × {}", row + 1, matching.len()),
-                            )
-                            .clicked()
-                        {
-                            actions.write(UiAction::SelectDevice(device.id));
-                        }
-                    }
-                    ui.separator();
-                    ui.heading("Cables");
-                    let mut links: Vec<_> = sim.links().collect();
-                    links.sort_by_key(|link| link.id);
-                    if links.is_empty() {
-                        ui.weak("No cables connected");
-                    }
-                    for link in links {
-                        if ui
-                            .selectable_label(
-                                state.selected == Selection::Link(link.id),
-                                format!(
-                                    "Cable {:02} · {:?} · {:.2} m",
-                                    link.id.0,
-                                    link.color,
-                                    link.length_cm as f32 / 100.0
-                                ),
-                            )
-                            .clicked()
-                        {
-                            actions.write(UiAction::SelectLink(link.id));
-                        }
-                    }
-                    ui.separator();
-                    let conflicts = sim.duplicate_addresses();
-                    if !conflicts.is_empty() {
-                        ui.colored_label(egui::Color32::LIGHT_RED, "IP CONFLICT");
-                        for (address, ports) in conflicts {
-                            ui.label(format!("{address} on {} interfaces", ports.len()));
-                        }
-                    }
-                });
-        });
-}
 
 fn inspector_panel(
     viewport: &mut egui::Ui,

@@ -1,7 +1,9 @@
 mod messages;
+mod shop;
 mod state;
 
 pub use messages::*;
+pub use shop::*;
 pub use state::*;
 
 use crate::plugins::{PersistencePlugin, SimulationPlugin, UiPlugin};
