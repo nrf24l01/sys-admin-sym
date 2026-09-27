@@ -176,4 +176,31 @@ mod tests {
         assert_eq!(config.ports["rj-45"].len(), 24);
         assert_eq!(config.ports["sfp"].len(), 4);
     }
+
+    #[test]
+    fn patch_panel_has_all_24_paired_positions_on_each_face() {
+        let kind = DeviceKind::PatchPanel(cloud_provider_sim::PatchPanel { ports: vec![] });
+        let config = configs()
+            .iter()
+            .find(|config| config.kind == "patch_panel")
+            .unwrap();
+        assert_eq!(config.ports["rj-45"].len(), 48);
+        let mut positions = Vec::new();
+        for slot in 0..24 {
+            let rear =
+                equipment_port_position(&kind, PortConnector::Rj45, RackSide::Rear, slot * 2)
+                    .unwrap();
+            let front =
+                equipment_port_position(&kind, PortConnector::Rj45, RackSide::Front, slot * 2 + 1)
+                    .unwrap();
+            assert_eq!(front, rear);
+            let expected = kind.port_position_normalized(slot * 2);
+            assert!((front.0 - expected.0).abs() < 0.0001 && (front.1 - expected.1).abs() < 0.0001);
+            assert!(
+                !positions.contains(&front),
+                "every socket needs its own position"
+            );
+            positions.push(front);
+        }
+    }
 }

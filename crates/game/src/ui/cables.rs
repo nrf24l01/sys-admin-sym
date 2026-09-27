@@ -178,7 +178,7 @@ pub(super) struct CableView {
 
 pub(super) struct PowerCableView {
     pub paths: HashMap<OutletId, Vec<Vec<Pos2>>>,
-    pub connectors: HashMap<OutletId, Vec<Rect>>,
+    pub connectors: HashMap<OutletId, Vec<CableConnector>>,
     pub routed: std::collections::HashSet<OutletId>,
     pub plug: egui::TextureId,
     pub origin: Pos2,
@@ -428,11 +428,63 @@ pub(super) fn creation_anchor(
 }
 
 /// Family adapters describe cables; this parent owns every visual and input rule.
+#[derive(Clone, Copy)]
+pub(super) enum ConnectorKind {
+    Rj45,
+    Iec,
+    CiscoFourPin,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct CableConnector {
+    pub socket: Rect,
+    pub kind: ConnectorKind,
+}
+
+impl CableConnector {
+    fn uv(self) -> Rect {
+        let (left, top, right, bottom) = match self.kind {
+            ConnectorKind::Rj45 => (0.10, 0.17, 0.90, 1.0),
+            // End-on cable-exit faces, measured in the 1774 × 887 rear atlas.
+            ConnectorKind::Iec => (98.0 / 1774.0, 164.0 / 887.0, 950.0 / 1774.0, 696.0 / 887.0),
+            ConnectorKind::CiscoFourPin => (
+                1146.0 / 1774.0,
+                137.0 / 887.0,
+                1604.0 / 1774.0,
+                695.0 / 887.0,
+            ),
+        };
+        Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
+    }
+
+    fn cable_exit(self) -> Vec2 {
+        match self.kind {
+            ConnectorKind::Rj45 => Vec2::splat(0.5),
+            ConnectorKind::Iec => Vec2::new(0.495, 0.70),
+            ConnectorKind::CiscoFourPin => Vec2::new(0.50, 0.745),
+        }
+    }
+
+    fn rect(self) -> Rect {
+        if matches!(self.kind, ConnectorKind::Rj45) {
+            return plug_rect(self.socket);
+        }
+        let uv = self.uv();
+        let width = self.socket.width().clamp(12.0, 28.0);
+        let height = width * uv.height() / (uv.width() * 2.0);
+        let exit = self.cable_exit();
+        Rect::from_min_size(
+            self.socket.center() - Vec2::new(width * exit.x, height * exit.y),
+            Vec2::new(width, height),
+        )
+    }
+}
+
 struct RenderCable<Id> {
     id: Id,
     paths: Vec<Vec<Pos2>>,
     length_cm: Option<f32>,
-    connectors: Vec<Rect>,
+    connectors: Vec<CableConnector>,
     color: Color32,
     selected: bool,
     routed: bool,
@@ -444,7 +496,6 @@ struct LayerView {
     floor_y: f32,
     jacket: egui::TextureId,
     plug: egui::TextureId,
-    plug_uv: Rect,
     visibility: CableVisibility,
     selection_active: bool,
     socket_rects: Vec<Rect>,
@@ -615,11 +666,9 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
             if !painted.insert(cable.id) {
                 continue;
             }
-            for socket in &cable.connectors {
+            for connector in &cable.connectors {
                 ui.painter()
-                    .image(view.plug, plug_rect(*socket), view.plug_uv, Color32::WHITE);
-                ui.painter()
-                    .circle_filled(socket.center(), width * 0.65, Color32::from_gray(18));
+                    .image(view.plug, connector.rect(), connector.uv(), Color32::WHITE);
             }
         }
         for (key, cable, _, _) in &spans {
@@ -677,7 +726,6 @@ impl CableScene {
                 floor_y: view.floor_y,
                 jacket: view.jacket,
                 plug: view.plug,
-                plug_uv: Rect::from_min_max(egui::pos2(0.747, 0.066), egui::pos2(0.913, 0.453)),
                 visibility: view.visibility,
                 selection_active: view.selected.is_some(),
                 socket_rects: view.socket_rects,
@@ -720,7 +768,12 @@ impl CableScene {
                     length_cm: complete.then_some(link.length_cm as f32),
                     connectors: [link.a, link.b]
                         .iter()
-                        .filter_map(|id| ports.get(id).copied())
+                        .filter_map(|id| {
+                            ports.get(id).map(|socket| CableConnector {
+                                socket: *socket,
+                                kind: ConnectorKind::Rj45,
+                            })
+                        })
                         .collect(),
                     color: super::cable_color_value(link.color),
                     selected: view.selected == Some(link.id)
@@ -751,7 +804,6 @@ impl CableScene {
                 floor_y: view.floor_y,
                 jacket: view.jacket,
                 plug: view.plug,
-                plug_uv: Rect::from_min_max(egui::pos2(0.10, 0.17), egui::pos2(0.90, 1.0)),
                 visibility: view.visibility,
                 selection_active: view.selected.is_some(),
                 socket_rects: sockets,
@@ -864,6 +916,32 @@ mod tests {
     use cloud_provider_sim::{
         CableSupply, Command, DeviceTemplate, RackId, RackSide, SimEvent, SourceId,
     };
+
+    #[test]
+    fn power_plugs_use_distinct_artwork_without_stretching() {
+        let socket = Rect::from_center_size(egui::pos2(100.0, 40.0), Vec2::new(22.0, 16.0));
+        let iec = CableConnector {
+            socket,
+            kind: ConnectorKind::Iec,
+        };
+        let cisco = CableConnector {
+            socket,
+            kind: ConnectorKind::CiscoFourPin,
+        };
+        assert_ne!(iec.uv(), cisco.uv());
+        for connector in [iec, cisco] {
+            let rect = connector.rect();
+            let uv = connector.uv();
+            let exit = connector.cable_exit();
+            assert!(
+                (rect.min + Vec2::new(rect.width() * exit.x, rect.height() * exit.y))
+                    .distance(socket.center())
+                    < 0.001
+            );
+            assert!((rect.width() / rect.height() - uv.width() * 2.0 / uv.height()).abs() < 0.001);
+            assert!(Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)).contains_rect(uv));
+        }
+    }
 
     #[test]
     fn explicit_anchor_order_and_crossing_height_are_preserved() {
@@ -1024,7 +1102,13 @@ mod tests {
                 id,
                 paths: vec![path],
                 length_cm: None,
-                connectors: sockets.clone(),
+                connectors: sockets
+                    .iter()
+                    .map(|socket| CableConnector {
+                        socket: *socket,
+                        kind: ConnectorKind::Rj45,
+                    })
+                    .collect(),
                 color: Color32::from_gray(80),
                 selected: true,
                 routed: false,
@@ -1037,7 +1121,6 @@ mod tests {
                 floor_y: 300.0,
                 jacket: egui::TextureId::User(1),
                 plug: egui::TextureId::User(2),
-                plug_uv: Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
                 visibility: CableVisibility::All,
                 selection_active: true,
                 socket_rects: sockets.clone(),

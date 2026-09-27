@@ -95,3 +95,6 @@ The older reference assets below are retained for reference.
   PNG conversion only; the source photos retain their white margins and server
   lid perspective. The UI applies the final face UV crop at render time. No
   generated or stylized content was added.
+- `power_plugs_rear.png`: generated with the built-in image generation tool for
+  this project. Two seated power connectors viewed from their cable-exit rear,
+  with genuine alpha transparency. Final prompt: `power_plugs_rear_prompt.md`.

@@ -147,6 +147,7 @@ pub struct EquipmentImages {
     jacket: Handle<Image>,
     plug: Handle<Image>,
     power_connectors: Handle<Image>,
+    power_plugs_rear: Handle<Image>,
     cables: CableScene,
     textures: Option<EquipmentTextures>,
 }
@@ -164,6 +165,7 @@ struct EquipmentTextures {
     jacket: egui::TextureId,
     plug: egui::TextureId,
     power_connectors: egui::TextureId,
+    power_plugs_rear: egui::TextureId,
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
@@ -178,6 +180,7 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.jacket = assets.load("cables/pvc_jacket.png");
     images.plug = assets.load("cables/rj45_plug.png");
     images.power_connectors = assets.load("equipment/power_connectors.png");
+    images.power_plugs_rear = assets.load("equipment/power_plugs_rear.png");
 }
 
 pub fn main_ui(
@@ -205,6 +208,7 @@ pub fn main_ui(
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
             power_connectors: contexts
                 .add_image(EguiTextureHandle::Strong(images.power_connectors.clone())),
+            power_plugs_rear: contexts.add_image(EguiTextureHandle::Strong(images.power_plugs_rear.clone())),
         });
     }
     let ctx = contexts.ctx_mut()?;
@@ -1470,20 +1474,7 @@ fn rack_view(
                                     && device.rack.is_some_and(|p| p.unit == unit)
                                     && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
                                 {
-                                    let inlet_position = match device.kind {
-                                        DeviceKind::Ups(_)
-                                        | DeviceKind::Pdu(_)
-                                        | DeviceKind::Server(_)
-                                        | DeviceKind::Switch(_)
-                                        | DeviceKind::Router(_) => {
-                                            equipment_power_port_position(&device.kind, "c14", 0)
-                                                .unwrap_or(inlet_meta.unwrap().position)
-                                        }
-                                        _ => inlet_meta.unwrap().position,
-                                    };
-                                    let inlet_center = normalized_panel_position(panel_rect, inlet_position);
-                                    let inlet = equipment::equipment_power_port_rect(&device.kind, "c14", 0, panel_rect)
-                                        .unwrap_or_else(|| egui::Rect::from_center_size(inlet_center, egui::vec2(16.0, 22.0)));
+                                    let inlet = device_power_inlet_rect(&device.kind, panel_rect).expect("device has power inlet");
                                     let endpoint = device_power_endpoint(device);
                                     if let Some(endpoint) = endpoint {
                                         power_socket_rects.push((PowerSocket::Inlet(endpoint), inlet));
@@ -1710,7 +1701,10 @@ fn rack_view(
                     let target = *spans.last().unwrap().last().unwrap();
                     let connectors = [PowerSocket::Outlet(*outlet), PowerSocket::Inlet(*endpoint)]
                         .iter().filter_map(|socket| power_socket_rects.iter()
-                            .find(|(candidate, _)| candidate == socket).map(|(_, rect)| *rect)).collect();
+                            .find(|(candidate, _)| candidate == socket).map(|(_, rect)| cables::CableConnector {
+                                socket: *rect,
+                                kind: power_connector_kind(sim, *socket),
+                            })).collect();
                     power_connectors.insert(*outlet, connectors);
                     power_paths.insert(*outlet, spans);
                     power_rope_cables.push((*outlet, source, target, 0));
@@ -1722,7 +1716,7 @@ fn rack_view(
                         paths: power_paths.clone(),
                         connectors: power_connectors,
                         routed: sim.power.cord_routes.iter().filter(|(_, route)| !route.is_empty()).map(|(outlet, _)| *outlet).collect(),
-                        plug: textures.power_connectors,
+                        plug: textures.power_plugs_rear,
                         jacket: textures.jacket,
                         origin: rack_frame.response.rect.left_top(),
                         pixels_per_cm: panel_width / 48.26,
@@ -2060,6 +2054,29 @@ fn normalized_panel_position(panel: egui::Rect, normalized: (f32, f32)) -> egui:
     )
 }
 
+fn device_power_inlet_rect(kind: &DeviceKind, panel: egui::Rect) -> Option<egui::Rect> {
+    let inlet = kind.power_inlet()?;
+    if inlet.connector == PowerInletConnector::CiscoFourPin {
+        return Some(egui::Rect::from_center_size(
+            normalized_panel_position(panel, inlet.position),
+            egui::vec2((panel.width() * 0.04).clamp(12.0, 24.0), (panel.height() * 0.4).clamp(12.0, 24.0)),
+        ));
+    }
+    Some(equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap_or_else(|| {
+        egui::Rect::from_center_size(normalized_panel_position(panel, inlet.position), egui::vec2(16.0, 22.0))
+    }))
+}
+
+fn power_connector_kind(sim: &NetworkSim, socket: PowerSocket) -> cables::ConnectorKind {
+    if let PowerSocket::Inlet(PowerEndpoint::Device(id)) = socket
+        && sim.device(id).and_then(|device| device.kind.power_inlet())
+            .is_some_and(|inlet| inlet.connector == PowerInletConnector::CiscoFourPin)
+    {
+        return cables::ConnectorKind::CiscoFourPin;
+    }
+    cables::ConnectorKind::Iec
+}
+
 fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egui::Rect {
     if let Some(rect) = equipment::equipment_power_port_rect(kind, "c13", index, panel) {
         return rect;
@@ -2287,6 +2304,15 @@ mod power_geometry_tests {
         let inlet = normalized_panel_position(panel, (0.146, 0.63));
         assert!((inlet.x - (10.0 + 480.0 * 0.146)).abs() < f32::EPSILON);
         assert!((inlet.y - (20.0 + 40.0 * 0.63)).abs() < f32::EPSILON);
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(id) = sim.execute(cloud_provider_sim::Command::BuyDevice { kind: DeviceTemplate::Router }).unwrap()[0] else { unreachable!() };
+        let kind = &sim.device(id).unwrap().kind;
+        let hitbox = device_power_inlet_rect(kind, panel).unwrap();
+        assert!(hitbox.center().distance(inlet) < 0.001);
+        let rear_c14 = equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap();
+        assert!(!hitbox.intersects(rear_c14));
+        assert!(matches!(power_connector_kind(&sim, PowerSocket::Inlet(PowerEndpoint::Device(id))), cables::ConnectorKind::CiscoFourPin));
+        assert!(matches!(power_connector_kind(&sim, PowerSocket::Outlet(OutletId { source: SourceId::Rack(RackId(1)), index: 0 })), cables::ConnectorKind::Iec));
     }
 
     #[test]
@@ -2464,6 +2490,17 @@ mod tests {
         let rear = visible_patch_port_indices(&sides, RackSide::Rear);
         assert_eq!(front.len(), 24);
         assert_eq!(rear.len(), 24);
+        let kind = DeviceKind::PatchPanel(cloud_provider_sim::PatchPanel { ports: vec![] });
+        let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 50.0));
+        for indices in [&front, &rear] {
+            let sockets: Vec<_> = indices.iter().map(|index|
+                rack_port_rect(&kind, panel, *index, PortConnector::Rj45,
+                    if index % 2 == 0 { RackSide::Rear } else { RackSide::Front })).collect();
+            for (index, socket) in sockets.iter().enumerate() {
+                assert!(panel.contains_rect(*socket));
+                assert!(sockets[index + 1..].iter().all(|other| !socket.intersects(*other)));
+            }
+        }
         assert_eq!(
             front
                 .iter()
