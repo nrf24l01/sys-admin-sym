@@ -35,6 +35,11 @@ provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
 Disconnecting stores the finished lead for reuse. Rack cable shape is presentation
 state only: a fixed-endpoint Verlet rope applies gravity and damping while the
 network link keeps its exact physical length.
+Ethernet and power adapters supply cable identities, projected paths, lengths,
+selection state, and connector artwork to one generic `CableLayer`. The parent
+owns slack allocation, rope simulation, dragging, hit testing, connector placement,
+and jacket/highlight rendering. Visible sections share the available cable length
+proportionally; automatic lengths use the same 5% slack rule for both families.
 
 `PortConnector` records physical media independently from VLAN/IP
 configuration. This milestone permits cable creation only between RJ45 ports;

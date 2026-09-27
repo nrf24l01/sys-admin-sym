@@ -25,13 +25,17 @@ pub(super) struct RackRow {
 
 impl RackLayout {
     pub fn new(available_width: f32) -> Self {
-        let face_height = ((available_width - SIDE_WIDTH * 2.0) / FACE_ASPECT).clamp(30.0, 64.0);
-        let face_width = face_height * FACE_ASPECT;
-        let gap = RACK_GAP_CM * face_width / RACK_FACE_WIDTH_CM;
+        // The 19-inch dimension includes the mounting ears. One U is the
+        // row pitch; clearance is inside that pitch, not added to every row.
+        let row_height = ((available_width - SIDE_WIDTH * 2.0 + MOUNT_WIDTH * 2.0)
+            / FACE_ASPECT).clamp(30.0, 64.0);
+        let mounting_width = row_height * FACE_ASPECT;
+        let face_width = mounting_width - MOUNT_WIDTH * 2.0;
+        let gap = RACK_GAP_CM * mounting_width / RACK_FACE_WIDTH_CM;
         Self {
             width: face_width + SIDE_WIDTH * 2.0,
             face_width,
-            row_height: face_height + gap,
+            row_height,
             gap,
         }
     }
@@ -191,7 +195,7 @@ mod tests {
             for origin in [Pos2::ZERO, egui::pos2(110.0, -280.0)] {
                 let rect = Rect::from_min_size(origin, Vec2::new(layout.width, layout.row_height));
                 let row = layout.row(rect);
-                assert!((row.face.width() / row.face.height() - FACE_ASPECT).abs() < 0.001);
+                assert!(((row.face.width() + MOUNT_WIDTH * 2.0) / layout.row_height - FACE_ASPECT).abs() < 0.001);
                 assert!((row.face.center().x - rect.center().x).abs() < 0.001);
                 for i in 0..2 {
                     assert!(row.cable_rails[i].contains(row.anchors[i]));

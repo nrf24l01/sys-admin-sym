@@ -260,8 +260,12 @@ fn translate_ui_actions(
             }
             UiAction::AddPendingCableRoutePoint(point) => {
                 if state.pending_cable.is_some() {
-                    state.pending_cable_route.push(*point);
-                    state.notice = Some(("Anchor added. Select another anchor or the destination port".into(), true));
+                    if let Some(index) = state.pending_cable_route.iter().position(|candidate| candidate == point) {
+                        state.pending_cable_route.remove(index);
+                    } else {
+                        state.pending_cable_route.push(*point);
+                    }
+                    state.notice = Some(("Route updated. Select another anchor or the destination port".into(), true));
                 }
                 None
             }

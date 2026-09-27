@@ -33,6 +33,7 @@ impl Rope {
         }
     }
 
+    #[cfg(test)]
     fn step(&mut self, a: Pos2, b: Pos2, floor: f32, grab: Option<(usize, Pos2)>) {
         self.step_with_pins(a, b, floor, grab, &[]);
     }
@@ -157,8 +158,8 @@ impl<Id> Default for CableLayer<Id> {
 
 #[derive(Default)]
 pub(super) struct CableScene {
-    ethernet: CableLayer<LinkId>,
-    power: CableLayer<OutletId>,
+    ethernet: CableLayer<(LinkId, usize)>,
+    power: CableLayer<(OutletId, usize)>,
 }
 
 pub(super) struct CableView {
@@ -176,7 +177,10 @@ pub(super) struct CableView {
 }
 
 pub(super) struct PowerCableView {
-    pub paths: HashMap<OutletId, Vec<Pos2>>,
+    pub paths: HashMap<OutletId, Vec<Vec<Pos2>>>,
+    pub connectors: HashMap<OutletId, Vec<Rect>>,
+    pub routed: std::collections::HashSet<OutletId>,
+    pub plug: egui::TextureId,
     pub origin: Pos2,
     pub pixels_per_cm: f32,
     pub floor_y: f32,
@@ -187,6 +191,7 @@ pub(super) struct PowerCableView {
     pub jacket: egui::TextureId,
 }
 
+#[cfg(test)]
 impl CableView {
     fn routed_path(&self, a: Pos2, b: Pos2, route: &[CableRoutePoint]) -> Vec<Pos2> {
         std::iter::once(a)
@@ -198,6 +203,88 @@ impl CableView {
             .chain(std::iter::once(b))
             .collect()
     }
+}
+
+pub(super) fn port_location(sim: &NetworkSim, id: PortId) -> Option<CableRoutePoint> {
+    let port = sim.port(id)?;
+    let device = sim.device(port.device)?;
+    let placement = device.rack?;
+    let index = device
+        .ports()
+        .iter()
+        .position(|candidate| *candidate == id)?;
+    Some(CableRoutePoint {
+        rack: placement.rack,
+        unit: placement.unit,
+        side: port.side,
+        offset_cm: (device.kind.port_position_normalized(index).0 * 48.0) as u16,
+    })
+}
+
+/// A cable is an ordered physical path. A hidden face breaks its projection:
+/// never join two visible sections through equipment on the current face.
+pub(super) fn visible_spans(
+    a: (CableRoutePoint, Option<Pos2>),
+    b: (CableRoutePoint, Option<Pos2>),
+    route: &[CableRoutePoint],
+    anchors: &[(CableRoutePoint, Pos2)],
+) -> Vec<Vec<Pos2>> {
+    let nodes: Vec<_> = std::iter::once(a)
+        .chain(
+            route
+                .iter()
+                .map(|point| (*point, anchor_position(point, anchors))),
+        )
+        .chain(std::iter::once(b))
+        .collect();
+    let mut spans = Vec::new();
+    let mut span = Vec::new();
+    for (index, (location, position)) in nodes.iter().enumerate() {
+        let Some(position) = position else { continue };
+        let rail = |other_index: usize| {
+            let other = &nodes[other_index].0;
+            // Explicit route anchors choose the rail. Unrouted crossings use
+            // the same nearest rail on both faces.
+            let offset = if index > 0 && index + 1 < nodes.len() {
+                if location.offset_cm < 24 { 0 } else { 48 }
+            } else if other_index > 0 && other_index + 1 < nodes.len() {
+                if other.offset_cm < 24 { 0 } else { 48 }
+            } else if location.offset_cm + other.offset_cm < 48 {
+                0
+            } else {
+                48
+            };
+            [offset]
+                .into_iter()
+                .filter_map(|offset_cm| {
+                    anchor_position(
+                        &CableRoutePoint {
+                            offset_cm,
+                            ..*location
+                        },
+                        anchors,
+                    )
+                })
+                .min_by(|a, b| a.distance(*position).total_cmp(&b.distance(*position)))
+                .unwrap_or(*position)
+        };
+        if index > 0 && nodes[index - 1].1.is_none() {
+            span.push(rail(index - 1));
+        }
+        span.push(*position);
+        if index + 1 < nodes.len() && nodes[index + 1].1.is_none() {
+            span.push(rail(index + 1));
+            spans.push(std::mem::take(&mut span));
+        }
+    }
+    if !span.is_empty() {
+        spans.push(span);
+    }
+    for span in &mut spans {
+        span.dedup();
+    }
+    spans.retain(|span| span.len() >= 2);
+    spans
 }
 
 pub(super) fn anchor_position(
@@ -235,357 +322,266 @@ pub(super) fn paint_preview(ui: &egui::Ui, path: Vec<Pos2>, color: Color32) {
     ));
 }
 
-impl CableScene {
-    /// Paint power leads using the same Verlet rope solver as Ethernet. Power
-    /// endpoints are plain socket centers, so no RJ45 connector art is drawn.
-    pub(super) fn show_power(
-        &mut self,
-        ui: &mut egui::Ui,
-        cables: &[(OutletId, Pos2, Pos2, u32)],
-        view: PowerCableView,
-    ) -> Option<OutletId> {
-        let PowerCableView {
-            paths,
-            origin,
-            pixels_per_cm,
-            floor_y,
-            selected,
-            visibility,
-            socket_rects,
-            interaction_enabled,
-            jacket,
-        } = view;
-        let local = |p: Pos2| {
-            Pos2::new(
-                (p.x - origin.x) / pixels_per_cm,
-                (p.y - origin.y) / pixels_per_cm,
-            )
-        };
-        let screen = |p: Pos2| origin + p.to_vec2() * pixels_per_cm;
-        let keys: std::collections::HashSet<_> = cables.iter().map(|(k, _, _, _)| k).collect();
-        self.power.ropes.retain(|k, _| keys.contains(k));
-        if self
-            .power
-            .grab
-            .as_ref()
-            .is_some_and(|(k, _)| !self.power.ropes.contains_key(k))
-        {
-            self.power.grab = None;
-        }
-        let visible: Vec<_> = cables
-            .iter()
-            .filter(|(key, _, _, _)| match visibility {
-                CableVisibility::All => true,
-                CableVisibility::Selected => selected == Some(*key),
-                CableVisibility::Hidden => false,
-            })
-            .collect();
-        if visibility == CableVisibility::Hidden
-            || !interaction_enabled
-            || self.ethernet.grab.is_some()
-            || self
-                .power
-                .grab
-                .is_some_and(|(k, _)| !visible.iter().any(|(id, _, _, _)| *id == k))
-        {
-            self.power.grab = None;
-        }
-        let (pointer, pressed, down, dt) = ui.input(|i| {
-            (
-                i.pointer.interact_pos(),
-                i.pointer.primary_pressed(),
-                i.pointer.primary_down(),
-                i.stable_dt,
-            )
-        });
-        if !down {
-            self.power.grab = None;
-        }
-        for (key, from, to, length) in &visible {
-            let from = local(*from);
-            let to = local(*to);
-            let rope = self
-                .power
-                .ropes
-                .entry(*key)
-                .or_insert_with(|| Rope::new(from, to, *length as f32));
-            if rope.length != *length as f32 {
-                *rope = Rope::new(from, to, *length as f32);
-            }
-            rope.pin_endpoints(from, to);
-            let pins: Vec<_> = paths
-                .get(key)
-                .map(|path| route_pin_indices(path))
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(index, point)| (index, local(point)))
-                .collect();
-            if pins
-                .iter()
-                .any(|(index, point)| rope.points[*index].distance(*point) > 0.01)
-            {
-                rope.seed_pinned_path(from, to, &pins);
-            } else {
-                rope.pin_points(&pins);
-            }
-        }
-        let mut clicked = None;
-        if interaction_enabled
-            && self.ethernet.grab.is_none()
-            && pointer.is_some_and(|p| ui.clip_rect().contains(p))
-            && pointer.is_some_and(|p| !socket_rects.iter().any(|r| r.expand(3.0).contains(p)))
-        {
-            let p = pointer.unwrap();
-            if let Some((key, index, _)) = visible
-                .iter()
-                .filter_map(|(key, _, _, _)| {
-                    let rope = self.power.ropes.get(key)?;
-                    let path: Vec<_> = rope.points.iter().map(|point| screen(*point)).collect();
-                    path.windows(2)
-                        .enumerate()
-                        .map(|(i, pair)| {
-                            (
-                                *key,
-                                (i + 1).clamp(1, SEGMENTS - 1),
-                                distance_to_segment(p, pair[0], pair[1]),
-                            )
-                        })
-                        .min_by(|a, b| a.2.total_cmp(&b.2))
-                })
-                .filter(|(_, _, d)| *d < 9.0)
-                .min_by(|a, b| a.2.total_cmp(&b.2))
-            {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                if pressed {
-                    if paths.get(&key).is_none_or(|path| path.len() <= 2) {
-                        self.power.grab = Some((key, index));
-                    }
-                    clicked = Some(key);
-                }
-            }
-        }
-        self.power.accumulator = (self.power.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
-        let steps = (self.power.accumulator / STEP).floor() as usize;
-        self.power.accumulator -= steps as f32 * STEP;
-        let floor = (floor_y - origin.y) / pixels_per_cm;
-        for _ in 0..steps {
-            for (key, from, to, _) in &visible {
-                let from = local(*from);
-                let to = local(*to);
-                let rope = self.power.ropes.get_mut(key).unwrap();
-                let grab = self.power.grab.as_ref().and_then(|(k, i)| {
-                    (*k == *key).then_some((*i, pointer.map(local).unwrap_or(from)))
-                });
-                let grab = grab.map(|(i, mut target)| {
-                    for _ in 0..4 {
-                        for (anchor, reach) in [
-                            (from, rope.length * i as f32 / SEGMENTS as f32),
-                            (to, rope.length * (SEGMENTS - i) as f32 / SEGMENTS as f32),
-                        ] {
-                            let delta = target - anchor;
-                            if delta.length() > reach {
-                                target = anchor + delta.normalized() * reach;
-                            }
-                        }
-                    }
-                    target.y = target.y.min(floor);
-                    (i, target)
-                });
-                let pins: Vec<_> = paths
-                    .get(key)
-                    .map(|path| route_pin_indices(path))
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(index, point)| (index, local(point)))
-                    .collect();
-                rope.step_with_pins(from, to, floor, grab, &pins);
-            }
-        }
-        for (key, from, to, _) in &visible {
-            self.power
-                .ropes
-                .get_mut(key)
-                .unwrap()
-                .pin_endpoints(local(*from), local(*to));
-            let path: Vec<_> = self.power.ropes[key]
-                .points
-                .iter()
-                .map(|p| screen(*p))
-                .collect();
-            let color = Color32::from_rgb(31, 35, 38);
-            paint_cable(
-                ui,
-                &path,
-                (pixels_per_cm * 0.55).clamp(4.0, 7.5),
-                color,
-                selected == Some(*key),
-                jacket,
-            );
-        }
-        if self.power.grab.is_some() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        }
-        if !visible.is_empty() {
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(16));
-        }
-        clicked
-    }
+pub(super) struct CreationTarget {
+    pub location: CableRoutePoint,
+    pub rect: Rect,
+    pub same_socket: bool,
+    pub valid: bool,
+}
 
-    /// Returns the clicked cable; dragging changes only its transient shape.
-    pub(super) fn show(
+/// Creation uses only presentation data; cable families cannot change its
+/// snapping, colors, rail transitions, or anchor behavior.
+pub(super) fn show_creation_preview(
+    ui: &egui::Ui,
+    start: (CableRoutePoint, Option<Pos2>),
+    route: &[CableRoutePoint],
+    color: Color32,
+    targets: &[CreationTarget],
+    anchors: &[(CableRoutePoint, Pos2)],
+) {
+    let Some(pointer) = ui
+        .input(|input| input.pointer.hover_pos())
+        .filter(|pointer| ui.clip_rect().contains(*pointer))
+    else {
+        return;
+    };
+    let (paths, color) = creation_preview_paths(pointer, start, route, color, targets, anchors);
+    for path in paths {
+        paint_preview(ui, path, color);
+    }
+}
+
+fn creation_preview_paths(
+    pointer: Pos2,
+    start: (CableRoutePoint, Option<Pos2>),
+    route: &[CableRoutePoint],
+    color: Color32,
+    targets: &[CreationTarget],
+    anchors: &[(CableRoutePoint, Pos2)],
+) -> (Vec<Vec<Pos2>>, Color32) {
+    let mut route = route.to_vec();
+    let mut color = color;
+    let target = if let Some(target) = targets.iter().find(|target| target.rect.contains(pointer)) {
+        if target.same_socket {
+            color = Color32::from_rgb(255, 196, 64);
+        } else if !target.valid {
+            color = Color32::from_rgb(235, 70, 70);
+        }
+        (target.location, Some(target.rect.center()))
+    } else if let Some((point, position)) = anchors.iter().find(|(_, position)| {
+        Rect::from_center_size(*position, Vec2::splat(24.0)).contains(pointer)
+    }) {
+        if let Some(index) = route.iter().position(|candidate| candidate == point) {
+            route.remove(index);
+        } else {
+            route.push(*point);
+        }
+        (*point, Some(*position))
+    } else {
+        let location = anchors
+            .iter()
+            .min_by(|(_, a), (_, b)| a.distance(pointer).total_cmp(&b.distance(pointer)))
+            .map(|(point, _)| *point)
+            .unwrap_or(start.0);
+        (location, Some(pointer))
+    };
+    (visible_spans(start, target, &route, anchors), color)
+}
+
+pub(super) fn creation_anchor(
+    ui: &egui::Ui,
+    point: CableRoutePoint,
+    position: Pos2,
+    route: &[CableRoutePoint],
+) -> bool {
+    let response = ui
+        .interact(
+            Rect::from_center_size(position, Vec2::splat(24.0)),
+            egui::Id::new((
+                "pending-cable-route-anchor",
+                point.rack.0,
+                point.unit,
+                point.side == cloud_provider_sim::RackSide::Front,
+                point.offset_cm,
+            )),
+            egui::Sense::click(),
+        )
+        .on_hover_text("Click to add or remove this cable route anchor");
+    ui.painter().circle_filled(
+        position,
+        5.0,
+        if route.contains(&point) || response.hovered() {
+            Color32::from_rgb(255, 196, 64)
+        } else {
+            Color32::from_rgb(92, 112, 125)
+        },
+    );
+    response.clicked()
+}
+
+/// Family adapters describe cables; this parent owns every visual and input rule.
+struct RenderCable<Id> {
+    id: Id,
+    paths: Vec<Vec<Pos2>>,
+    length_cm: Option<f32>,
+    connectors: Vec<Rect>,
+    color: Color32,
+    selected: bool,
+    routed: bool,
+}
+
+struct LayerView {
+    origin: Pos2,
+    pixels_per_cm: f32,
+    floor_y: f32,
+    jacket: egui::TextureId,
+    plug: egui::TextureId,
+    plug_uv: Rect,
+    visibility: CableVisibility,
+    selection_active: bool,
+    socket_rects: Vec<Rect>,
+    interaction_enabled: bool,
+}
+
+impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
+    fn show(
         &mut self,
         ui: &mut egui::Ui,
-        sim: &NetworkSim,
-        ports: &HashMap<PortId, Rect>,
-        view: CableView,
-    ) -> Option<LinkId> {
-        self.ethernet.ropes.retain(|id, _| {
-            sim.link(*id)
-                .is_some_and(|link| ports.contains_key(&link.a) && ports.contains_key(&link.b))
-        });
-        if self
-            .ethernet
-            .grab
-            .is_some_and(|(id, _)| !self.ethernet.ropes.contains_key(&id))
-        {
-            self.ethernet.grab = None;
-        }
-        if !view.interaction_enabled
-            || view.visibility == CableVisibility::Hidden
-            || self.power.grab.is_some()
-        {
-            self.ethernet.grab = None;
-        }
+        cables: &[RenderCable<Id>],
+        view: LayerView,
+    ) -> Option<Id> {
         let local = |p: Pos2| Pos2::ZERO + (p - view.origin) / view.pixels_per_cm;
         let screen = |p: Pos2| view.origin + p.to_vec2() * view.pixels_per_cm;
-        // End-on projection: the seated plug and its cable outlet share the
-        // socket center. Only the flexible jacket is affected by gravity.
-        let exit = |rect: Rect| rect.center();
-        let selected_ports: std::collections::HashSet<_> = view
-            .selected
-            .and_then(|id| sim.link(id))
-            .map(|link| sim.physical_path(link.a).into_iter().collect())
-            .unwrap_or_default();
-        let mut links: Vec<_> = sim
-            .links()
-            .filter(|link| ports.contains_key(&link.a) && ports.contains_key(&link.b))
-            .filter(|link| match view.visibility {
-                CableVisibility::All => true,
-                CableVisibility::Selected => {
-                    view.selected == Some(link.id)
-                        || selected_ports.contains(&link.a)
-                        || selected_ports.contains(&link.b)
-                }
-                CableVisibility::Hidden => false,
-            })
-            .collect();
-        links.sort_by_key(|l| l.id);
-        for link in &links {
-            let (a, b) = (local(exit(ports[&link.a])), local(exit(ports[&link.b])));
+        let mut spans = Vec::new();
+        for cable in cables.iter().filter(|cable| match view.visibility {
+            CableVisibility::All => true,
+            CableVisibility::Selected => cable.selected,
+            CableVisibility::Hidden => false,
+        }) {
+            let distances: Vec<f32> = cable
+                .paths
+                .iter()
+                .map(|path| {
+                    path.windows(2)
+                        .map(|pair| pair[0].distance(pair[1]))
+                        .sum::<f32>()
+                        / view.pixels_per_cm
+                })
+                .collect();
+            let total = distances.iter().sum::<f32>();
+            let length = cable.length_cm.unwrap_or(total * 1.05).max(total);
+            for (index, path) in cable
+                .paths
+                .iter()
+                .enumerate()
+                .filter(|(_, path)| path.len() >= 2)
+            {
+                let share = if total > 0.001 {
+                    distances[index] / total
+                } else {
+                    1.0 / cable.paths.len() as f32
+                };
+                spans.push(((cable.id, index), cable, path, length * share));
+            }
+        }
+        self.ropes
+            .retain(|key, _| spans.iter().any(|(candidate, _, _, _)| candidate == key));
+        if !view.interaction_enabled
+            || self
+                .grab
+                .is_some_and(|(key, _)| !self.ropes.contains_key(&key))
+        {
+            self.grab = None;
+        }
+        for (key, _, path, length) in &spans {
+            let (a, b) = (local(path[0]), local(*path.last().unwrap()));
             let rope = self
-                .ethernet
                 .ropes
-                .entry(link.id)
-                .or_insert_with(|| Rope::new(a, b, link.length_cm as f32));
-            if rope.length != link.length_cm as f32 {
-                *rope = Rope::new(a, b, link.length_cm as f32);
+                .entry(*key)
+                .or_insert_with(|| Rope::new(a, b, *length));
+            if (rope.length - length).abs() > 0.01 {
+                *rope = Rope::new(a, b, *length);
             }
             rope.pin_endpoints(a, b);
-            let route = view.routed_path(exit(ports[&link.a]), exit(ports[&link.b]), &link.route);
-            let pins: Vec<_> = route_pin_indices(&route)
+            let pins: Vec<_> = route_pin_indices(path)
                 .into_iter()
-                .map(|(index, point)| (index, local(point)))
+                .map(|(i, p)| (i, local(p)))
                 .collect();
             if pins
                 .iter()
-                .any(|(index, point)| rope.points[*index].distance(*point) > 0.01)
+                .any(|(i, p)| rope.points[*i].distance(*p) > 0.01)
             {
                 rope.seed_pinned_path(a, b, &pins);
             } else {
                 rope.pin_points(&pins);
             }
         }
-        let (pointer, pressed, down, dt) = ui.input(|i| {
+        let (pointer, pressed, down, dt) = ui.input(|input| {
             (
-                i.pointer.interact_pos(),
-                i.pointer.primary_pressed(),
-                i.pointer.primary_down(),
-                i.stable_dt,
+                input.pointer.interact_pos(),
+                input.pointer.primary_pressed(),
+                input.pointer.primary_down(),
+                input.stable_dt,
             )
         });
-        let mut selected = None;
         if !down {
-            self.ethernet.grab = None;
+            self.grab = None;
         }
-        if view.interaction_enabled
-            && self.power.grab.is_none()
-            && let Some(pointer) = pointer.filter(|p| ui.clip_rect().contains(*p))
-        {
-            // Socket interactions keep priority, including plugs over their sockets.
-            if !ports.values().any(|r| r.expand(3.0).contains(pointer))
-                && !view
-                    .socket_rects
+        let mut clicked = None;
+        if view.interaction_enabled {
+            if let Some(pointer) = pointer.filter(|p| {
+                ui.clip_rect().contains(*p)
+                    && !view
+                        .socket_rects
+                        .iter()
+                        .any(|rect| rect.expand(3.0).contains(*p))
+            }) {
+                let nearest = spans
                     .iter()
-                    .any(|r| r.expand(3.0).contains(pointer))
-                && !view.anchors.iter().any(|(_, pos)| {
-                    Rect::from_center_size(*pos, Vec2::splat(14.0)).contains(pointer)
-                })
-            {
-                let nearest = links
-                    .iter()
-                    .filter_map(|link| {
-                        let rope = &self.ethernet.ropes[&link.id];
-                        let path: Vec<_> = rope.points.iter().map(|p| screen(*p)).collect();
-                        path.windows(2)
+                    .filter_map(|(key, cable, _, _)| {
+                        let rope = &self.ropes[key];
+                        rope.points
+                            .windows(2)
                             .enumerate()
-                            .map(|(i, pair)| {
+                            .map(|(index, pair)| {
                                 (
-                                    link.id,
-                                    (i + 1).clamp(1, SEGMENTS - 1),
-                                    distance_to_segment(pointer, pair[0], pair[1]),
+                                    *key,
+                                    *cable,
+                                    (index + 1).clamp(1, SEGMENTS - 1),
+                                    distance_to_segment(pointer, screen(pair[0]), screen(pair[1])),
                                 )
                             })
-                            .min_by(|a, b| a.2.total_cmp(&b.2))
+                            .min_by(|a, b| a.3.total_cmp(&b.3))
                     })
-                    .filter(|(_, _, distance)| *distance < 9.0)
-                    .min_by(|a, b| a.2.total_cmp(&b.2));
-                if let Some((id, index, _)) = nearest {
+                    .filter(|(_, _, _, distance)| *distance < 9.0)
+                    .min_by(|a, b| a.3.total_cmp(&b.3));
+                if let Some((key, cable, index, _)) = nearest {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                     if pressed {
-                        if sim.link(id).is_some_and(|link| link.route.is_empty()) {
-                            self.ethernet.grab = Some((id, index));
+                        if !cable.routed {
+                            self.grab = Some((key, index));
                         }
-                        selected = Some(id);
+                        clicked = Some(key.0);
                     }
                 }
             }
         }
         let floor = (view.floor_y - view.origin.y) / view.pixels_per_cm;
-        self.ethernet.accumulator =
-            (self.ethernet.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
-        while self.ethernet.accumulator >= STEP {
-            for link in &links {
-                let (a, b) = (local(exit(ports[&link.a])), local(exit(ports[&link.b])));
-                let route =
-                    view.routed_path(exit(ports[&link.a]), exit(ports[&link.b]), &link.route);
-                let pins: Vec<_> = route_pin_indices(&route)
-                    .into_iter()
-                    .map(|(index, point)| (index, local(point)))
-                    .collect();
+        self.accumulator = (self.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
+        while self.accumulator >= STEP {
+            for (key, _, path, _) in &spans {
+                let (a, b) = (local(path[0]), local(*path.last().unwrap()));
+                let rope = self.ropes.get_mut(key).unwrap();
                 let grab = self
-                    .ethernet
                     .grab
-                    .filter(|(id, _)| *id == link.id)
-                    .and_then(|(_, i)| {
-                        pointer.map(|p| {
-                            // Keep the grabbed point reachable from both anchored ends.
-                            let rope_length = self.ethernet.ropes[&link.id].length;
-                            let mut target = local(p);
+                    .filter(|(candidate, _)| candidate == key)
+                    .and_then(|(_, index)| {
+                        pointer.map(|pointer| {
+                            let mut target = local(pointer);
                             for _ in 0..4 {
                                 for (anchor, reach) in [
-                                    (a, rope_length * i as f32 / SEGMENTS as f32),
-                                    (b, rope_length * (SEGMENTS - i) as f32 / SEGMENTS as f32),
+                                    (a, rope.length * index as f32 / SEGMENTS as f32),
+                                    (b, rope.length * (SEGMENTS - index) as f32 / SEGMENTS as f32),
                                 ] {
                                     let delta = target - anchor;
                                     if delta.length() > reach {
@@ -594,74 +590,172 @@ impl CableScene {
                                 }
                             }
                             target.y = target.y.min(floor);
-                            (i, target)
+                            (index, target)
                         })
                     });
-                let rope = self.ethernet.ropes.get_mut(&link.id).unwrap();
-                if pins.is_empty() {
-                    rope.step(a, b, floor, grab);
-                } else {
-                    rope.step_with_pins(a, b, floor, grab, &pins);
-                }
+                let pins: Vec<_> = route_pin_indices(path)
+                    .into_iter()
+                    .map(|(i, p)| (i, local(p)))
+                    .collect();
+                rope.step_with_pins(a, b, floor, grab, &pins);
             }
-            self.ethernet.accumulator -= STEP;
+            self.accumulator -= STEP;
         }
-        if self.ethernet.grab.is_some() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        }
-        // Seat every connector first so all cable jackets pass in front of them,
-        // including cables crossing another lead's connector.
-        for link in &links {
-            for id in [link.a, link.b] {
-                let socket = ports[&id];
-                ui.painter().image(
-                    view.plug,
-                    plug_rect(socket),
-                    Rect::from_min_max(egui::pos2(0.10, 0.17), egui::pos2(0.90, 1.0)),
-                    Color32::WHITE,
-                );
-                let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
+        let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
+        let mut painted = std::collections::HashSet::new();
+        for (_, cable, _, _) in &spans {
+            if !painted.insert(cable.id) {
+                continue;
+            }
+            for socket in &cable.connectors {
+                ui.painter()
+                    .image(view.plug, plug_rect(*socket), view.plug_uv, Color32::WHITE);
                 ui.painter()
                     .circle_filled(socket.center(), width * 0.65, Color32::from_gray(18));
             }
         }
-        for link in &links {
-            let path: Vec<_> = self.ethernet.ropes[&link.id]
-                .points
-                .iter()
-                .map(|p| screen(*p))
-                .collect();
-            let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
-            let in_selected_path =
-                selected_ports.contains(&link.a) || selected_ports.contains(&link.b);
-            let mut color = super::cable_color_value(link.color);
-            if view.visibility == CableVisibility::All
-                && view.selected.is_some()
-                && view.selected != Some(link.id)
-                && !in_selected_path
-            {
-                color = color.gamma_multiply(0.35);
-            }
-            paint_cable(
-                ui,
-                &path,
-                width,
-                color,
-                view.selected == Some(link.id) || in_selected_path,
-                view.jacket,
-            );
+        for (key, cable, _, _) in &spans {
+            let path: Vec<_> = self.ropes[key].points.iter().map(|p| screen(*p)).collect();
+            let color = if view.selection_active && !cable.selected {
+                cable.color.gamma_multiply(0.35)
+            } else {
+                cable.color
+            };
+            paint_cable(ui, &path, width, color, cable.selected, view.jacket);
         }
-        if let Some((path, color)) = view.preview {
-            paint_preview(ui, path, color);
+        if self.grab.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
-        if !links.is_empty() {
+        if !spans.is_empty() {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(16));
         }
-        selected
+        clicked
     }
 }
 
+impl CableScene {
+    pub(super) fn show_power(
+        &mut self,
+        ui: &mut egui::Ui,
+        cables: &[(OutletId, Pos2, Pos2, u32)],
+        view: PowerCableView,
+    ) -> Option<OutletId> {
+        let descriptors: Vec<_> = cables
+            .iter()
+            .map(|(id, a, b, length)| {
+                let paths = view
+                    .paths
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| vec![vec![*a, *b]]);
+                RenderCable {
+                    id: *id,
+                    routed: view.routed.contains(id) || paths.iter().any(|path| path.len() > 2),
+                    paths,
+                    length_cm: (*length > 0).then_some(*length as f32),
+                    connectors: view.connectors.get(id).cloned().unwrap_or_default(),
+                    color: Color32::from_rgb(31, 35, 38),
+                    selected: view.selected == Some(*id),
+                }
+            })
+            .collect();
+        self.power.show(
+            ui,
+            &descriptors,
+            LayerView {
+                origin: view.origin,
+                pixels_per_cm: view.pixels_per_cm,
+                floor_y: view.floor_y,
+                jacket: view.jacket,
+                plug: view.plug,
+                plug_uv: Rect::from_min_max(egui::pos2(0.747, 0.066), egui::pos2(0.913, 0.453)),
+                visibility: view.visibility,
+                selection_active: view.selected.is_some(),
+                socket_rects: view.socket_rects,
+                interaction_enabled: view.interaction_enabled && self.ethernet.grab.is_none(),
+            },
+        )
+    }
+
+    pub(super) fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        sim: &NetworkSim,
+        ports: &HashMap<PortId, Rect>,
+        view: CableView,
+    ) -> Option<LinkId> {
+        let selected_ports: std::collections::HashSet<_> = view
+            .selected
+            .and_then(|id| sim.link(id))
+            .map(|link| sim.physical_path(link.a).into_iter().collect())
+            .unwrap_or_default();
+        let mut descriptors: Vec<_> = sim
+            .links()
+            .filter_map(|link| {
+                let (a, b) = port_location(sim, link.a).zip(port_location(sim, link.b))?;
+                let paths = visible_spans(
+                    (a, ports.get(&link.a).map(Rect::center)),
+                    (b, ports.get(&link.b).map(Rect::center)),
+                    &link.route,
+                    &view.anchors,
+                );
+                let complete = ports.contains_key(&link.a)
+                    && ports.contains_key(&link.b)
+                    && link
+                        .route
+                        .iter()
+                        .all(|point| anchor_position(point, &view.anchors).is_some());
+                Some(RenderCable {
+                    id: link.id,
+                    paths,
+                    length_cm: complete.then_some(link.length_cm as f32),
+                    connectors: [link.a, link.b]
+                        .iter()
+                        .filter_map(|id| ports.get(id).copied())
+                        .collect(),
+                    color: super::cable_color_value(link.color),
+                    selected: view.selected == Some(link.id)
+                        || selected_ports.contains(&link.a)
+                        || selected_ports.contains(&link.b),
+                    routed: !link.route.is_empty(),
+                })
+            })
+            .collect();
+        descriptors.sort_by_key(|cable| cable.id);
+        let sockets = view
+            .socket_rects
+            .iter()
+            .copied()
+            .chain(ports.values().copied())
+            .chain(
+                view.anchors
+                    .iter()
+                    .map(|(_, position)| Rect::from_center_size(*position, Vec2::splat(14.0))),
+            )
+            .collect();
+        let clicked = self.ethernet.show(
+            ui,
+            &descriptors,
+            LayerView {
+                origin: view.origin,
+                pixels_per_cm: view.pixels_per_cm,
+                floor_y: view.floor_y,
+                jacket: view.jacket,
+                plug: view.plug,
+                plug_uv: Rect::from_min_max(egui::pos2(0.10, 0.17), egui::pos2(0.90, 1.0)),
+                visibility: view.visibility,
+                selection_active: view.selected.is_some(),
+                socket_rects: sockets,
+                interaction_enabled: view.interaction_enabled && self.power.grab.is_none(),
+            },
+        );
+        if let Some((path, color)) = view.preview {
+            paint_preview(ui, path, color);
+        }
+        clicked
+    }
+}
 fn plug_rect(socket: Rect) -> Rect {
     // A short foreshortened housing stays centered over the occupied jack.
     let size = Vec2::new(
@@ -763,9 +857,330 @@ mod tests {
         CableSupply, Command, DeviceTemplate, RackId, RackSide, SimEvent, SourceId,
     };
 
+    #[test]
+    fn creation_preview_follows_pointer_through_anchors_and_across_faces() {
+        let front = CableRoutePoint {
+            rack: RackId(1),
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 0,
+        };
+        let rear = CableRoutePoint {
+            side: RackSide::Rear,
+            ..front
+        };
+        let anchor = egui::pos2(20.0, 40.0);
+        let anchors = vec![(front, anchor)];
+        let start = egui::pos2(80.0, 40.0);
+        let pointer = egui::pos2(160.0, 100.0);
+        let color = Color32::WHITE;
+        assert_eq!(
+            creation_preview_paths(
+                pointer,
+                (front, Some(start)),
+                &[front],
+                color,
+                &[],
+                &anchors
+            ),
+            (vec![vec![start, anchor, pointer]], color)
+        );
+        assert_eq!(
+            creation_preview_paths(pointer, (rear, None), &[], color, &[], &anchors),
+            (vec![vec![anchor, pointer]], color)
+        );
+        assert_eq!(
+            creation_preview_paths(anchor, (front, Some(start)), &[front], color, &[], &anchors),
+            (vec![vec![start, anchor]], color)
+        );
+    }
+
+    #[test]
+    fn creation_preview_snaps_to_sockets_and_uses_shared_validity_colors() {
+        let point = CableRoutePoint {
+            rack: RackId(1),
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 0,
+        };
+        let start = egui::pos2(20.0, 30.0);
+        let target = Rect::from_center_size(egui::pos2(100.0, 80.0), Vec2::splat(12.0));
+        for (same_socket, valid, expected) in [
+            (false, true, Color32::WHITE),
+            (false, false, Color32::from_rgb(235, 70, 70)),
+            (true, false, Color32::from_rgb(255, 196, 64)),
+        ] {
+            let (paths, color) = creation_preview_paths(
+                target.center() + Vec2::splat(2.0),
+                (point, Some(start)),
+                &[],
+                Color32::WHITE,
+                &[CreationTarget {
+                    location: point,
+                    rect: target,
+                    same_socket,
+                    valid,
+                }],
+                &[],
+            );
+            assert_eq!(paths, vec![vec![start, target.center()]]);
+            assert_eq!(color, expected);
+        }
+    }
+
+    #[test]
+    fn parent_renders_and_simulates_both_cable_ids_identically() {
+        fn render<Id: Copy + Eq + std::hash::Hash>(
+            id: Id,
+        ) -> (Vec<Pos2>, Vec<egui::epaint::ClippedShape>) {
+            let path = vec![egui::pos2(30.0, 40.0), egui::pos2(110.0, 40.0)];
+            let sockets: Vec<_> = path
+                .iter()
+                .map(|p| Rect::from_center_size(*p, Vec2::splat(12.0)))
+                .collect();
+            let cable = RenderCable {
+                id,
+                paths: vec![path],
+                length_cm: None,
+                connectors: sockets.clone(),
+                color: Color32::from_gray(80),
+                selected: true,
+                routed: false,
+            };
+            let mut layer = CableLayer::default();
+            let ctx = egui::Context::default();
+            let view = || LayerView {
+                origin: Pos2::ZERO,
+                pixels_per_cm: 1.0,
+                floor_y: 300.0,
+                jacket: egui::TextureId::User(1),
+                plug: egui::TextureId::User(2),
+                plug_uv: Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                visibility: CableVisibility::All,
+                selection_active: true,
+                socket_rects: sockets.clone(),
+                interaction_enabled: true,
+            };
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                layer.show(ui, std::slice::from_ref(&cable), view());
+            });
+            output.textures_delta.clear();
+            let pointer = layer.ropes[&(id, 0)].points[SEGMENTS / 2];
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::PointerMoved(pointer),
+                        egui::Event::PointerButton {
+                            pos: pointer,
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    assert!(layer.show(ui, std::slice::from_ref(&cable), view()) == Some(id));
+                },
+            );
+            output.textures_delta.clear();
+            assert!(layer.grab.is_some());
+            (layer.ropes[&(id, 0)].points.clone(), output.shapes)
+        }
+        let ethernet = render(LinkId(1));
+        let power = render(OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        });
+        assert_eq!(ethernet.0, power.0);
+        assert_eq!(ethernet.1, power.1);
+    }
+
+    #[test]
+    fn hidden_route_sections_split_the_projection_for_all_cable_families() {
+        let front = CableRoutePoint {
+            rack: RackId(1),
+            unit: 1,
+            side: RackSide::Front,
+            offset_cm: 0,
+        };
+        let rear = CableRoutePoint {
+            side: RackSide::Rear,
+            ..front
+        };
+        let anchors = vec![
+            (front, egui::pos2(0.0, 50.0)),
+            (
+                CableRoutePoint {
+                    offset_cm: 48,
+                    ..front
+                },
+                egui::pos2(300.0, 50.0),
+            ),
+        ];
+        let a = egui::pos2(50.0, 50.0);
+        let b = egui::pos2(100.0, 50.0);
+        assert_eq!(
+            visible_spans((front, Some(a)), (rear, None), &[], &anchors),
+            vec![vec![a, egui::pos2(0.0, 50.0)]]
+        );
+        assert_eq!(
+            visible_spans((rear, None), (front, Some(b)), &[], &anchors),
+            vec![vec![egui::pos2(0.0, 50.0), b]]
+        );
+        assert!(visible_spans((rear, None), (rear, None), &[], &anchors).is_empty());
+        let spans = visible_spans((front, Some(a)), (front, Some(b)), &[rear], &anchors);
+        assert_eq!(
+            spans,
+            vec![
+                vec![a, egui::pos2(0.0, 50.0)],
+                vec![egui::pos2(0.0, 50.0), b]
+            ]
+        );
+    }
+
+    #[test]
+    fn cross_face_ethernet_keeps_visible_plug_and_selectable_jacket() {
+        let mut sim = NetworkSim::new();
+        let mut ports = Vec::new();
+        for (kind, unit) in [(DeviceTemplate::Switch, 1), (DeviceTemplate::Server, 2)] {
+            let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyDevice { kind }).unwrap()[0]
+            else {
+                unreachable!()
+            };
+            sim.execute(Command::PlaceDevice {
+                device: id,
+                rack: RackId(1),
+                unit,
+            })
+            .unwrap();
+            ports.push(sim.device(id).unwrap().ports()[0]);
+        }
+        for supply in [CableSupply::CableBox305m, CableSupply::Rj45Pack20] {
+            sim.execute(Command::BuyCableSupply { supply }).unwrap();
+        }
+        sim.execute(Command::Connect {
+            a: ports[0],
+            b: ports[1],
+        })
+        .unwrap();
+        let link = sim.link_for_port(ports[0]).unwrap().id;
+        assert_ne!(
+            sim.port(ports[0]).unwrap().side,
+            sim.port(ports[1]).unwrap().side
+        );
+        let mut scene = CableScene::default();
+        for id in [ports[0], ports[1], ports[0]] {
+            let location = port_location(&sim, id).unwrap();
+            let socket = Rect::from_center_size(egui::pos2(100.0, 60.0), Vec2::splat(12.0));
+            let visible_ports = HashMap::from([(id, socket)]);
+            let anchors = vec![
+                (
+                    CableRoutePoint {
+                        offset_cm: 0,
+                        ..location
+                    },
+                    egui::pos2(20.0, 60.0),
+                ),
+                (
+                    CableRoutePoint {
+                        offset_cm: 48,
+                        ..location
+                    },
+                    egui::pos2(200.0, 60.0),
+                ),
+            ];
+            let ctx = egui::Context::default();
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(500.0))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                scene.show(
+                    ui,
+                    &sim,
+                    &visible_ports,
+                    CableView {
+                        origin: Pos2::ZERO,
+                        pixels_per_cm: 5.0,
+                        floor_y: 400.0,
+                        jacket: egui::TextureId::User(1),
+                        plug: egui::TextureId::User(2),
+                        selected: Some(link),
+                        visibility: CableVisibility::Selected,
+                        anchors: anchors.clone(),
+                        preview: None,
+                        socket_rects: vec![socket],
+                        interaction_enabled: true,
+                    },
+                );
+            });
+            assert_eq!(scene.ethernet.ropes.len(), 1);
+            let rope = &scene.ethernet.ropes[&(link, 0)];
+            let endpoint = if id == ports[0] {
+                rope.points[0]
+            } else {
+                rope.points[SEGMENTS]
+            };
+            assert!(endpoint.distance(Pos2::ZERO + socket.center().to_vec2() / 5.0) < 0.001);
+            let plugs = output
+                .shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                egui::Shape::Mesh(mesh) if mesh.texture_id == egui::TextureId::User(2))
+                })
+                .count();
+            assert_eq!(plugs, 1, "only the visible socket gets a plug");
+            output.textures_delta.clear();
+            let pointer = Pos2::ZERO + rope.points[SEGMENTS / 2].to_vec2() * 5.0;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::PointerMoved(pointer),
+                        egui::Event::PointerButton {
+                            pos: pointer,
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    assert_eq!(
+                        scene.show(
+                            ui,
+                            &sim,
+                            &visible_ports,
+                            CableView {
+                                origin: Pos2::ZERO,
+                                pixels_per_cm: 5.0,
+                                floor_y: 400.0,
+                                jacket: egui::TextureId::User(1),
+                                plug: egui::TextureId::User(2),
+                                selected: Some(link),
+                                visibility: CableVisibility::Selected,
+                                anchors: anchors.clone(),
+                                preview: None,
+                                socket_rects: vec![socket],
+                                interaction_enabled: true,
+                            }
+                        ),
+                        Some(link)
+                    );
+                },
+            );
+            output.textures_delta.clear();
+        }
+    }
+
     fn power_view() -> PowerCableView {
         PowerCableView {
             paths: HashMap::new(),
+            connectors: HashMap::new(),
+            routed: Default::default(),
+            plug: egui::TextureId::User(2),
             jacket: egui::TextureId::Managed(0),
             origin: Pos2::ZERO,
             pixels_per_cm: 1.0,
@@ -774,6 +1189,50 @@ mod tests {
             visibility: CableVisibility::All,
             socket_rects: vec![],
             interaction_enabled: true,
+        }
+    }
+
+    #[test]
+    fn power_sections_have_independent_ropes_and_no_hidden_bridge() {
+        let outlet = OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        };
+        let paths = vec![
+            vec![egui::pos2(20.0, 40.0), egui::pos2(70.0, 40.0)],
+            vec![egui::pos2(220.0, 40.0), egui::pos2(270.0, 40.0)],
+        ];
+        let mut scene = CableScene::default();
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(500.0))),
+                events: vec![
+                    egui::Event::PointerMoved(egui::pos2(150.0, 40.0)),
+                    egui::Event::PointerButton {
+                        pos: egui::pos2(150.0, 40.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| {
+                let mut view = power_view();
+                view.paths.insert(outlet, paths.clone());
+                assert_eq!(
+                    scene.show_power(ui, &[(outlet, paths[0][0], paths[1][1], 300)], view),
+                    None
+                );
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(scene.power.ropes.len(), 2);
+        for (index, path) in paths.iter().enumerate() {
+            let rope = &scene.power.ropes[&(outlet, index)];
+            assert_eq!(rope.points[0], path[0]);
+            assert_eq!(rope.points[SEGMENTS], path[1]);
         }
     }
 
@@ -804,9 +1263,12 @@ mod tests {
         });
         output.textures_delta.clear();
         assert_eq!(scene.power.ropes.len(), 2);
-        assert_eq!(scene.power.ropes[&first].points[0], egui::pos2(10.0, 20.0));
         assert_eq!(
-            scene.power.ropes[&second].points[SEGMENTS],
+            scene.power.ropes[&(first, 0)].points[0],
+            egui::pos2(10.0, 20.0)
+        );
+        assert_eq!(
+            scene.power.ropes[&(second, 0)].points[SEGMENTS],
             egui::pos2(100.0, 40.0)
         );
     }
@@ -862,13 +1324,13 @@ mod tests {
                 let mut view = power_view();
                 view.origin = origin;
                 view.pixels_per_cm = scale;
-                view.paths.insert(outlet, path.clone());
+                view.paths.insert(outlet, vec![path.clone()]);
                 scene.show_power(ui, &cables, view);
             });
             output.textures_delta.clear();
-            assert!(scene.power.ropes[&outlet].points[index].distance(anchor) < 0.001);
-            assert!(scene.power.ropes[&outlet].points[0].distance(a) < 0.001);
-            assert!(scene.power.ropes[&outlet].points[SEGMENTS].distance(b) < 0.001);
+            assert!(scene.power.ropes[&(outlet, 0)].points[index].distance(anchor) < 0.001);
+            assert!(scene.power.ropes[&(outlet, 0)].points[0].distance(a) < 0.001);
+            assert!(scene.power.ropes[&(outlet, 0)].points[SEGMENTS].distance(b) < 0.001);
         }
     }
 
@@ -1092,7 +1554,7 @@ mod tests {
             });
             // This headless geometry check does not upload GPU textures.
             output.textures_delta.clear();
-            let rope = &scene.ethernet.ropes[&link];
+            let rope = &scene.ethernet.ropes[&(link, 0)];
             assert!(rope.points[0].distance(anchors[0]) < 0.001);
             assert!(rope.points[SEGMENTS].distance(anchors[1]) < 0.001);
             for socket in sockets.values() {

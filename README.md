@@ -26,7 +26,12 @@ The game starts with one empty 12U rack and $6,000.
    socket. Buy a 305 m cable box and RJ45 connector packs in the shop first;
    each new lead consumes its cut length and two plugs. Choose white, gray, blue,
    orange, or red for the jacket. The patch cable appears
-   with visible plugs and a physically sagging, draggable jacket. Automatic cuts
+   with visible plugs and a physically sagging, draggable jacket. You can switch
+   front/rear views between clicking the two sockets. Each face shows its own
+   cable sections, with RJ45 plugs only at visible sockets; cables continue to
+   the other face through the side rails. Select a cable on either face to add
+   routing anchors. Ethernet and power routes hide sections behind the rack
+   rather than drawing them across the visible equipment. Automatic cuts
    use the straight distance between sockets plus 5% slack, rounded up to a cm.
    Longer reusable leads can be selected explicitly in the shop. Switch link
    Port LEDs use separate link/status and activity indicators. Link/status shows

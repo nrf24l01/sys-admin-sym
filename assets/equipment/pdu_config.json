@@ -3,17 +3,17 @@
   "texture": "equipment/pdu_faces.png",
   "ports": {
     "c13": [
-      { "left_down": [0.069, 0.18], "right_up": [0.142, 0.82], "side": "back" },
-      { "left_down": [0.161, 0.18], "right_up": [0.234, 0.82], "side": "back" },
-      { "left_down": [0.254, 0.18], "right_up": [0.327, 0.82], "side": "back" },
-      { "left_down": [0.347, 0.18], "right_up": [0.420, 0.82], "side": "back" },
-      { "left_down": [0.440, 0.18], "right_up": [0.513, 0.82], "side": "back" },
-      { "left_down": [0.533, 0.18], "right_up": [0.606, 0.82], "side": "back" },
-      { "left_down": [0.626, 0.18], "right_up": [0.699, 0.82], "side": "back" },
-      { "left_down": [0.719, 0.18], "right_up": [0.792, 0.82], "side": "back" }
+      { "left_down": [0.0338, 0.1762], "right_up": [0.1121, 0.8156], "side": "back" },
+      { "left_down": [0.1337, 0.1762], "right_up": [0.2119, 0.8156], "side": "back" },
+      { "left_down": [0.2341, 0.1762], "right_up": [0.3124, 0.8156], "side": "back" },
+      { "left_down": [0.3346, 0.1762], "right_up": [0.4128, 0.8156], "side": "back" },
+      { "left_down": [0.4350, 0.1762], "right_up": [0.5132, 0.8156], "side": "back" },
+      { "left_down": [0.5349, 0.1762], "right_up": [0.6131, 0.8156], "side": "back" },
+      { "left_down": [0.6348, 0.1762], "right_up": [0.7130, 0.8156], "side": "back" },
+      { "left_down": [0.7352, 0.1762], "right_up": [0.8134, 0.8156], "side": "back" }
     ],
     "c14": [
-      { "left_down": [0.884, 0.18], "right_up": [0.956, 0.82], "side": "back" }
+      { "left_down": [0.8784, 0.1639], "right_up": [0.9630, 0.7705], "side": "back" }
     ]
   }
 }
