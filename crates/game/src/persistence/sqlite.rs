@@ -327,10 +327,42 @@ mod tests {
         if let SourceId::Pdu(id) = pdu_source {
             sim.power.pdus.get_mut(&id).unwrap().tripped = true;
         }
+        let outlet = OutletId {
+            source: pdu_source,
+            index: 0,
+        };
+        let route = vec![cloud_provider_sim::CableRoutePoint {
+            rack: RackId(1),
+            unit: 5,
+            side: cloud_provider_sim::RackSide::Rear,
+            offset_cm: 48,
+        }];
+        sim.execute(Command::ReroutePowerCable {
+            outlet,
+            route: route.clone(),
+        })
+        .unwrap();
         let expected = sim.power.clone();
         store.save(&sim).unwrap();
         let loaded = store.load().unwrap();
         assert_eq!(loaded.power.connections, expected.connections);
+        assert_eq!(loaded.power.cord_routes, expected.cord_routes);
+        let mut loaded = loaded;
+        let invalid_route = vec![cloud_provider_sim::CableRoutePoint {
+            unit: 0,
+            ..route[0]
+        }];
+        assert!(
+            loaded
+                .execute(Command::ReroutePowerCable {
+                    outlet,
+                    route: invalid_route
+                })
+                .is_err()
+        );
+        assert_eq!(loaded.power.cord_routes[&outlet], route);
+        loaded.execute(Command::DisconnectPower { outlet }).unwrap();
+        assert!(!loaded.power.cord_routes.contains_key(&outlet));
         if let SourceId::Ups(id) = ups_source {
             assert_eq!(
                 loaded.power.ups[&id].battery_mwh,

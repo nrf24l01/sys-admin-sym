@@ -21,7 +21,12 @@ pub enum UiAction {
     TogglePower(DeviceId, bool),
     /// Click a power socket. A second complementary click completes the lead.
     PowerSocket(PowerSocket),
+    AddPendingPowerRoutePoint(CableRoutePoint),
     DisconnectPower(OutletId),
+    ReroutePowerCable {
+        outlet: OutletId,
+        route: Vec<CableRoutePoint>,
+    },
     ResetPower(SourceId),
     RackMains(RackId, bool),
     CablePort(PortId),
@@ -32,10 +37,6 @@ pub enum UiAction {
     ApplySwitch(PortId),
     ApplyRouter(PortId),
     FlushPortConfig(PortId),
-    AddCableRoutePoint {
-        link: LinkId,
-        point: CableRoutePoint,
-    },
     RemoveCableRoutePoint {
         link: LinkId,
         index: usize,

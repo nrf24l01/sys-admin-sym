@@ -158,6 +158,7 @@ fn translate_ui_actions(
                 state.pending_cable_route.clear();
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
+                state.pending_power_route.clear();
                 state.selected = Selection::PowerCable(*outlet);
                 None
             }
@@ -174,7 +175,16 @@ fn translate_ui_actions(
                 powered: *powered,
             }),
             UiAction::PowerSocket(socket) => power_socket_action(&snapshot.0, &mut state, *socket),
+            UiAction::AddPendingPowerRoutePoint(point) => {
+                if let Some(index) = state.pending_power_route.iter().position(|candidate| candidate == point) {
+                    state.pending_power_route.remove(index);
+                } else {
+                    state.pending_power_route.push(*point);
+                }
+                None
+            }
             UiAction::DisconnectPower(outlet) => Some(Command::DisconnectPower { outlet: *outlet }),
+            UiAction::ReroutePowerCable { outlet, route } => Some(Command::ReroutePowerCable { outlet: *outlet, route: route.clone() }),
             UiAction::ResetPower(source) => Some(Command::ResetPowerBreaker { source: *source }),
             UiAction::RackMains(rack, on) => Some(Command::SetRackMains { rack: *rack, on: *on }),
             UiAction::Disconnect(link) => Some(Command::Disconnect { link: *link }),
@@ -378,7 +388,6 @@ fn translate_ui_actions(
                 None
             }
             UiAction::FlushPortConfig(port) => Some(Command::ResetPortConfig { port: *port }),
-            UiAction::AddCableRoutePoint { link, point } => Some(Command::AddCableRoutePoint { link: *link, point: *point }),
             UiAction::RemoveCableRoutePoint { link, index } => Some(Command::RemoveCableRoutePoint { link: *link, index: *index }),
             UiAction::MoveCableRoutePoint { link, index, point } => Some(Command::MoveCableRoutePoint { link: *link, index: *index, point: *point }),
             UiAction::RerouteCable { link, route } => Some(Command::RerouteCable { link: *link, route: route.clone() }),
@@ -421,6 +430,7 @@ fn set_error(state: &mut UiState, message: impl Into<String>) {
 fn begin_ethernet_gesture(state: &mut UiState) {
     state.pending_power_outlet = None;
     state.pending_power_inlet = None;
+    state.pending_power_route.clear();
 }
 
 /// Applies one power-socket click to the local gesture state.  The returned
@@ -436,22 +446,31 @@ fn power_socket_action(
         PowerSocket::Outlet(outlet) => {
             if state.pending_power_outlet == Some(outlet) {
                 state.pending_power_outlet = None;
+                state.pending_power_route.clear();
                 state.notice = Some(("Power cable selection cancelled".into(), true));
             } else if snapshot.power.connections.contains_key(&outlet) {
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
+                state.pending_power_route.clear();
                 state.selected = Selection::PowerCable(outlet);
                 state.notice = Some(("Power cable selected".into(), true));
             } else if state.pending_power_inlet.is_none() && state.pending_power_outlet.is_some() {
                 set_error(state, "Select a power inlet to finish the cable.");
             } else if let Some(endpoint) = state.pending_power_inlet.take() {
                 state.pending_power_outlet = None;
-                let command = Command::ConnectPower { outlet, endpoint };
+                let command = Command::ConnectPowerRouted {
+                    outlet,
+                    endpoint,
+                    route: std::mem::take(&mut state.pending_power_route),
+                };
                 let mut check = snapshot.clone();
                 match check.execute(command.clone()) {
                     Ok(_) => return Some(command),
                     Err(error) => {
                         state.pending_power_inlet = Some(endpoint);
+                        if let Command::ConnectPowerRouted { route, .. } = command {
+                            state.pending_power_route = route;
+                        }
                         set_error(state, error.to_string());
                     }
                 }
@@ -463,6 +482,7 @@ fn power_socket_action(
         PowerSocket::Inlet(endpoint) => {
             if state.pending_power_inlet == Some(endpoint) {
                 state.pending_power_inlet = None;
+                state.pending_power_route.clear();
                 state.notice = Some(("Power cable selection cancelled".into(), true));
             } else if let Some(outlet) = snapshot
                 .power
@@ -472,18 +492,26 @@ fn power_socket_action(
             {
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
+                state.pending_power_route.clear();
                 state.selected = Selection::PowerCable(outlet);
                 state.notice = Some(("Power cable selected".into(), true));
             } else if state.pending_power_outlet.is_none() && state.pending_power_inlet.is_some() {
                 set_error(state, "Select a power outlet to finish the cable.");
             } else if let Some(outlet) = state.pending_power_outlet.take() {
                 state.pending_power_inlet = None;
-                let command = Command::ConnectPower { outlet, endpoint };
+                let command = Command::ConnectPowerRouted {
+                    outlet,
+                    endpoint,
+                    route: std::mem::take(&mut state.pending_power_route),
+                };
                 let mut check = snapshot.clone();
                 match check.execute(command.clone()) {
                     Ok(_) => return Some(command),
                     Err(error) => {
                         state.pending_power_outlet = Some(outlet);
+                        if let Command::ConnectPowerRouted { route, .. } = command {
+                            state.pending_power_route = route;
+                        }
                         set_error(state, error.to_string());
                     }
                 }
@@ -599,6 +627,7 @@ fn poll_worker(
                     if matches!(event, cloud_provider_sim::SimEvent::PowerChanged) {
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
+                        state.pending_power_route.clear();
                     }
                     if matches!(
                         event,
@@ -609,6 +638,7 @@ fn poll_worker(
                         state.pending_cable_route.clear();
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
+                        state.pending_power_route.clear();
                     }
                 }
             }
@@ -696,6 +726,26 @@ mod tests {
     }
 
     #[test]
+    fn pending_power_anchor_route_is_committed_with_the_connection() {
+        let (sim, device) = device_sim();
+        let endpoint = PowerEndpoint::Device(device);
+        let anchor = cloud_provider_sim::CableRoutePoint {
+            rack: RackId(1),
+            unit: 2,
+            side: cloud_provider_sim::RackSide::Rear,
+            offset_cm: 24,
+        };
+        let mut state = UiState::default();
+        power_socket_action(&sim, &mut state, PowerSocket::Outlet(outlet()));
+        state.pending_power_route.push(anchor);
+        let command = power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint)).unwrap();
+        assert!(state.pending_power_route.is_empty());
+        let mut connected = sim.clone();
+        connected.execute(command).unwrap();
+        assert_eq!(connected.power.cord_routes[&outlet()], vec![anchor]);
+    }
+
+    #[test]
     fn power_socket_same_role_and_invalid_connection_preserves_pending_selection() {
         let sim = NetworkSim::new();
         let first = outlet();
@@ -757,6 +807,7 @@ mod tests {
         begin_ethernet_gesture(&mut state);
         assert!(state.pending_power_outlet.is_none());
         assert!(state.pending_power_inlet.is_none());
+        assert!(state.pending_power_route.is_empty());
     }
 
     #[test]

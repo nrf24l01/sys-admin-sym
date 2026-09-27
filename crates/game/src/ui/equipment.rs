@@ -121,6 +121,38 @@ pub(super) fn equipment_power_port_position(
         })
 }
 
+pub(super) fn equipment_power_port_rect(
+    kind: &DeviceKind,
+    connector: &str,
+    index: usize,
+    panel: bevy_egui::egui::Rect,
+) -> Option<bevy_egui::egui::Rect> {
+    let type_name = match kind {
+        DeviceKind::Ups(_) => "ups",
+        DeviceKind::Pdu(_) => "pdu",
+        DeviceKind::Server(_) => "server",
+        DeviceKind::Switch(_) => "switch",
+        DeviceKind::Router(_) => "router",
+        _ => return None,
+    };
+    let port = configs()
+        .iter()
+        .find(|c| c.kind == type_name)?
+        .ports
+        .get(connector)?
+        .get(index)?;
+    let position = |p: [f32; 2]| {
+        bevy_egui::egui::pos2(
+            panel.left() + panel.width() * p[0],
+            panel.top() + panel.height() * p[1],
+        )
+    };
+    Some(bevy_egui::egui::Rect::from_two_pos(
+        position(port.left_down),
+        position(port.right_up),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

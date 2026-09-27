@@ -1,6 +1,6 @@
 //! Deterministic rack power model.
 #![allow(clippy::possible_missing_else, clippy::collapsible_if)]
-use crate::{DeviceId, RackId};
+use crate::{CableRoutePoint, DeviceId, RackId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
@@ -193,6 +193,8 @@ pub struct PowerSystem {
     #[serde(default)]
     pub cord_kinds: HashMap<OutletId, PowerCordKind>,
     #[serde(default)]
+    pub cord_routes: HashMap<OutletId, Vec<CableRoutePoint>>,
+    #[serde(default)]
     pub next_source_id: u64,
 }
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -234,6 +236,7 @@ impl PowerSystem {
             devices: HashMap::new(),
             connections: HashMap::new(),
             cord_kinds: HashMap::new(),
+            cord_routes: HashMap::new(),
             next_source_id: 1,
         }
     }
@@ -331,6 +334,7 @@ impl PowerSystem {
     pub fn disconnect(&mut self, o: OutletId) -> bool {
         let x = self.connections.remove(&o).is_some();
         self.cord_kinds.remove(&o);
+        self.cord_routes.remove(&o);
         if x {
             self.recompute()
         }

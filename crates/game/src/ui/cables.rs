@@ -138,14 +138,27 @@ impl Rope {
     }
 }
 
+/// Shared cable parent; each connector family owns a typed instance.
+struct CableLayer<Id> {
+    ropes: HashMap<Id, Rope>,
+    accumulator: f32,
+    grab: Option<(Id, usize)>,
+}
+
+impl<Id> Default for CableLayer<Id> {
+    fn default() -> Self {
+        Self {
+            ropes: HashMap::new(),
+            accumulator: 0.0,
+            grab: None,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct CableScene {
-    ropes: HashMap<LinkId, Rope>,
-    power_ropes: HashMap<OutletId, Rope>,
-    power_grab: Option<(OutletId, usize)>,
-    power_accumulator: f32,
-    accumulator: f32,
-    grab: Option<(LinkId, usize)>,
+    ethernet: CableLayer<LinkId>,
+    power: CableLayer<OutletId>,
 }
 
 pub(super) struct CableView {
@@ -163,6 +176,7 @@ pub(super) struct CableView {
 }
 
 pub(super) struct PowerCableView {
+    pub paths: HashMap<OutletId, Vec<Pos2>>,
     pub origin: Pos2,
     pub pixels_per_cm: f32,
     pub floor_y: f32,
@@ -170,6 +184,7 @@ pub(super) struct PowerCableView {
     pub visibility: CableVisibility,
     pub socket_rects: Vec<Rect>,
     pub interaction_enabled: bool,
+    pub jacket: egui::TextureId,
 }
 
 impl CableView {
@@ -230,6 +245,7 @@ impl CableScene {
         view: PowerCableView,
     ) -> Option<OutletId> {
         let PowerCableView {
+            paths,
             origin,
             pixels_per_cm,
             floor_y,
@@ -237,6 +253,7 @@ impl CableScene {
             visibility,
             socket_rects,
             interaction_enabled,
+            jacket,
         } = view;
         let local = |p: Pos2| {
             Pos2::new(
@@ -246,13 +263,14 @@ impl CableScene {
         };
         let screen = |p: Pos2| origin + p.to_vec2() * pixels_per_cm;
         let keys: std::collections::HashSet<_> = cables.iter().map(|(k, _, _, _)| k).collect();
-        self.power_ropes.retain(|k, _| keys.contains(k));
+        self.power.ropes.retain(|k, _| keys.contains(k));
         if self
-            .power_grab
+            .power
+            .grab
             .as_ref()
-            .is_some_and(|(k, _)| !self.power_ropes.contains_key(k))
+            .is_some_and(|(k, _)| !self.power.ropes.contains_key(k))
         {
-            self.power_grab = None;
+            self.power.grab = None;
         }
         let visible: Vec<_> = cables
             .iter()
@@ -264,12 +282,13 @@ impl CableScene {
             .collect();
         if visibility == CableVisibility::Hidden
             || !interaction_enabled
-            || self.grab.is_some()
+            || self.ethernet.grab.is_some()
             || self
-                .power_grab
+                .power
+                .grab
                 .is_some_and(|(k, _)| !visible.iter().any(|(id, _, _, _)| *id == k))
         {
-            self.power_grab = None;
+            self.power.grab = None;
         }
         let (pointer, pressed, down, dt) = ui.input(|i| {
             (
@@ -280,24 +299,39 @@ impl CableScene {
             )
         });
         if !down {
-            self.power_grab = None;
+            self.power.grab = None;
         }
         for (key, from, to, length) in &visible {
             let from = local(*from);
             let to = local(*to);
             let rope = self
-                .power_ropes
+                .power
+                .ropes
                 .entry(*key)
                 .or_insert_with(|| Rope::new(from, to, *length as f32));
             if rope.length != *length as f32 {
                 *rope = Rope::new(from, to, *length as f32);
             }
             rope.pin_endpoints(from, to);
+            let pins: Vec<_> = paths
+                .get(key)
+                .map(|path| route_pin_indices(path))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(index, point)| (index, local(point)))
+                .collect();
+            if pins
+                .iter()
+                .any(|(index, point)| rope.points[*index].distance(*point) > 0.01)
+            {
+                rope.seed_pinned_path(from, to, &pins);
+            } else {
+                rope.pin_points(&pins);
+            }
         }
         let mut clicked = None;
         if interaction_enabled
-            && self.grab.is_none()
-            && pressed
+            && self.ethernet.grab.is_none()
             && pointer.is_some_and(|p| ui.clip_rect().contains(p))
             && pointer.is_some_and(|p| !socket_rects.iter().any(|r| r.expand(3.0).contains(p)))
         {
@@ -305,7 +339,7 @@ impl CableScene {
             if let Some((key, index, _)) = visible
                 .iter()
                 .filter_map(|(key, _, _, _)| {
-                    let rope = self.power_ropes.get(key)?;
+                    let rope = self.power.ropes.get(key)?;
                     let path: Vec<_> = rope.points.iter().map(|point| screen(*point)).collect();
                     path.windows(2)
                         .enumerate()
@@ -318,57 +352,78 @@ impl CableScene {
                         })
                         .min_by(|a, b| a.2.total_cmp(&b.2))
                 })
-                .filter(|(_, _, d)| *d < 10.0)
+                .filter(|(_, _, d)| *d < 9.0)
                 .min_by(|a, b| a.2.total_cmp(&b.2))
             {
-                self.power_grab = Some((key, index));
-                clicked = Some(key);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                if pressed {
+                    if paths.get(&key).is_none_or(|path| path.len() <= 2) {
+                        self.power.grab = Some((key, index));
+                    }
+                    clicked = Some(key);
+                }
             }
         }
-        self.power_accumulator = (self.power_accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
-        let steps = (self.power_accumulator / STEP).floor() as usize;
-        self.power_accumulator -= steps as f32 * STEP;
+        self.power.accumulator = (self.power.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
+        let steps = (self.power.accumulator / STEP).floor() as usize;
+        self.power.accumulator -= steps as f32 * STEP;
         let floor = (floor_y - origin.y) / pixels_per_cm;
         for _ in 0..steps {
             for (key, from, to, _) in &visible {
                 let from = local(*from);
                 let to = local(*to);
-                let rope = self.power_ropes.get_mut(key).unwrap();
-                let grab = self.power_grab.as_ref().and_then(|(k, i)| {
+                let rope = self.power.ropes.get_mut(key).unwrap();
+                let grab = self.power.grab.as_ref().and_then(|(k, i)| {
                     (*k == *key).then_some((*i, pointer.map(local).unwrap_or(from)))
                 });
                 let grab = grab.map(|(i, mut target)| {
-                    for (anchor, reach) in [
-                        (from, rope.length * i as f32 / SEGMENTS as f32),
-                        (to, rope.length * (SEGMENTS - i) as f32 / SEGMENTS as f32),
-                    ] {
-                        let delta = target - anchor;
-                        if delta.length() > reach {
-                            target = anchor + delta.normalized() * reach;
+                    for _ in 0..4 {
+                        for (anchor, reach) in [
+                            (from, rope.length * i as f32 / SEGMENTS as f32),
+                            (to, rope.length * (SEGMENTS - i) as f32 / SEGMENTS as f32),
+                        ] {
+                            let delta = target - anchor;
+                            if delta.length() > reach {
+                                target = anchor + delta.normalized() * reach;
+                            }
                         }
                     }
                     target.y = target.y.min(floor);
                     (i, target)
                 });
-                rope.step(from, to, floor, grab);
+                let pins: Vec<_> = paths
+                    .get(key)
+                    .map(|path| route_pin_indices(path))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(index, point)| (index, local(point)))
+                    .collect();
+                rope.step_with_pins(from, to, floor, grab, &pins);
             }
         }
         for (key, from, to, _) in &visible {
-            self.power_ropes
+            self.power
+                .ropes
                 .get_mut(key)
                 .unwrap()
                 .pin_endpoints(local(*from), local(*to));
-            let path = self.power_ropes[key]
+            let path: Vec<_> = self.power.ropes[key]
                 .points
                 .iter()
                 .map(|p| screen(*p))
                 .collect();
-            let color = if selected == Some(*key) {
-                Color32::from_rgb(255, 196, 64)
-            } else {
-                Color32::from_rgb(31, 35, 38)
-            };
-            paint_preview(ui, path, color);
+            let color = Color32::from_rgb(31, 35, 38);
+            paint_cable(
+                ui,
+                &path,
+                (pixels_per_cm * 0.55).clamp(4.0, 7.5),
+                color,
+                selected == Some(*key),
+                jacket,
+            );
+        }
+        if self.power.grab.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         if !visible.is_empty() {
             ui.ctx()
@@ -385,21 +440,22 @@ impl CableScene {
         ports: &HashMap<PortId, Rect>,
         view: CableView,
     ) -> Option<LinkId> {
-        self.ropes.retain(|id, _| {
+        self.ethernet.ropes.retain(|id, _| {
             sim.link(*id)
                 .is_some_and(|link| ports.contains_key(&link.a) && ports.contains_key(&link.b))
         });
         if self
+            .ethernet
             .grab
-            .is_some_and(|(id, _)| !self.ropes.contains_key(&id))
+            .is_some_and(|(id, _)| !self.ethernet.ropes.contains_key(&id))
         {
-            self.grab = None;
+            self.ethernet.grab = None;
         }
         if !view.interaction_enabled
             || view.visibility == CableVisibility::Hidden
-            || self.power_grab.is_some()
+            || self.power.grab.is_some()
         {
-            self.grab = None;
+            self.ethernet.grab = None;
         }
         let local = |p: Pos2| Pos2::ZERO + (p - view.origin) / view.pixels_per_cm;
         let screen = |p: Pos2| view.origin + p.to_vec2() * view.pixels_per_cm;
@@ -428,6 +484,7 @@ impl CableScene {
         for link in &links {
             let (a, b) = (local(exit(ports[&link.a])), local(exit(ports[&link.b])));
             let rope = self
+                .ethernet
                 .ropes
                 .entry(link.id)
                 .or_insert_with(|| Rope::new(a, b, link.length_cm as f32));
@@ -459,10 +516,10 @@ impl CableScene {
         });
         let mut selected = None;
         if !down {
-            self.grab = None;
+            self.ethernet.grab = None;
         }
         if view.interaction_enabled
-            && self.power_grab.is_none()
+            && self.power.grab.is_none()
             && let Some(pointer) = pointer.filter(|p| ui.clip_rect().contains(*p))
         {
             // Socket interactions keep priority, including plugs over their sockets.
@@ -478,7 +535,7 @@ impl CableScene {
                 let nearest = links
                     .iter()
                     .filter_map(|link| {
-                        let rope = &self.ropes[&link.id];
+                        let rope = &self.ethernet.ropes[&link.id];
                         let path: Vec<_> = rope.points.iter().map(|p| screen(*p)).collect();
                         path.windows(2)
                             .enumerate()
@@ -497,7 +554,7 @@ impl CableScene {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                     if pressed {
                         if sim.link(id).is_some_and(|link| link.route.is_empty()) {
-                            self.grab = Some((id, index));
+                            self.ethernet.grab = Some((id, index));
                         }
                         selected = Some(id);
                     }
@@ -505,8 +562,9 @@ impl CableScene {
             }
         }
         let floor = (view.floor_y - view.origin.y) / view.pixels_per_cm;
-        self.accumulator = (self.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
-        while self.accumulator >= STEP {
+        self.ethernet.accumulator =
+            (self.ethernet.accumulator + dt.clamp(0.0, 0.066)).min(STEP * 8.0);
+        while self.ethernet.accumulator >= STEP {
             for link in &links {
                 let (a, b) = (local(exit(ports[&link.a])), local(exit(ports[&link.b])));
                 let route =
@@ -516,12 +574,13 @@ impl CableScene {
                     .map(|(index, point)| (index, local(point)))
                     .collect();
                 let grab = self
+                    .ethernet
                     .grab
                     .filter(|(id, _)| *id == link.id)
                     .and_then(|(_, i)| {
                         pointer.map(|p| {
                             // Keep the grabbed point reachable from both anchored ends.
-                            let rope_length = self.ropes[&link.id].length;
+                            let rope_length = self.ethernet.ropes[&link.id].length;
                             let mut target = local(p);
                             for _ in 0..4 {
                                 for (anchor, reach) in [
@@ -538,16 +597,16 @@ impl CableScene {
                             (i, target)
                         })
                     });
-                let rope = self.ropes.get_mut(&link.id).unwrap();
+                let rope = self.ethernet.ropes.get_mut(&link.id).unwrap();
                 if pins.is_empty() {
                     rope.step(a, b, floor, grab);
                 } else {
                     rope.step_with_pins(a, b, floor, grab, &pins);
                 }
             }
-            self.accumulator -= STEP;
+            self.ethernet.accumulator -= STEP;
         }
-        if self.grab.is_some() {
+        if self.ethernet.grab.is_some() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         // Seat every connector first so all cable jackets pass in front of them,
@@ -567,7 +626,7 @@ impl CableScene {
             }
         }
         for link in &links {
-            let path: Vec<_> = self.ropes[&link.id]
+            let path: Vec<_> = self.ethernet.ropes[&link.id]
                 .points
                 .iter()
                 .map(|p| screen(*p))
@@ -583,26 +642,14 @@ impl CableScene {
             {
                 color = color.gamma_multiply(0.35);
             }
-            let display_path = path;
-            let shadow: Vec<_> = display_path
-                .iter()
-                .map(|p| *p + Vec2::new(2.0, 3.0))
-                .collect();
-            ui.painter().add(egui::Shape::line(
-                shadow,
-                egui::Stroke::new(width + 3.0, Color32::from_black_alpha(150)),
-            ));
-            if view.selected == Some(link.id) || in_selected_path {
-                ui.painter().add(egui::Shape::line(
-                    display_path.clone(),
-                    egui::Stroke::new(width + 3.0, Color32::from_rgb(255, 196, 64)),
-                ));
-            }
-            ui.painter().add(egui::Shape::line(
-                display_path.clone(),
-                egui::Stroke::new(width, color),
-            ));
-            paint_jacket(ui.painter(), &display_path, width, view.jacket);
+            paint_cable(
+                ui,
+                &path,
+                width,
+                color,
+                view.selected == Some(link.id) || in_selected_path,
+                view.jacket,
+            );
         }
         if let Some((path, color)) = view.preview {
             paint_preview(ui, path, color);
@@ -622,6 +669,32 @@ fn plug_rect(socket: Rect) -> Rect {
         socket.height().clamp(10.0, 18.0),
     );
     Rect::from_center_size(socket.center(), size)
+}
+
+fn paint_cable(
+    ui: &egui::Ui,
+    path: &[Pos2],
+    width: f32,
+    color: Color32,
+    selected: bool,
+    jacket: egui::TextureId,
+) {
+    let shadow = path.iter().map(|p| *p + Vec2::new(2.0, 3.0)).collect();
+    ui.painter().add(egui::Shape::line(
+        shadow,
+        egui::Stroke::new(width + 3.0, Color32::from_black_alpha(150)),
+    ));
+    if selected {
+        ui.painter().add(egui::Shape::line(
+            path.to_vec(),
+            egui::Stroke::new(width + 3.0, Color32::from_rgb(255, 196, 64)),
+        ));
+    }
+    ui.painter().add(egui::Shape::line(
+        path.to_vec(),
+        egui::Stroke::new(width, color),
+    ));
+    paint_jacket(ui.painter(), path, width, jacket);
 }
 
 fn distance_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
@@ -692,6 +765,8 @@ mod tests {
 
     fn power_view() -> PowerCableView {
         PowerCableView {
+            paths: HashMap::new(),
+            jacket: egui::TextureId::Managed(0),
             origin: Pos2::ZERO,
             pixels_per_cm: 1.0,
             floor_y: 300.0,
@@ -717,7 +792,10 @@ mod tests {
             (second, egui::pos2(20.0, 40.0), egui::pos2(100.0, 40.0), 120),
         ];
         let mut scene = CableScene {
-            power_accumulator: STEP * 2.0,
+            power: CableLayer {
+                accumulator: STEP * 2.0,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let ctx = egui::Context::default();
@@ -725,10 +803,10 @@ mod tests {
             assert_eq!(scene.show_power(ui, &cables, power_view()), None);
         });
         output.textures_delta.clear();
-        assert_eq!(scene.power_ropes.len(), 2);
-        assert_eq!(scene.power_ropes[&first].points[0], egui::pos2(10.0, 20.0));
+        assert_eq!(scene.power.ropes.len(), 2);
+        assert_eq!(scene.power.ropes[&first].points[0], egui::pos2(10.0, 20.0));
         assert_eq!(
-            scene.power_ropes[&second].points[SEGMENTS],
+            scene.power.ropes[&second].points[SEGMENTS],
             egui::pos2(100.0, 40.0)
         );
     }
@@ -761,7 +839,37 @@ mod tests {
             assert_eq!(scene.show_power(ui, &cables, view), None);
         });
         output.textures_delta.clear();
-        assert!(scene.power_grab.is_none());
+        assert!(scene.power.grab.is_none());
+    }
+
+    #[test]
+    fn routed_power_rope_keeps_rail_pin_fixed_after_view_transform() {
+        let outlet = OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        };
+        let a = egui::pos2(10.0, 20.0);
+        let anchor = egui::pos2(60.0, 20.0);
+        let b = egui::pos2(90.0, 80.0);
+        let ctx = egui::Context::default();
+        let mut scene = CableScene::default();
+        for (origin, scale) in [(Pos2::ZERO, 1.0), (egui::pos2(30.0, -100.0), 2.0)] {
+            let screen = |p: Pos2| origin + p.to_vec2() * scale;
+            let path = vec![screen(a), screen(anchor), screen(b)];
+            let index = route_pin_indices(&path)[0].0;
+            let cables = vec![(outlet, screen(a), screen(b), 130)];
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let mut view = power_view();
+                view.origin = origin;
+                view.pixels_per_cm = scale;
+                view.paths.insert(outlet, path.clone());
+                scene.show_power(ui, &cables, view);
+            });
+            output.textures_delta.clear();
+            assert!(scene.power.ropes[&outlet].points[index].distance(anchor) < 0.001);
+            assert!(scene.power.ropes[&outlet].points[0].distance(a) < 0.001);
+            assert!(scene.power.ropes[&outlet].points[SEGMENTS].distance(b) < 0.001);
+        }
     }
 
     #[test]
@@ -791,7 +899,7 @@ mod tests {
             assert_eq!(scene.show_power(ui, &cables, power_view()), Some(outlet));
         });
         output.textures_delta.clear();
-        let (_, index) = scene.power_grab.expect("clicked lead should be grabbed");
+        let (_, index) = scene.power.grab.expect("clicked lead should be grabbed");
         assert!((1..SEGMENTS).contains(&index));
     }
 
@@ -906,7 +1014,7 @@ mod tests {
             });
             output.textures_delta.clear();
             assert!(
-                scene.grab.is_none(),
+                scene.ethernet.grab.is_none(),
                 "routed cables must keep their anchors fixed"
             );
         }
@@ -984,7 +1092,7 @@ mod tests {
             });
             // This headless geometry check does not upload GPU textures.
             output.textures_delta.clear();
-            let rope = &scene.ropes[&link];
+            let rope = &scene.ethernet.ropes[&link];
             assert!(rope.points[0].distance(anchors[0]) < 0.001);
             assert!(rope.points[SEGMENTS].distance(anchors[1]) < 0.001);
             for socket in sockets.values() {

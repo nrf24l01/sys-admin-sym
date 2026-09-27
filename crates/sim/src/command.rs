@@ -114,6 +114,11 @@ pub enum Command {
         outlet: crate::OutletId,
         endpoint: crate::PowerEndpoint,
     },
+    ConnectPowerRouted {
+        outlet: crate::OutletId,
+        endpoint: crate::PowerEndpoint,
+        route: Vec<CableRoutePoint>,
+    },
     ConnectPowerCord {
         outlet: crate::OutletId,
         endpoint: crate::PowerEndpoint,
@@ -121,6 +126,10 @@ pub enum Command {
     },
     DisconnectPower {
         outlet: crate::OutletId,
+    },
+    ReroutePowerCable {
+        outlet: crate::OutletId,
+        route: Vec<CableRoutePoint>,
     },
     ResetPowerBreaker {
         source: crate::SourceId,

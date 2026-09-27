@@ -58,6 +58,8 @@ pub struct UiState {
     pub new_vlan_name: String,
     pub pending_power_outlet: Option<cloud_provider_sim::OutletId>,
     pub pending_power_inlet: Option<cloud_provider_sim::PowerEndpoint>,
+    /// Shared rail anchors collected while a power cord is being connected.
+    pub pending_power_route: Vec<CableRoutePoint>,
 }
 
 #[derive(Default)]

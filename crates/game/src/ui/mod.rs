@@ -18,6 +18,30 @@ fn selected_link_id(state: &UiState, sim: &NetworkSim) -> Option<LinkId> {
     }
 }
 
+/// A routed cable's UI-facing identity. Both cable families use the same
+/// anchor interaction; only committing the route differs by domain command.
+#[derive(Clone, Copy)]
+enum RoutedCableId {
+    Ethernet(LinkId),
+    Power(OutletId),
+}
+
+impl RoutedCableId {
+    fn reroute(self, route: Vec<CableRoutePoint>) -> UiAction {
+        match self {
+            Self::Ethernet(link) => UiAction::RerouteCable { link, route },
+            Self::Power(outlet) => UiAction::ReroutePowerCable { outlet, route },
+        }
+    }
+}
+
+struct RoutedCable {
+    id: RoutedCableId,
+    route: Vec<CableRoutePoint>,
+    endpoints: (egui::Pos2, egui::Pos2),
+    color: egui::Color32,
+}
+
 fn console_scroll_height(available_height: f32, controls_height: f32) -> f32 {
     (available_height - controls_height).max(0.0)
 }
@@ -98,6 +122,7 @@ pub struct EquipmentImages {
     pdu_faces: Handle<Image>,
     jacket: Handle<Image>,
     plug: Handle<Image>,
+    power_connectors: Handle<Image>,
     cables: CableScene,
     textures: Option<EquipmentTextures>,
 }
@@ -114,6 +139,7 @@ struct EquipmentTextures {
     pdu_faces: egui::TextureId,
     jacket: egui::TextureId,
     plug: egui::TextureId,
+    power_connectors: egui::TextureId,
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
@@ -127,6 +153,7 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.pdu_faces = assets.load("equipment/pdu_faces.png");
     images.jacket = assets.load("cables/pvc_jacket.png");
     images.plug = assets.load("cables/rj45_plug.png");
+    images.power_connectors = assets.load("equipment/power_connectors.png");
 }
 
 pub fn main_ui(
@@ -152,6 +179,8 @@ pub fn main_ui(
             pdu_faces: contexts.add_image(EguiTextureHandle::Strong(images.pdu_faces.clone())),
             jacket: contexts.add_image(EguiTextureHandle::Strong(images.jacket.clone())),
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
+            power_connectors: contexts
+                .add_image(EguiTextureHandle::Strong(images.power_connectors.clone())),
         });
     }
     let ctx = contexts.ctx_mut()?;
@@ -266,11 +295,20 @@ fn top_bar(
                 if state.pending_power_outlet.is_some() || state.pending_power_inlet.is_some() {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 196, 64),
-                        "POWER CABLE: SELECT COMPLEMENTARY SOCKET",
+                        format!(
+                            "POWER CABLE: {} ANCHOR{} → SELECT COMPLEMENTARY SOCKET",
+                            state.pending_power_route.len(),
+                            if state.pending_power_route.len() == 1 {
+                                ""
+                            } else {
+                                "S"
+                            }
+                        ),
                     );
                     if ui.small_button("Cancel power").clicked() {
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
+                        state.pending_power_route.clear();
                     }
                     ui.separator();
                 }
@@ -623,6 +661,17 @@ fn power_cable_inspector(
     ));
     ui.label(format!("Destination: {destination}"));
     ui.label(format!("Cord: {:?}", sim.power.cord_kind(outlet)));
+    let anchors = sim.power.cord_routes.get(&outlet).map_or(0, Vec::len);
+    ui.label(format!("Rack anchors: {anchors}"));
+    ui.weak(
+        "In Rack view, click a rail anchor to add or remove it from this selected power cable.",
+    );
+    if anchors > 0 && ui.small_button("Clear rack anchors").clicked() {
+        actions.write(UiAction::ReroutePowerCable {
+            outlet,
+            route: Vec::new(),
+        });
+    }
     if ui.button("Unplug cable").clicked() {
         actions.write(UiAction::DisconnectPower(outlet));
     }
@@ -1441,6 +1490,7 @@ fn rack_view(
                 let mut power_outlets: HashMap<OutletId, egui::Pos2> = HashMap::new();
                 let mut power_socket_rects: Vec<(PowerSocket, egui::Rect)> = Vec::new();
                 let mut route_anchors: Vec<(RackId, u8, RackSide, u16, egui::Pos2)> = Vec::new();
+                let mut placement_preview = None;
                 let rack_frame = egui::Frame::group(ui.style())
                     .fill(egui::Color32::from_rgb(8, 10, 13))
                     .inner_margin(egui::Margin::same(10))
@@ -1454,7 +1504,7 @@ fn rack_view(
                                 let outlet = OutletId { source: SourceId::Rack(rack.id), index: n };
                                 let occupied = sim.power.connections.contains_key(&outlet);
                                 let response = ui.add(egui::Button::new(egui::RichText::new(" ").size(18.0))).on_hover_text(if occupied { "C13 occupied · right-click to unplug" } else { "C13 outlet · click to connect" });
-                                paint_power_socket(ui.painter(), response.rect.shrink(2.0), occupied, false);
+                                paint_power_socket(ui.painter(), textures.power_connectors, response.rect.shrink(2.0));
                                 power_socket_rects.push((PowerSocket::Outlet(outlet), response.rect));
                                 if state.pending_power_outlet == Some(outlet)
                                     || state.pending_power_inlet.is_some()
@@ -1502,6 +1552,9 @@ fn rack_view(
                                     continue;
                                 }
                                 let device = sim.device(device_id).expect("rack device exists");
+                                let row_response = ui.interact(
+                                    panel_rect, egui::Id::new(("device-panel", device_id.0)), egui::Sense::click(),
+                                );
                                 row_response.context_menu(|menu| {
                                     menu.label(device.name.as_str());
                                     if let Some(endpoint) = device_power_endpoint(device) && let Some((outlet, _)) = sim.power.connections.iter().find(|(_, target)| **target == endpoint) && menu.button(format!("Unplug power ({} C13-{})", source_label(sim, outlet.source), outlet.index + 1)).clicked() {
@@ -1655,7 +1708,8 @@ fn rack_view(
                                         _ => inlet_meta.unwrap().position,
                                     };
                                     let inlet_center = normalized_panel_position(panel_rect, inlet_position);
-                                    let inlet = egui::Rect::from_center_size(inlet_center, egui::vec2(16.0, 22.0));
+                                    let inlet = equipment::equipment_power_port_rect(&device.kind, "c14", 0, panel_rect)
+                                        .unwrap_or_else(|| egui::Rect::from_center_size(inlet_center, egui::vec2(16.0, 22.0)));
                                     let endpoint = device_power_endpoint(device);
                                     if let Some(endpoint) = endpoint {
                                         power_socket_rects.push((PowerSocket::Inlet(endpoint), inlet));
@@ -1800,6 +1854,17 @@ fn rack_view(
                                 let installing = selected_inventory.is_some();
                                 if installing {
                                     let hovered = row_response.hovered();
+                                    if hovered && let Some(id) = selected_inventory {
+                                        let device = sim.device(id).expect("inventory device exists");
+                                        let height = device.template().rack_units();
+                                        let valid = unit as u16 + height as u16 - 1 <= rack.units as u16
+                                            && (unit..unit.saturating_add(height)).all(|u| rack.occupies(u).is_none());
+                                        let rect = egui::Rect::from_min_max(
+                                            panel_rect.left_top() - egui::vec2(0.0, row_height * (height - 1) as f32),
+                                            panel_rect.right_bottom(),
+                                        );
+                                        placement_preview = Some((id, rect, valid));
+                                    }
                                     ui.painter().rect_filled(
                                         panel_rect, 1.0,
                                         if hovered { egui::Color32::from_rgb(28, 52, 48) }
@@ -1826,8 +1891,38 @@ fn rack_view(
                         layout.paint_crossbar(ui, "CABLE SERVICE SPACE");
                     });
 
+                if let Some((id, rect, valid)) = placement_preview {
+                    let device = sim.device(id).expect("inventory device exists");
+                    let color = if valid { egui::Color32::LIGHT_GREEN } else { egui::Color32::LIGHT_RED };
+                    if let Some(texture) = equipment_texture(textures, &device.kind, state.rack_side) {
+                        ui.painter().image(texture, rect, equipment_uv(&device.kind, state.rack_side),
+                            egui::Color32::WHITE.gamma_multiply(0.65));
+                    } else {
+                        ui.painter().rect_filled(rect, 1.0, egui::Color32::from_black_alpha(200));
+                        if matches!(device.kind, DeviceKind::PatchPanel(_)) {
+                            for (index, port_id) in device.ports().iter().enumerate() {
+                                let port = sim.port(*port_id).expect("patch port exists");
+                                if port.side == state.rack_side {
+                                    let socket = rack_port_rect(&device.kind, rect, index, port.connector, state.rack_side);
+                                    ui.painter().rect_filled(socket, 1.0, egui::Color32::from_gray(60));
+                                }
+                            }
+                        } else {
+                            for slot in 1..5 {
+                                let center = egui::pos2(rect.left() + rect.width() * (slot * 48 / 5) as f32 / 48.0, rect.center().y);
+                                ui.painter().circle_stroke(center, 5.0, egui::Stroke::new(2.0, egui::Color32::from_gray(90)));
+                            }
+                        }
+                    }
+                    ui.painter().rect_stroke(rect, 1.0, egui::Stroke::new(2.0, color), egui::StrokeKind::Inside);
+                }
+
                 // Power leads follow the same physical rack view and rope solver as network cables.
                 let mut power_rope_cables = Vec::new();
+                let anchors: Vec<_> = route_anchors.iter().map(|&(rack, unit, side, offset_cm, pos)| {
+                    (CableRoutePoint { rack, unit, side, offset_cm }, pos)
+                }).collect();
+                let mut power_paths = HashMap::new();
                 for (outlet, endpoint) in &sim.power.connections {
                     let target_pos = power_endpoints.iter().find(|(e, _)| e == endpoint).map(|(_, p)| *p);
                     let source_pos = power_outlets.get(outlet).copied();
@@ -1842,7 +1937,20 @@ fn rack_view(
                     };
                     let Some(target) = target_pos.or_else(|| rail(endpoint_rack)) else { continue };
                     let Some(source) = source_pos.or_else(|| rail(source_rack)) else { continue };
-                    power_rope_cables.push((*outlet, source, target, 120u32));
+                    // Match Ethernet's automatic length: socket distance in
+                    // centimeters plus 5% installation slack, rounded up.
+                    let path: Vec<_> = std::iter::once(source)
+                        .chain(sim.power.cord_routes.get(outlet).into_iter().flatten()
+                            .filter_map(|point| cables::anchor_position(point, &anchors)))
+                        .chain(std::iter::once(target)).collect();
+                    let last_segment = path.len() - 2;
+                    let distance_cm: f32 = path.windows(2).enumerate().map(|(index, pair)| {
+                        let slack = if index == 0 || index == last_segment { 1.05 } else { 1.0 };
+                        pair[0].distance(pair[1]) / (panel_width / RACK_FACE_WIDTH_CM) * slack
+                    }).sum();
+                    let length_cm = distance_cm.ceil().max(1.0) as u32;
+                    power_paths.insert(*outlet, path);
+                    power_rope_cables.push((*outlet, source, target, length_cm));
                 }
                 // While placing a lead, show a lightweight jacket preview. Socket centers are
                 // taken from the photographed face hitboxes; a rail anchor keeps the preview
@@ -1933,6 +2041,8 @@ fn rack_view(
                     ui,
                     &power_rope_cables,
                     PowerCableView {
+                        paths: power_paths.clone(),
+                        jacket: textures.jacket,
                         origin: rack_frame.response.rect.left_top(),
                         pixels_per_cm: panel_width / 48.26,
                         floor_y: rack_frame.response.rect.bottom() + 110.0,
@@ -1945,6 +2055,7 @@ fn rack_view(
                             .iter()
                             .map(|(_, rect)| *rect)
                             .chain(port_visuals.iter().map(|(_, rect)| *rect))
+                            .chain(anchors.iter().map(|(_, pos)| egui::Rect::from_center_size(*pos, egui::vec2(14.0, 14.0))))
                             .collect(),
                         interaction_enabled: state.pending_power_outlet.is_none()
                             && state.pending_power_inlet.is_none()
@@ -1955,10 +2066,34 @@ fn rack_view(
                 }
 
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
-                let selected_route = selected_link_id(state, sim).and_then(|link_id| sim.link(link_id).map(|link| (link_id, link.route.clone())));
                 let anchors: Vec<_> = route_anchors.iter().map(|&(rack, unit, side, offset_cm, pos)| {
                     (CableRoutePoint { rack, unit, side, offset_cm }, pos)
                 }).collect();
+                let selected_route = match state.selected {
+                    Selection::PowerCable(outlet) => power_paths.get(&outlet).and_then(|path| {
+                        sim.power.connections.contains_key(&outlet).then(|| RoutedCable {
+                            id: RoutedCableId::Power(outlet),
+                            route: sim.power.cord_routes.get(&outlet).cloned().unwrap_or_default(),
+                            endpoints: (path[0], *path.last().expect("power path has end")),
+                            color: egui::Color32::from_rgb(70, 110, 120),
+                        })
+                    }),
+                    _ => selected_link_id(state, sim).and_then(|link_id| {
+                        let link = sim.link(link_id)?;
+                        Some(RoutedCable {
+                            id: RoutedCableId::Ethernet(link_id),
+                            route: link.route.clone(),
+                            endpoints: (positions.get(&link.a)?.center(), positions.get(&link.b)?.center()),
+                            color: cable_color_value(link.color),
+                        })
+                    }),
+                };
+                let pending_power_start = state
+                    .pending_power_outlet
+                    .and_then(|outlet| power_outlets.get(&outlet).copied())
+                    .or_else(|| state.pending_power_inlet.and_then(|endpoint| {
+                        power_endpoints.iter().find(|(candidate, _)| *candidate == endpoint).map(|(_, pos)| *pos)
+                    }));
                 let mut preview = None;
                 for (rack_id, unit, side, offset_cm, position) in route_anchors {
                     let point = CableRoutePoint {
@@ -1967,9 +2102,31 @@ fn rack_view(
                         side,
                         offset_cm,
                     };
+                    if let Some(start) = pending_power_start {
+                        let anchor_rect = egui::Rect::from_center_size(position, egui::vec2(24.0, 24.0));
+                        let response = ui.interact(
+                            anchor_rect,
+                            egui::Id::new(("pending-power-route-anchor", rack_id.0, unit, side == RackSide::Front, offset_cm)),
+                            egui::Sense::click(),
+                        ).on_hover_text("Click to route the pending power cable through this anchor");
+                        let selected = state.pending_power_route.contains(&point);
+                        ui.painter().circle_filled(position, 5.0,
+                            if selected || response.hovered() { egui::Color32::from_rgb(255, 196, 64) }
+                            else { egui::Color32::from_rgb(92, 112, 125) });
+                        if response.hovered() {
+                            let mut route = state.pending_power_route.clone();
+                            if !selected { route.push(point); }
+                            let path = std::iter::once(start)
+                                .chain(route.iter().filter_map(|route| cables::anchor_position(route, &anchors)))
+                                .collect();
+                            preview = Some((path, egui::Color32::from_rgb(70, 110, 120)));
+                        }
+                        if response.clicked() { actions.write(UiAction::AddPendingPowerRoutePoint(point)); }
+                        continue;
+                    }
                     if let Some(source) = state.pending_cable {
                         let anchor_rect =
-                            egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                            egui::Rect::from_center_size(position, egui::vec2(24.0, 24.0));
                         let response = ui.interact(
                             anchor_rect,
                             egui::Id::new((
@@ -2009,25 +2166,20 @@ fn rack_view(
                         }
                         continue;
                     }
-                    let Some((link_id, route)) = selected_route.as_ref() else {
+                    let Some(cable) = selected_route.as_ref() else {
                         let anchor_rect = egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
                         ui.interact(anchor_rect, egui::Id::new(("route-anchor", rack_id.0, unit, side == RackSide::Front, offset_cm)), egui::Sense::hover())
                             .on_hover_text("Cable route anchor · select a cable to add or remove this anchor");
                         ui.painter().circle_filled(position, 5.0, egui::Color32::from_rgb(76, 104, 115));
                         continue;
                     };
-                        let used = route.iter().position(|point| {
-                            point.rack == rack_id
-                                && point.unit == unit
-                                && point.side == side
-                                && point.offset_cm == offset_cm
-                        });
+                        let used = cable.route.iter().position(|candidate| *candidate == point);
                         let anchor_rect =
-                            egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                            egui::Rect::from_center_size(position, egui::vec2(24.0, 24.0));
                         let response = ui.interact(
                             anchor_rect,
                             egui::Id::new((
-                                "route-anchor",
+                                "cable-route-anchor",
                                 rack_id.0,
                                 unit,
                                 side == RackSide::Front,
@@ -2044,39 +2196,15 @@ fn rack_view(
                                 egui::Color32::from_rgb(92, 112, 125)
                             },
                         );
+                        let mut proposed = cable.route.clone();
+                        if let Some(index) = used { proposed.remove(index); } else { proposed.push(point); }
                         if response.hovered() {
-                            let link = sim.link(*link_id).expect("selected cable exists");
-                            if let (Some(a), Some(b)) = (positions.get(&link.a), positions.get(&link.b)) {
-                                let mut proposed = route.clone();
-                                if let Some(index) = used {
-                                    proposed.remove(index);
-                                } else {
-                                    proposed.push(CableRoutePoint { rack: rack_id, unit, side, offset_cm });
-                                }
-                                let path = std::iter::once(a.center())
-                                    .chain(proposed.iter().filter_map(|point| cables::anchor_position(point, &anchors)))
-                                    .chain(std::iter::once(b.center())).collect();
-                                preview = Some((path, cable_color_value(link.color)));
-                            }
+                            let path = std::iter::once(cable.endpoints.0)
+                                .chain(proposed.iter().filter_map(|route| cables::anchor_position(route, &anchors)))
+                                .chain(std::iter::once(cable.endpoints.1)).collect();
+                            preview = Some((path, cable.color));
                         }
-                        if response.clicked() {
-                            if let Some(index) = used {
-                                actions.write(UiAction::RemoveCableRoutePoint {
-                                    link: *link_id,
-                                    index,
-                                });
-                            } else {
-                                actions.write(UiAction::AddCableRoutePoint {
-                                    link: *link_id,
-                                    point: CableRoutePoint {
-                                        rack: rack_id,
-                                        unit,
-                                        side,
-                                        offset_cm,
-                                    },
-                                });
-                            }
-                        }
+                        if response.clicked() { actions.write(cable.id.reroute(proposed)); }
                 }
                 // Space below the rack is the floor for hanging service loops.
                 ui.allocate_space(egui::vec2(rack_width, 120.0));
@@ -2288,6 +2416,9 @@ fn normalized_panel_position(panel: egui::Rect, normalized: (f32, f32)) -> egui:
 }
 
 fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egui::Rect {
+    if let Some(rect) = equipment::equipment_power_port_rect(kind, "c13", index, panel) {
+        return rect;
+    }
     if let Some((x, y)) = equipment_power_port_position(kind, "c13", index) {
         return egui::Rect::from_center_size(
             normalized_panel_position(panel, (x, y)),
@@ -2313,33 +2444,31 @@ fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egu
 /// Power sockets are part of the equipment face interaction layer. They stay
 /// deliberately simple so the photographed UPS/PDU/device faces remain the
 /// only raster artwork used for connectors.
-fn paint_power_socket(painter: &egui::Painter, rect: egui::Rect, occupied: bool, inlet: bool) {
-    let fill = if occupied {
-        egui::Color32::from_rgb(22, 25, 28)
-    } else {
-        egui::Color32::from_rgb(8, 10, 12)
-    };
-    painter.rect_filled(rect, 2.0, fill);
-    painter.rect_stroke(
+fn paint_power_socket(painter: &egui::Painter, texture: egui::TextureId, rect: egui::Rect) {
+    painter.image(
+        texture,
         rect,
-        2.0,
-        egui::Stroke::new(
-            1.2,
-            if inlet {
-                egui::Color32::from_rgb(142, 154, 163)
-            } else {
-                egui::Color32::from_rgb(82, 98, 108)
-            },
-        ),
-        egui::StrokeKind::Inside,
+        egui::Rect::from_min_max(egui::pos2(0.025, 0.15), egui::pos2(0.338, 0.34)),
+        egui::Color32::WHITE,
     );
-    if occupied {
-        painter.circle_filled(
-            rect.center(),
-            rect.width().min(rect.height()) * 0.22,
-            egui::Color32::from_rgb(35, 39, 42),
-        );
-    }
+}
+
+fn equipment_texture(
+    textures: &EquipmentTextures,
+    kind: &DeviceKind,
+    side: RackSide,
+) -> Option<egui::TextureId> {
+    Some(match kind {
+        DeviceKind::Server(_) if side == RackSide::Front => textures.server_front,
+        DeviceKind::Server(_) => textures.server_rear,
+        DeviceKind::Switch(_) if side == RackSide::Front => textures.switch_front,
+        DeviceKind::Switch(_) => textures.switch_rear,
+        DeviceKind::Router(_) if side == RackSide::Front => textures.router_front,
+        DeviceKind::Router(_) => textures.router_rear,
+        DeviceKind::Ups(_) => textures.ups_faces,
+        DeviceKind::Pdu(_) => textures.pdu_faces,
+        _ => return None,
+    })
 }
 
 fn ups_lcd_rect(panel: egui::Rect) -> egui::Rect {
@@ -2388,19 +2517,21 @@ fn rack_device_panel_rect(
     unit: u8,
     row_face: egui::Rect,
 ) -> egui::Rect {
-    let height = rack
+    let placement = rack
         .placements
         .iter()
         .find(|(_, placement)| {
             unit >= placement.unit && unit < placement.unit.saturating_add(placement.height.max(1))
         })
-        .map_or(1, |(_, placement)| placement.height.max(1));
+        .map(|(_, placement)| placement);
+    let height = placement.map_or(1, |p| p.height.max(1));
+    let offset = placement.map_or(0, |p| unit - p.unit) as f32 * row_height;
     egui::Rect::from_min_max(
         egui::pos2(
             row_face.left(),
-            row_face.top() - row_height * (height - 1) as f32,
+            row_face.top() + offset - row_height * (height - 1) as f32,
         ),
-        row_face.right_bottom(),
+        row_face.right_bottom() + egui::vec2(0.0, offset),
     )
 }
 
@@ -2487,10 +2618,25 @@ mod power_geometry_tests {
             )],
         };
         let face = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(480.0, 40.0));
-        let panel = rack_device_panel_rect(&rack, 41.0, 3, face);
+        let panel = rack_device_panel_rect(&rack, 41.0, 2, face);
         assert_eq!(panel.top(), face.top() - 41.0);
         assert_eq!(panel.bottom(), face.bottom());
         assert_eq!(panel.height(), 81.0);
+        let upper_face = face.translate(egui::vec2(0.0, -41.0));
+        assert_eq!(rack_device_panel_rect(&rack, 41.0, 3, upper_face), panel);
+    }
+
+    #[test]
+    fn two_u_power_hitbox_uses_full_asset_rectangle() {
+        let kind = DeviceKind::Ups(cloud_provider_sim::Ups::default());
+        let panel = egui::Rect::from_min_size(egui::pos2(20.0, 50.0), egui::vec2(480.0, 81.0));
+        let inlet = equipment::equipment_power_port_rect(&kind, "c14", 0, panel).unwrap();
+        assert!((inlet.width() - 480.0 * (0.9542687 - 0.88508135)).abs() < 0.001);
+        assert!((inlet.height() - 81.0 * (0.62403804 - 0.2737745)).abs() < 0.001);
+        assert!(panel.contains_rect(inlet));
+        for index in 0..4 {
+            assert!(panel.contains_rect(source_outlet_rect(&kind, panel, index)));
+        }
     }
 
     #[test]

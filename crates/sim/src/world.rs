@@ -77,6 +77,9 @@ impl NetworkSim {
         self.power
             .cord_kinds
             .retain(|outlet, _| self.power.connections.contains_key(outlet));
+        self.power
+            .cord_routes
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
         let missing_cords: Vec<_> = self
             .power
             .connections
@@ -558,6 +561,26 @@ impl NetworkSim {
                 self.sync_effective_power();
                 vec![SimEvent::PowerChanged]
             }
+            Command::ConnectPowerRouted {
+                outlet,
+                endpoint,
+                route,
+            } => {
+                for point in &route {
+                    self.validate_route_point(point)?;
+                }
+                let kind = self.inferred_power_cord(endpoint);
+                self.validate_power_cord(endpoint, kind)?;
+                self.validate_power_endpoint(outlet.source, endpoint)?;
+                self.power
+                    .connect_with_kind(outlet, endpoint, kind)
+                    .map_err(|e| SimError::Power(e.to_string()))?;
+                if !route.is_empty() {
+                    self.power.cord_routes.insert(outlet, route);
+                }
+                self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
             Command::ConnectPowerCord {
                 outlet,
                 endpoint,
@@ -574,6 +597,16 @@ impl NetworkSim {
             Command::DisconnectPower { outlet } => {
                 self.power.disconnect(outlet);
                 self.sync_effective_power();
+                vec![SimEvent::PowerChanged]
+            }
+            Command::ReroutePowerCable { outlet, route } => {
+                if !self.power.connections.contains_key(&outlet) {
+                    return Err(SimError::Power("power cable is not connected".into()));
+                }
+                for point in &route {
+                    self.validate_route_point(point)?;
+                }
+                self.power.cord_routes.insert(outlet, route);
                 vec![SimEvent::PowerChanged]
             }
             Command::ResetPowerBreaker { source } => {
@@ -865,6 +898,9 @@ impl NetworkSim {
                 SourceId::Rack(_) => {}
             }
         }
+        self.power
+            .cord_routes
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
         self.ios_configs.remove(&id);
         self.startup_configs.remove(&id);
         self.console_modes.remove(&id);
@@ -1153,6 +1189,9 @@ impl NetworkSim {
     }
 
     fn sync_effective_power(&mut self) {
+        self.power
+            .cord_routes
+            .retain(|outlet, _| self.power.connections.contains_key(outlet));
         let mut changed = false;
         for (id, device) in &mut self.devices {
             let source = match &device.kind {
