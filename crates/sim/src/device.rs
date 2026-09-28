@@ -117,7 +117,20 @@ impl DeviceKind {
                 0.37 + (index % 2) as f32 * 0.29,
             ),
             Self::Switch(_) => (0.833 + (index - 24) as f32 * 0.040, 0.69),
-            Self::Server(_) => (0.155 + index as f32 * 0.053, 0.47),
+            Self::Server(server) => {
+                if let Some(hardware) = &server.hardware {
+                    if let Some(port) = server.ports.get(index) {
+                        for (slot_index, ports) in hardware.card_ports.iter().enumerate() {
+                            if let Some(card_index) = ports.iter().position(|id| id == port) {
+                                if let Some(slot) = crate::server_catalog().chassis.pcie_slots.get(slot_index) {
+                                    return slot.port_position(card_index, ports.len());
+                                }
+                            }
+                        }
+                    }
+                }
+                (0.155 + index as f32 * 0.053, 0.47)
+            }
             Self::Router(_) if index < 2 => (0.432 + index as f32 * 0.065, 0.63),
             Self::Router(_) => {
                 let lan = index - 2;

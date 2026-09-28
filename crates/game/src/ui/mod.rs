@@ -594,16 +594,16 @@ fn server_hardware_inspector(
     let chassis = &catalog.chassis;
     ui.separator();
     ui.strong("Server hardware");
-    ui.label(format!("CPU {}/{} · RAM {}/{} · PSU {}/{} · fans {}/{}",
+    ui.label(format!("CPU {}/{} · RAM {}/{} · PSU {}/{}",
         hardware.cpus.len(), chassis.cpu_sockets, hardware.ram.len(), chassis.dimm_slots,
-        hardware.power_supplies.len(), chassis.psu_bays, hardware.cooling.len(), chassis.cooling_bays));
+        hardware.power_supplies.len(), chassis.psu_bays));
     let cpu_lanes: u16 = hardware.cpus.iter().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
         .filter_map(|part| match part.kind { ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)), _ => None }).sum();
     let used_lanes: u16 = hardware.pcie.iter().flatten().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
         .filter_map(|part| match &part.kind { ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, .. } } => Some(u16::from(*lanes)), _ => None }).sum();
     ui.label(format!("PCIe lanes: {used_lanes}/{cpu_lanes}"));
     if hardware.ready() { ui.colored_label(egui::Color32::GREEN, "Required hardware installed"); }
-    else { ui.weak(format!("Install a CPU, RAM, power supply and {} fans to complete the server.", chassis.required_fans)); }
+    else { ui.weak("Install a CPU, RAM and power supply to complete the server."); }
     for (index, slot) in chassis.pcie_slots.iter().enumerate() {
         let installed = hardware.pcie.get(index).and_then(Option::as_deref);
         ui.horizontal(|ui| {
@@ -635,7 +635,6 @@ fn server_hardware_inspector(
             ServerPartKind::Cpu { .. } => hardware.cpus.iter().filter(|id| *id == &part.id).count(),
             ServerPartKind::Ram { .. } => hardware.ram.iter().filter(|id| *id == &part.id).count(),
             ServerPartKind::PowerSupply { .. } => hardware.power_supplies.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::Cooling { .. } => hardware.cooling.iter().filter(|id| *id == &part.id).count(),
             ServerPartKind::PciCard { .. } => hardware.pcie.iter().filter(|id| id.as_deref() == Some(part.id.as_str())).count(),
         };
         ui.horizontal(|ui| {
@@ -1505,6 +1504,9 @@ fn rack_view(
                                                 _ => unreachable!(),
                                             };
                                             ui.painter().image(texture, panel_rect, equipment_uv(&device.kind, state.rack_side), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
+                                            if state.rack_side == RackSide::Rear {
+                                                paint_server_backplane(ui.painter(), panel_rect, &device.kind, device.powered);
+                                            }
                                             if matches!(device.kind, DeviceKind::Ups(_)) && state.rack_side == RackSide::Front {
                                                 let lcd = ups_lcd_rect(panel_rect);
                                                 ui.painter().rect_filled(lcd, 1.0, egui::Color32::from_rgb(12, 25, 28));
@@ -2313,6 +2315,42 @@ fn rack_port_rect(
     )
 }
 
+fn paint_server_backplane(
+    painter: &egui::Painter,
+    panel: egui::Rect,
+    kind: &DeviceKind,
+    powered: bool,
+) {
+    use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
+    let DeviceKind::Server(server) = kind else { return };
+    let Some(hardware) = &server.hardware else { return };
+    let catalog = server_catalog();
+    for (slot_index, slot) in catalog.chassis.pcie_slots.iter().enumerate() {
+        let Some(part_id) = hardware.pcie.get(slot_index).and_then(Option::as_deref) else { continue };
+        let Some(part) = catalog.parts.iter().find(|part| part.id == part_id) else { continue };
+        let [left, top, right, bottom] = slot.face_rect;
+        let plate = egui::Rect::from_min_max(
+            egui::pos2(panel.left() + panel.width() * left, panel.top() + panel.height() * top),
+            egui::pos2(panel.left() + panel.width() * right, panel.top() + panel.height() * bottom),
+        );
+        let metal = if powered { egui::Color32::from_rgb(79, 86, 89) } else { egui::Color32::from_gray(59) };
+        painter.rect_filled(plate, 1.0, metal);
+        painter.rect_stroke(plate, 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(125)), egui::StrokeKind::Inside);
+        match &part.kind {
+            ServerPartKind::PciCard { card: PciCard::Ethernet { .. } } => {
+                for port_id in hardware.card_ports.get(slot_index).into_iter().flatten() {
+                    let Some(index) = server.ports.iter().position(|id| id == port_id) else { continue };
+                    let socket = rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
+                    painter.rect_filled(socket, 1.0, egui::Color32::from_rgb(8, 12, 14));
+                    painter.rect_stroke(socket, 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(162)), egui::StrokeKind::Inside);
+                    painter.rect_filled(socket.shrink2(egui::vec2(socket.width() * 0.20, socket.height() * 0.24)), 0.0, egui::Color32::from_rgb(24, 31, 33));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn connector_label(connector: PortConnector) -> &'static str {
     match connector {
         PortConnector::Rj45 => "RJ45",
@@ -2542,6 +2580,30 @@ fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut Messag
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_rear_backplane_gains_card_face_and_jacks_when_installed() {
+        use cloud_provider_sim::{Command, SimEvent};
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else { panic!() };
+        let empty = sim.device(id).unwrap().kind.clone();
+        for part_id in ["xeon_e_2434", "intel_i350_t4"] {
+            sim.execute(Command::BuyServerPart { part_id: part_id.into() }).unwrap();
+            sim.execute(Command::InstallServerPart { device: id, part_id: part_id.into(), slot: None }).unwrap();
+        }
+        let populated = sim.device(id).unwrap().kind.clone();
+        let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
+        let shape_count = |kind: &DeviceKind| {
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                paint_server_backplane(ui.painter(), panel, kind, true);
+            });
+            let count = output.shapes.len();
+            output.textures_delta.clear();
+            count
+        };
+        assert!(shape_count(&populated) > shape_count(&empty));
+    }
 
     #[test]
     fn rack_face_uses_nineteen_inch_one_u_proportions() {

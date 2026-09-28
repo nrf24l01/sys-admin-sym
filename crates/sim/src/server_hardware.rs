@@ -15,8 +15,6 @@ pub struct ServerChassis {
     pub dimm_slots: usize,
     pub memory_type: String,
     pub psu_bays: usize,
-    pub cooling_bays: usize,
-    pub required_fans: usize,
     pub pcie_slots: Vec<PcieSlot>,
 }
 
@@ -26,6 +24,18 @@ pub struct PcieSlot {
     pub lanes: u8,
     pub generation: u8,
     pub width: u8,
+    /// Normalized rectangle on the rear face: left, top, right, bottom.
+    pub face_rect: [f32; 4],
+}
+
+impl PcieSlot {
+    pub fn port_position(&self, index: usize, count: usize) -> (f32, f32) {
+        let [left, top, right, bottom] = self.face_rect;
+        (
+            left + (right - left) * (index + 1) as f32 / (count + 1) as f32,
+            (top + bottom) * 0.5,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,9 +61,6 @@ pub enum ServerPartKind {
     },
     PowerSupply {
         capacity_w: u16,
-    },
-    Cooling {
-        cooling_w: u16,
     },
     PciCard {
         card: PciCard,
@@ -86,7 +93,9 @@ pub struct ServerHardware {
     pub cpus: Vec<String>,
     pub ram: Vec<String>,
     pub power_supplies: Vec<String>,
-    pub cooling: Vec<String>,
+    /// Read old saves and refund previously purchased fans once on load.
+    #[serde(default, rename = "cooling", skip_serializing)]
+    pub legacy_fans: Vec<String>,
     /// One entry per physical chassis slot. `None` means the slot is empty.
     pub pcie: Vec<Option<String>>,
     #[serde(default)]
@@ -117,36 +126,14 @@ impl ServerHardware {
                 _ => None,
             })
             .sum();
-        100 + cpu_w + self.ram.len() as u32 * 5 + card_w + self.cooling.len() as u32 * 5
+        100 + cpu_w + self.ram.len() as u32 * 5 + card_w
     }
 
     pub fn ready(&self) -> bool {
-        if self.cpus.is_empty()
-            || self.ram.is_empty()
-            || self.power_supplies.is_empty()
-            || self.cooling.len() < server_catalog().chassis.required_fans
-        {
+        if self.cpus.is_empty() || self.ram.is_empty() || self.power_supplies.is_empty() {
             return false;
         }
         let catalog = server_catalog();
-        let cpu_w: u32 = self
-            .cpus
-            .iter()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match part.kind {
-                ServerPartKind::Cpu { tdp_w, .. } => Some(u32::from(tdp_w)),
-                _ => None,
-            })
-            .sum();
-        let cooling_w: u32 = self
-            .cooling
-            .iter()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match part.kind {
-                ServerPartKind::Cooling { cooling_w } => Some(u32::from(cooling_w)),
-                _ => None,
-            })
-            .sum();
         let psu_w: u32 = self
             .power_supplies
             .iter()
@@ -157,6 +144,6 @@ impl ServerHardware {
             })
             .max()
             .unwrap_or(0);
-        cooling_w >= cpu_w && psu_w >= self.load_watts()
+        psu_w >= self.load_watts()
     }
 }

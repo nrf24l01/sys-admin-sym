@@ -18,7 +18,6 @@ fn part_description(part: &ServerPart) -> String {
         ServerPartKind::Cpu { socket, pcie_lanes, tdp_w } => format!("{socket} · {pcie_lanes} PCIe lanes · {tdp_w} W TDP"),
         ServerPartKind::Ram { memory_type, capacity_gb } => format!("{capacity_gb} GB · {memory_type}"),
         ServerPartKind::PowerSupply { capacity_w } => format!("{capacity_w} W power supply"),
-        ServerPartKind::Cooling { cooling_w } => format!("{cooling_w} W cooling capacity"),
         ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, rj45_ports, speed_mbps, .. } } =>
             format!("{rj45_ports} × RJ45 · {speed_mbps} Mb/s · PCIe Gen {generation} x{lanes}"),
     }
@@ -106,7 +105,7 @@ const PRODUCTS: &[Product] = &[
     },
     Product {
         name: "Dell PowerEdge R360",
-        description: "R360 chassis with onboard network ports; CPU, memory, PSU, fans and PCIe cards sold separately",
+        description: "R360 chassis with onboard network ports; CPU, memory, PSU and PCIe cards sold separately",
         section: ShopSection::DellServers,
         purchase: Purchase::ServerChassis,
         ports: Some(3),

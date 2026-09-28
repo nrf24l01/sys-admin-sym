@@ -37,15 +37,17 @@ physical PCIe slot width, generation, and the CPU's total available lanes.
 Ethernet cards are PCI card variants and allocate ordinary server `Port` records,
 so existing cabling, link negotiation, IP configuration, and persistence apply.
 Removing a card disconnects its cables and returns it to inventory. A new
-chassis requires CPU, RAM, power supply, and adequate cooling before power can
-be requested; preexisting servers retain their original assembled behavior.
-The initial R360 slot and fan counts follow Dell's
+chassis requires CPU, RAM, and a power supply before power can be requested;
+preexisting servers retain their original assembled behavior.
+The initial R360 slot layout follows Dell's
 [expansion slot guide](https://www.dell.com/support/manuals/en-in/poweredge-r360/r360_ism/expansion-card-installation-guidelines?guid=guid-9ffebd78-0ef4-4614-b698-c450c609054f&lang=en-us)
-and [cooling specifications](https://www.dell.com/support/manuals/en-us/poweredge-r360/r360_ism/cooling-fan-specifications?guid=guid-5b7cc763-f0a4-462a-a481-4b617cbdfffa&lang=en-us).
+documentation. Installed PCIe cards cover the corresponding rear slot in the
+rack view, and their sockets use the same JSON-defined positions for painting,
+click targets, and cable endpoints. Fans are included in the chassis; older
+saves receive a refund for previously purchased fans.
 The initial [Xeon E-2434](https://www.intel.com/content/www/us/en/products/sku/236192/intel-xeon-e2434-processor-12m-cache-3-40-ghz/specifications.html)
 and [I350 adapter](https://www.intel.com/content/dam/doc/product-brief/ethernet-i350-server-adapter-brief.pdf)
-specifications are from Intel; chassis base power and fan cooling capacity are
-game estimates.
+specifications are from Intel; chassis base power is a game estimate.
 
 Cable inventory is domain state: a 305 m bulk box is raw stock, connector packs
 provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.

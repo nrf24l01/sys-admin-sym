@@ -214,6 +214,18 @@ impl NetworkSim {
                 }
             }
         }
+        // Fans were sold as parts in older saves. Return their full purchase
+        // price once; the chassis now includes cooling by default.
+        let mut retired_fans = self.server_parts.remove("r360_fan").unwrap_or(0) as usize;
+        for device in self.devices.values_mut() {
+            if let DeviceKind::Server(server) = &mut device.kind {
+                if let Some(hardware) = &mut server.hardware {
+                    retired_fans += hardware.legacy_fans.len();
+                    hardware.legacy_fans.clear();
+                }
+            }
+        }
+        self.money += retired_fans as i64 * 45;
         // Runtime state is deliberately not persisted across a loaded or
         // replaced topology: learned MAC/ARP entries and port LEDs refer to
         // the old physical graph.
@@ -943,12 +955,6 @@ impl NetworkSim {
                 }
                 None
             }
-            ServerPartKind::Cooling { .. } => {
-                if hardware.cooling.len() >= chassis.cooling_bays {
-                    return Err(SimError::ServerHardware("cooling bays are full".into()));
-                }
-                None
-            }
             ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, width, speed_mbps, .. } } => {
                 if !matches!(speed_mbps, 10 | 100 | 1000) {
                     return Err(SimError::ServerHardware("NIC speed is unsupported by the network simulator".into()));
@@ -988,7 +994,6 @@ impl NetworkSim {
             ServerPartKind::Cpu { .. } => hardware.cpus.push(part_id.into()),
             ServerPartKind::Ram { .. } => hardware.ram.push(part_id.into()),
             ServerPartKind::PowerSupply { .. } => hardware.power_supplies.push(part_id.into()),
-            ServerPartKind::Cooling { .. } => hardware.cooling.push(part_id.into()),
             ServerPartKind::PciCard { .. } => {
                 let index = selected_slot.unwrap();
                 hardware.pcie[index] = Some(part_id.into());
@@ -1029,7 +1034,6 @@ impl NetworkSim {
             ServerPartKind::Cpu { .. } => Some(&mut hardware.cpus),
             ServerPartKind::Ram { .. } => Some(&mut hardware.ram),
             ServerPartKind::PowerSupply { .. } => Some(&mut hardware.power_supplies),
-            ServerPartKind::Cooling { .. } => Some(&mut hardware.cooling),
             ServerPartKind::PciCard { .. } => None,
         };
         if let Some(list) = list {
@@ -1079,7 +1083,7 @@ impl NetworkSim {
         if let DeviceKind::Server(server) = &device.kind {
             if let Some(hardware) = &server.hardware {
                 for part in hardware.cpus.iter().chain(&hardware.ram)
-                    .chain(&hardware.power_supplies).chain(&hardware.cooling)
+                    .chain(&hardware.power_supplies)
                     .chain(hardware.pcie.iter().flatten()) {
                     *self.server_parts.entry(part.clone()).or_default() += 1;
                 }
@@ -1379,7 +1383,7 @@ impl NetworkSim {
     fn set_power(&mut self, id: DeviceId, powered: bool) -> Result<(), SimError> {
         let device = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
         if powered && matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready())) {
-            return Err(SimError::ServerHardware(format!("install a CPU, RAM, power supply and {} fans before powering on", server_catalog().chassis.required_fans)));
+            return Err(SimError::ServerHardware("install a CPU, RAM and power supply before powering on".into()));
         }
         let source = match &self.devices[&id].kind {
             DeviceKind::Ups(x) => x.source,
