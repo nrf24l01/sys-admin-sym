@@ -11,6 +11,10 @@ pub enum UiAction {
     SelectLink(LinkId),
     SelectPowerCable(OutletId),
     Buy(DeviceTemplate),
+    BuyServerChassis,
+    BuyServerPart(String),
+    InstallServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
+    RemoveServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
     BuyCableSupply(cloud_provider_sim::CableSupply),
     Place {
         device: DeviceId,

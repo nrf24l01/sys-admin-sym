@@ -18,6 +18,11 @@ The game starts with one empty 12U rack and $6,000.
    contains UPS and PDU models. Search and filter by price, affordability, rack
    size, RJ45 port count, or C13 outlet count, then buy equipment for inventory.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.
+   A newly bought R360 is a chassis: buy its CPU, DDR5 ECC RAM, power supply,
+   four fans, and optional Intel I350-T4 cards in the Compute shop. Select the server
+   and install owned parts in its inspector. The PCIe slot list shows lane use;
+   a card adds four working rear RJ45 ports. The server powers on only after
+   its required parts are installed.
 3. Buy an APC Smart-UPS or PDU, place it in the rack, then connect active
    devices by clicking an empty power outlet or inlet and then its complementary
    socket. Click the same pending socket to cancel. Right-click an occupied

@@ -163,6 +163,10 @@ fn translate_ui_actions(
                 None
             }
             UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
+            UiAction::BuyServerChassis => Some(Command::BuyServerChassis),
+            UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart { part_id: part_id.clone() }),
+            UiAction::InstallServerPart { device, part_id, slot } => Some(Command::InstallServerPart { device: *device, part_id: part_id.clone(), slot: *slot }),
+            UiAction::RemoveServerPart { device, part_id, slot } => Some(Command::RemoveServerPart { device: *device, part_id: part_id.clone(), slot: *slot }),
             UiAction::BuyCableSupply(supply) => Some(Command::BuyCableSupply { supply: *supply }),
             UiAction::Place { device, rack, unit } => Some(Command::PlaceDevice {
                 device: *device,

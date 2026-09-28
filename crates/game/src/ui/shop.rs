@@ -1,11 +1,33 @@
 use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
-use cloud_provider_sim::{CableSupply, DeviceTemplate, NetworkSim};
+use cloud_provider_sim::{CableSupply, DeviceTemplate, NetworkSim, PciCard, ServerPart, ServerPartKind, server_catalog};
+
+fn part_matches(part: &ServerPart, state: &ShopState, money: i64) -> bool {
+    state.category == ShopCategory::Compute
+        && state.section.is_none_or(|s| s == ShopSection::DellServers)
+        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+        && (state.search.trim().is_empty()
+            || format!("{} {}", part.name, part.id).to_lowercase().contains(&state.search.trim().to_lowercase()))
+        && (!state.affordable_only || part.price <= money)
+        && state.max_price.is_none_or(|max| part.price <= max)
+}
+
+fn part_description(part: &ServerPart) -> String {
+    match &part.kind {
+        ServerPartKind::Cpu { socket, pcie_lanes, tdp_w } => format!("{socket} · {pcie_lanes} PCIe lanes · {tdp_w} W TDP"),
+        ServerPartKind::Ram { memory_type, capacity_gb } => format!("{capacity_gb} GB · {memory_type}"),
+        ServerPartKind::PowerSupply { capacity_w } => format!("{capacity_w} W power supply"),
+        ServerPartKind::Cooling { cooling_w } => format!("{cooling_w} W cooling capacity"),
+        ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, rj45_ports, speed_mbps, .. } } =>
+            format!("{rj45_ports} × RJ45 · {speed_mbps} Mb/s · PCIe Gen {generation} x{lanes}"),
+    }
+}
 
 #[derive(Clone, Copy)]
 enum Purchase {
     Equipment(DeviceTemplate),
+    ServerChassis,
     Supply(CableSupply),
 }
 
@@ -22,6 +44,7 @@ impl Product {
     fn price(&self) -> i64 {
         match self.purchase {
             Purchase::Equipment(template) => template.price(),
+            Purchase::ServerChassis => DeviceTemplate::Server.price(),
             Purchase::Supply(supply) => supply.price(),
         }
     }
@@ -29,6 +52,7 @@ impl Product {
     fn rack_units(&self) -> Option<u8> {
         match self.purchase {
             Purchase::Equipment(template) => Some(template.rack_units()),
+            Purchase::ServerChassis => Some(1),
             Purchase::Supply(_) => None,
         }
     }
@@ -57,6 +81,7 @@ impl Product {
     fn buy(&self) -> UiAction {
         match self.purchase {
             Purchase::Equipment(template) => UiAction::Buy(template),
+            Purchase::ServerChassis => UiAction::BuyServerChassis,
             Purchase::Supply(supply) => UiAction::BuyCableSupply(supply),
         }
     }
@@ -81,9 +106,9 @@ const PRODUCTS: &[Product] = &[
     },
     Product {
         name: "Dell PowerEdge R360",
-        description: "3 rear RJ45 ports: primary, secondary, management",
+        description: "R360 chassis with onboard network ports; CPU, memory, PSU, fans and PCIe cards sold separately",
         section: ShopSection::DellServers,
-        purchase: Purchase::Equipment(DeviceTemplate::Server),
+        purchase: Purchase::ServerChassis,
         ports: Some(3),
         outlets: None,
     },
@@ -173,16 +198,17 @@ pub(super) fn show(
                         .iter()
                         .filter(|product| product.matches(state, sim.money))
                         .collect();
+                    let parts: Vec<_> = server_catalog().parts.iter().filter(|part| part_matches(part, state, sim.money)).collect();
                     ui.label(format!(
                         "{} product{}",
-                        products.len(),
-                        if products.len() == 1 { "" } else { "s" }
+                        products.len() + parts.len(),
+                        if products.len() + parts.len() == 1 { "" } else { "s" }
                     ));
                     egui::ScrollArea::vertical()
                         .id_salt("shop-products")
                         .max_height(ui.available_height().max(120.0))
                         .show(ui, |ui| {
-                            if products.is_empty() {
+                            if products.is_empty() && parts.is_empty() {
                                 ui.weak("No products match these filters.");
                                 if ui.button("Clear filters").clicked() {
                                     state.clear_filters();
@@ -211,6 +237,18 @@ pub(super) fn show(
                                         }
                                     });
                                 });
+                            }
+                            {
+                                for part in parts {
+                                    ui.group(|ui| {
+                                        ui.set_min_width(ui.available_width());
+                                        ui.strong(&part.name);
+                                        ui.weak(part_description(part));
+                                        if ui.add_enabled(sim.money >= part.price, egui::Button::new(format!("Buy — ${}", part.price))).clicked() {
+                                            actions.write(UiAction::BuyServerPart(part.id.clone()));
+                                        }
+                                    });
+                                }
                             }
                         });
                 });
@@ -477,7 +515,7 @@ mod tests {
         assert_eq!(products.len(), 1);
         assert!(matches!(
             products[0].buy(),
-            UiAction::Buy(DeviceTemplate::Server)
+            UiAction::BuyServerChassis
         ));
     }
 }

@@ -468,6 +468,11 @@ fn device_inspector(
     };
     ui.heading(&device.name);
     power_controls(ui, sim, device, actions);
+    if let DeviceKind::Server(server) = &device.kind {
+        if let Some(hardware) = &server.hardware {
+            server_hardware_inspector(ui, sim, id, hardware, actions);
+        }
+    }
     let actual_powered = device.powered
         || match device.kind {
             DeviceKind::Ups(ref x) => x
@@ -574,6 +579,74 @@ fn device_inspector(
         if ui.button("Create VLAN").clicked() {
             actions.write(UiAction::CreateVlan(id));
         }
+    }
+}
+
+fn server_hardware_inspector(
+    ui: &mut egui::Ui,
+    sim: &NetworkSim,
+    device: DeviceId,
+    hardware: &cloud_provider_sim::ServerHardware,
+    actions: &mut MessageWriter<UiAction>,
+) {
+    use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
+    let catalog = server_catalog();
+    let chassis = &catalog.chassis;
+    ui.separator();
+    ui.strong("Server hardware");
+    ui.label(format!("CPU {}/{} · RAM {}/{} · PSU {}/{} · fans {}/{}",
+        hardware.cpus.len(), chassis.cpu_sockets, hardware.ram.len(), chassis.dimm_slots,
+        hardware.power_supplies.len(), chassis.psu_bays, hardware.cooling.len(), chassis.cooling_bays));
+    let cpu_lanes: u16 = hardware.cpus.iter().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+        .filter_map(|part| match part.kind { ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)), _ => None }).sum();
+    let used_lanes: u16 = hardware.pcie.iter().flatten().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+        .filter_map(|part| match &part.kind { ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, .. } } => Some(u16::from(*lanes)), _ => None }).sum();
+    ui.label(format!("PCIe lanes: {used_lanes}/{cpu_lanes}"));
+    if hardware.ready() { ui.colored_label(egui::Color32::GREEN, "Required hardware installed"); }
+    else { ui.weak(format!("Install a CPU, RAM, power supply and {} fans to complete the server.", chassis.required_fans)); }
+    for (index, slot) in chassis.pcie_slots.iter().enumerate() {
+        let installed = hardware.pcie.get(index).and_then(Option::as_deref);
+        ui.horizontal(|ui| {
+            ui.label(format!("{}: x{} / Gen {}", slot.name, slot.lanes, slot.generation));
+            if let Some(id) = installed {
+                let name = catalog.parts.iter().find(|part| part.id == id).map_or(id, |part| part.name.as_str());
+                ui.label(name);
+                if ui.button("Remove").clicked() {
+                    actions.write(UiAction::RemoveServerPart { device, part_id: id.into(), slot: Some(index) });
+                }
+            } else {
+                ui.weak("empty");
+                for part in &catalog.parts {
+                    let ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, width, .. } } = &part.kind else { continue };
+                    if sim.server_parts.get(&part.id).copied().unwrap_or(0) > 0
+                        && slot.lanes >= *lanes && slot.width >= *width && slot.generation >= *generation
+                        && used_lanes + u16::from(*lanes) <= cpu_lanes
+                        && ui.button(format!("Install {}", part.name)).clicked()
+                    {
+                        actions.write(UiAction::InstallServerPart { device, part_id: part.id.clone(), slot: Some(index) });
+                    }
+                }
+            }
+        });
+    }
+    for part in &catalog.parts {
+        let owned = sim.server_parts.get(&part.id).copied().unwrap_or(0);
+        let installed = match &part.kind {
+            ServerPartKind::Cpu { .. } => hardware.cpus.iter().filter(|id| *id == &part.id).count(),
+            ServerPartKind::Ram { .. } => hardware.ram.iter().filter(|id| *id == &part.id).count(),
+            ServerPartKind::PowerSupply { .. } => hardware.power_supplies.iter().filter(|id| *id == &part.id).count(),
+            ServerPartKind::Cooling { .. } => hardware.cooling.iter().filter(|id| *id == &part.id).count(),
+            ServerPartKind::PciCard { .. } => hardware.pcie.iter().filter(|id| id.as_deref() == Some(part.id.as_str())).count(),
+        };
+        ui.horizontal(|ui| {
+            ui.label(format!("{} · inventory {owned} · installed {installed}", part.name));
+            if ui.add_enabled(owned > 0, egui::Button::new("Install")).clicked() {
+                actions.write(UiAction::InstallServerPart { device, part_id: part.id.clone(), slot: None });
+            }
+            if installed > 0 && !matches!(part.kind, ServerPartKind::PciCard { .. }) && ui.button("Remove").clicked() {
+                actions.write(UiAction::RemoveServerPart { device, part_id: part.id.clone(), slot: None });
+            }
+        });
     }
 }
 

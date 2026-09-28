@@ -143,6 +143,8 @@ impl DeviceKind {
 pub struct Server {
     pub hostname: String,
     pub ports: Vec<PortId>,
+    #[serde(default)]
+    pub hardware: Option<crate::ServerHardware>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

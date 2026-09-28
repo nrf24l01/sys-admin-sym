@@ -54,6 +54,12 @@ pub enum SimError {
     WrongPortType,
     #[error("not enough money: need ${needed}, have ${available}")]
     InsufficientFunds { needed: i64, available: i64 },
+    #[error("unknown server part: {0}")]
+    UnknownServerPart(String),
+    #[error("server part is not in inventory: {0}")]
+    ServerPartNotOwned(String),
+    #[error("server hardware: {0}")]
+    ServerHardware(String),
     #[error("link does not exist")]
     LinkNotFound,
     #[error("device must be removed from its rack first")]

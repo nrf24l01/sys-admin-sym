@@ -14,6 +14,8 @@ pub struct NetworkSim {
     pub money: i64,
     #[serde(default)]
     pub(crate) cable_inventory: CableInventory,
+    #[serde(default)]
+    pub server_parts: HashMap<String, u32>,
     pub topology_revision: u64,
     pub routing_revision: u64,
     #[serde(default)]
@@ -48,6 +50,7 @@ impl NetworkSim {
             power: PowerSystem::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
+            server_parts: HashMap::new(),
             topology_revision: 0,
             routing_revision: 0,
             ios_configs: HashMap::new(),
@@ -155,6 +158,9 @@ impl NetworkSim {
                 }
             }
         }
+        for id in self.devices.keys().copied().collect::<Vec<_>>() {
+            self.update_server_load(id);
+        }
         self.power.recompute_now();
         self.sync_effective_power();
         // Migrate legacy servers that predate the dedicated management NIC.
@@ -195,6 +201,17 @@ impl NetworkSim {
                 }
                 existing.insert(name.to_string());
                 current += 1;
+            }
+        }
+        for device in self.devices.values_mut() {
+            if let DeviceKind::Server(server) = &mut device.kind {
+                if let Some(hardware) = &mut server.hardware {
+                    let slots = server_catalog().chassis.pcie_slots.len();
+                    if hardware.pcie.len() < slots { hardware.pcie.resize(slots, None); }
+                    if hardware.card_ports.len() < hardware.pcie.len() {
+                        hardware.card_ports.resize_with(hardware.pcie.len(), Vec::new);
+                    }
+                }
             }
         }
         // Runtime state is deliberately not persisted across a loaded or
@@ -457,6 +474,29 @@ impl NetworkSim {
                 let id = self.buy_device(kind)?;
                 vec![SimEvent::DeviceAdded(id)]
             }
+            Command::BuyServerChassis => {
+                let id = self.buy_device(DeviceTemplate::Server)?;
+                let DeviceKind::Server(server) = &mut self.devices.get_mut(&id).unwrap().kind else { unreachable!() };
+                server.hardware = Some(ServerHardware {
+                    pcie: vec![None; server_catalog().chassis.pcie_slots.len()],
+                    card_ports: vec![Vec::new(); server_catalog().chassis.pcie_slots.len()],
+                    ..Default::default()
+                });
+                self.update_server_load(id);
+                vec![SimEvent::DeviceAdded(id)]
+            }
+            Command::BuyServerPart { part_id } => {
+                self.buy_server_part(&part_id)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::InstallServerPart { device, part_id, slot } => {
+                self.install_server_part(device, &part_id, slot)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::RemoveServerPart { device, part_id, slot } => {
+                self.remove_server_part(device, &part_id, slot)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
             Command::SellDevice { device } => {
                 self.sell_device(device)?;
                 vec![SimEvent::DeviceRemoved(device)]
@@ -699,10 +739,11 @@ impl NetworkSim {
                     })
                     .collect();
                 (
-                    format!("Dell PowerEdge R360 #{index:02}"),
+                    format!("{} #{index:02}", server_catalog().chassis.model),
                     DeviceKind::Server(Server {
                         hostname: format!("server{index:02}"),
                         ports,
+                        hardware: None,
                     }),
                 )
             }
@@ -859,6 +900,165 @@ impl NetworkSim {
         Ok(id)
     }
 
+    fn buy_server_part(&mut self, part_id: &str) -> Result<(), SimError> {
+        let part = server_catalog().parts.iter().find(|p| p.id == part_id)
+            .ok_or_else(|| SimError::UnknownServerPart(part_id.into()))?;
+        if self.money < part.price {
+            return Err(SimError::InsufficientFunds { needed: part.price, available: self.money });
+        }
+        self.money -= part.price;
+        *self.server_parts.entry(part_id.into()).or_default() += 1;
+        Ok(())
+    }
+
+    fn install_server_part(&mut self, device: DeviceId, part_id: &str, slot: Option<usize>) -> Result<(), SimError> {
+        let catalog = server_catalog();
+        let part = catalog.parts.iter().find(|p| p.id == part_id)
+            .ok_or_else(|| SimError::UnknownServerPart(part_id.into()))?;
+        if self.server_parts.get(part_id).copied().unwrap_or(0) == 0 {
+            return Err(SimError::ServerPartNotOwned(part_id.into()));
+        }
+        let server = match &self.devices.get(&device).ok_or(SimError::DeviceNotFound(device))?.kind {
+            DeviceKind::Server(server) => server,
+            _ => return Err(SimError::ServerHardware("selected device is not a server".into())),
+        };
+        let hardware = server.hardware.as_ref().ok_or_else(|| SimError::ServerHardware("legacy server has no configurable chassis".into()))?;
+        let chassis = &catalog.chassis;
+        let selected_slot = match &part.kind {
+            ServerPartKind::Cpu { socket, .. } => {
+                if socket != &chassis.cpu_socket || hardware.cpus.len() >= chassis.cpu_sockets {
+                    return Err(SimError::ServerHardware("CPU socket is incompatible or full".into()));
+                }
+                None
+            }
+            ServerPartKind::Ram { memory_type, .. } => {
+                if memory_type != &chassis.memory_type || hardware.ram.len() >= chassis.dimm_slots {
+                    return Err(SimError::ServerHardware("DIMM type is incompatible or slots are full".into()));
+                }
+                None
+            }
+            ServerPartKind::PowerSupply { .. } => {
+                if hardware.power_supplies.len() >= chassis.psu_bays {
+                    return Err(SimError::ServerHardware("power supply bays are full".into()));
+                }
+                None
+            }
+            ServerPartKind::Cooling { .. } => {
+                if hardware.cooling.len() >= chassis.cooling_bays {
+                    return Err(SimError::ServerHardware("cooling bays are full".into()));
+                }
+                None
+            }
+            ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, width, speed_mbps, .. } } => {
+                if !matches!(speed_mbps, 10 | 100 | 1000) {
+                    return Err(SimError::ServerHardware("NIC speed is unsupported by the network simulator".into()));
+                }
+                let free = |index: usize| chassis.pcie_slots.get(index).is_some_and(|s|
+                    hardware.pcie.get(index).is_some_and(Option::is_none)
+                    && s.lanes >= *lanes && s.width >= *width && s.generation >= *generation);
+                let index = slot.or_else(|| (0..chassis.pcie_slots.len()).find(|&i| free(i)))
+                    .ok_or_else(|| SimError::ServerHardware("no compatible free PCIe slot".into()))?;
+                if !free(index) { return Err(SimError::ServerHardware("PCIe slot is occupied or incompatible".into())); }
+                let available: u16 = hardware.cpus.iter().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+                    .filter_map(|p| match p.kind { ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)), _ => None }).sum();
+                let used: u16 = hardware.pcie.iter().flatten().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+                    .filter_map(|p| match &p.kind { ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, .. } } => Some(u16::from(*lanes)), _ => None }).sum();
+                if used + u16::from(*lanes) > available {
+                    return Err(SimError::ServerHardware(format!("PCIe lane budget exceeded: need {}, available {available}", used + u16::from(*lanes))));
+                }
+                Some(index)
+            }
+        };
+        let mut new_ports = Vec::new();
+        if let ServerPartKind::PciCard { card: PciCard::Ethernet { rj45_ports, speed_mbps, .. } } = &part.kind {
+            let start = server.ports.iter().filter_map(|id| self.ports.get(id))
+                .filter_map(|port| port.name.strip_prefix("eth")?.parse::<usize>().ok())
+                .max().map_or(0, |index| index + 1);
+            let speed = match speed_mbps { 10 => LinkSpeed::Mbps10, 100 => LinkSpeed::Mbps100, _ => LinkSpeed::Gbps1 };
+            for index in 0..*rj45_ports {
+                let port = self.alloc_port(device, format!("eth{}", start + usize::from(index)), PortConnector::Rj45, PortConfig::Server(ServerPortConfig::default()));
+                self.ports.get_mut(&port).unwrap().max_speed = speed;
+                self.ports.get_mut(&port).unwrap().advertised_speed = speed;
+                new_ports.push(port);
+            }
+        }
+        let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind else { unreachable!() };
+        let hardware = server.hardware.as_mut().unwrap();
+        match &part.kind {
+            ServerPartKind::Cpu { .. } => hardware.cpus.push(part_id.into()),
+            ServerPartKind::Ram { .. } => hardware.ram.push(part_id.into()),
+            ServerPartKind::PowerSupply { .. } => hardware.power_supplies.push(part_id.into()),
+            ServerPartKind::Cooling { .. } => hardware.cooling.push(part_id.into()),
+            ServerPartKind::PciCard { .. } => {
+                let index = selected_slot.unwrap();
+                hardware.pcie[index] = Some(part_id.into());
+                hardware.card_ports[index] = new_ports.clone();
+                server.ports.extend(new_ports);
+            }
+        }
+        *self.server_parts.get_mut(part_id).unwrap() -= 1;
+        self.topology_revision += 1;
+        self.update_server_load(device);
+        self.sync_effective_power();
+        Ok(())
+    }
+
+    fn remove_server_part(&mut self, device: DeviceId, part_id: &str, slot: Option<usize>) -> Result<(), SimError> {
+        let server = match &self.devices.get(&device).ok_or(SimError::DeviceNotFound(device))?.kind {
+            DeviceKind::Server(server) => server,
+            _ => return Err(SimError::ServerHardware("selected device is not a server".into())),
+        };
+        let hardware = server.hardware.as_ref().ok_or_else(|| SimError::ServerHardware("legacy server has no configurable chassis".into()))?;
+        let part = server_catalog().parts.iter().find(|p| p.id == part_id)
+            .ok_or_else(|| SimError::UnknownServerPart(part_id.into()))?;
+        let pci_slot = if matches!(part.kind, ServerPartKind::PciCard { .. }) {
+            Some(slot.or_else(|| hardware.pcie.iter().position(|p| p.as_deref() == Some(part_id)))
+                .filter(|&i| hardware.pcie.get(i).and_then(Option::as_deref) == Some(part_id))
+                .ok_or_else(|| SimError::ServerHardware("card is not installed in that slot".into()))?)
+        } else { None };
+        if matches!(part.kind, ServerPartKind::Cpu { .. }) && hardware.pcie.iter().any(Option::is_some) {
+            return Err(SimError::ServerHardware("remove PCIe cards before removing the CPU".into()));
+        }
+        let ports = pci_slot.map(|i| hardware.card_ports[i].clone()).unwrap_or_default();
+        for port in &ports {
+            if let Some(link) = self.port_links.get(port).copied() { self.disconnect(link)?; }
+        }
+        let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind else { unreachable!() };
+        let hardware = server.hardware.as_mut().unwrap();
+        let list = match part.kind {
+            ServerPartKind::Cpu { .. } => Some(&mut hardware.cpus),
+            ServerPartKind::Ram { .. } => Some(&mut hardware.ram),
+            ServerPartKind::PowerSupply { .. } => Some(&mut hardware.power_supplies),
+            ServerPartKind::Cooling { .. } => Some(&mut hardware.cooling),
+            ServerPartKind::PciCard { .. } => None,
+        };
+        if let Some(list) = list {
+            let index = list.iter().position(|p| p == part_id)
+                .ok_or_else(|| SimError::ServerHardware("part is not installed".into()))?;
+            list.remove(index);
+        } else {
+            let index = pci_slot.unwrap();
+            hardware.pcie[index] = None;
+            hardware.card_ports[index].clear();
+            server.ports.retain(|p| !ports.contains(p));
+            for port in ports { self.ports.remove(&port); self.port_links.remove(&port); }
+        }
+        *self.server_parts.entry(part_id.into()).or_default() += 1;
+        self.topology_revision += 1;
+        self.update_server_load(device);
+        self.sync_effective_power();
+        Ok(())
+    }
+
+    fn update_server_load(&mut self, device: DeviceId) {
+        let Some(Device { kind: DeviceKind::Server(server), .. }) = self.devices.get(&device) else { return };
+        let Some(hardware) = &server.hardware else { return };
+        if let Some(power) = self.power.devices.get_mut(&device) {
+            power.load = ElectricalLoad::from_watts_pf(hardware.load_watts(), 90);
+            self.power.recompute_now();
+        }
+    }
+
     fn sell_device(&mut self, id: DeviceId) -> Result<(), SimError> {
         let device = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
         if device.rack.is_some() {
@@ -876,6 +1076,15 @@ impl NetworkSim {
             }
         }
         let device = self.devices.remove(&id).expect("checked");
+        if let DeviceKind::Server(server) = &device.kind {
+            if let Some(hardware) = &server.hardware {
+                for part in hardware.cpus.iter().chain(&hardware.ram)
+                    .chain(&hardware.power_supplies).chain(&hardware.cooling)
+                    .chain(hardware.pcie.iter().flatten()) {
+                    *self.server_parts.entry(part.clone()).or_default() += 1;
+                }
+            }
+        }
         self.power.devices.remove(&id);
         self.power
             .connections
@@ -1168,8 +1377,9 @@ impl NetworkSim {
     }
 
     fn set_power(&mut self, id: DeviceId, powered: bool) -> Result<(), SimError> {
-        if !self.devices.contains_key(&id) {
-            return Err(SimError::DeviceNotFound(id));
+        let device = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
+        if powered && matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready())) {
+            return Err(SimError::ServerHardware(format!("install a CPU, RAM, power supply and {} fans before powering on", server_catalog().chassis.required_fans)));
         }
         let source = match &self.devices[&id].kind {
             DeviceKind::Ups(x) => x.source,
@@ -1210,7 +1420,8 @@ impl NetworkSim {
                 continue;
             }
             if let Some(status) = self.power.device_status(*id) {
-                let next = device.rack.is_some() && status.effective;
+                let assembled = !matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()));
+                let next = device.rack.is_some() && status.effective && assembled;
                 changed |= device.powered != next;
                 device.powered = next;
             }

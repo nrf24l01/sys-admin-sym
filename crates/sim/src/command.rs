@@ -31,6 +31,10 @@ pub enum Command {
     BuyDevice {
         kind: DeviceTemplate,
     },
+    BuyServerChassis,
+    BuyServerPart { part_id: String },
+    InstallServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
+    RemoveServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
     SellDevice {
         device: DeviceId,
     },

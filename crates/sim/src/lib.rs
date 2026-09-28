@@ -14,6 +14,7 @@ pub mod network;
 pub mod port;
 pub mod power;
 pub mod rack;
+pub mod server_hardware;
 pub mod terminal;
 pub mod world;
 
@@ -29,5 +30,6 @@ pub use network::*;
 pub use port::*;
 pub use power::*;
 pub use rack::*;
+pub use server_hardware::*;
 pub use terminal::*;
 pub use world::*;

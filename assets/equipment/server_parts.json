@@ -1,0 +1,23 @@
+{
+  "chassis": {
+    "model": "Dell PowerEdge R360",
+    "cpu_socket": "LGA1700",
+    "cpu_sockets": 1,
+    "dimm_slots": 4,
+    "memory_type": "DDR5 ECC UDIMM",
+    "psu_bays": 2,
+    "cooling_bays": 4,
+    "required_fans": 4,
+    "pcie_slots": [
+      { "name": "PCIe 1", "lanes": 8, "generation": 4, "width": 8 },
+      { "name": "PCIe 2", "lanes": 8, "generation": 4, "width": 16 }
+    ]
+  },
+  "parts": [
+    { "id": "xeon_e_2434", "name": "Intel Xeon E-2434", "price": 320, "kind": "cpu", "socket": "LGA1700", "pcie_lanes": 20, "tdp_w": 55 },
+    { "id": "ddr5_ecc_16gb", "name": "16 GB DDR5 ECC UDIMM", "price": 90, "kind": "ram", "memory_type": "DDR5 ECC UDIMM", "capacity_gb": 16 },
+    { "id": "r360_psu_600w", "name": "Dell R360 600 W power supply", "price": 180, "kind": "power_supply", "capacity_w": 600 },
+    { "id": "r360_fan", "name": "Dell R360 cooling fan", "price": 45, "kind": "cooling", "cooling_w": 100 },
+    { "id": "intel_i350_t4", "name": "Intel I350-T4", "price": 230, "kind": "pci_card", "card": { "kind": "ethernet", "lanes": 4, "generation": 2, "width": 4, "rj45_ports": 4, "speed_mbps": 1000, "power_w": 5 } }
+  ]
+}
