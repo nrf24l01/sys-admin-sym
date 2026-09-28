@@ -264,11 +264,19 @@ pub(super) fn visible_spans(
             } else {
                 48
             };
+            // Both faces must project the same physical crossing. Without an
+            // explicit route, use the first endpoint's unit on both faces.
+            let crossing_unit = if nodes.len() == 2 && nodes[0].0.rack == nodes[1].0.rack {
+                nodes[0].0.unit
+            } else {
+                location.unit
+            };
             [offset]
                 .into_iter()
                 .filter_map(|offset_cm| {
                     anchor_position(
                         &CableRoutePoint {
+                            unit: crossing_unit,
                             offset_cm,
                             ..*location
                         },
@@ -1205,6 +1213,33 @@ mod tests {
     }
 
     #[test]
+    fn automatic_cross_face_rail_uses_same_unit_on_both_faces() {
+        let front = CableRoutePoint {
+            rack: RackId(1), unit: 19, side: RackSide::Front, offset_cm: 0,
+        };
+        let rear = CableRoutePoint {
+            unit: 10, side: RackSide::Rear, ..front
+        };
+        let front_socket = egui::pos2(50.0, 19.0);
+        let rear_socket = egui::pos2(50.0, 10.0);
+        let front_rail = egui::pos2(0.0, 19.0);
+        let rear_rail = egui::pos2(0.0, 19.0);
+        let anchors = vec![
+            (front, front_rail),
+            (CableRoutePoint { side: RackSide::Rear, ..front }, rear_rail),
+            (rear, egui::pos2(0.0, 10.0)),
+        ];
+        assert_eq!(
+            visible_spans((front, Some(front_socket)), (rear, None), &[], &anchors),
+            vec![vec![front_socket, front_rail]]
+        );
+        assert_eq!(
+            visible_spans((front, None), (rear, Some(rear_socket)), &[], &anchors),
+            vec![vec![rear_rail, rear_socket]]
+        );
+    }
+
+    #[test]
     fn cross_face_ethernet_keeps_visible_plug_and_selectable_jacket() {
         let mut sim = NetworkSim::new();
         let mut ports = Vec::new();
@@ -1239,7 +1274,7 @@ mod tests {
             let location = port_location(&sim, id).unwrap();
             let socket = Rect::from_center_size(egui::pos2(100.0, 60.0), Vec2::splat(12.0));
             let visible_ports = HashMap::from([(id, socket)]);
-            let anchors = vec![
+            let mut anchors = vec![
                 (
                     CableRoutePoint {
                         offset_cm: 0,
@@ -1255,6 +1290,13 @@ mod tests {
                     egui::pos2(200.0, 60.0),
                 ),
             ];
+            // The rack view supplies rail positions for every unit, including
+            // the opposite endpoint's unit where this cable crosses faces.
+            let source = port_location(&sim, ports[0]).unwrap();
+            if source.unit != location.unit {
+                anchors.push((CableRoutePoint { unit: source.unit, offset_cm: 0, ..location }, egui::pos2(20.0, 60.0)));
+                anchors.push((CableRoutePoint { unit: source.unit, offset_cm: 48, ..location }, egui::pos2(200.0, 60.0)));
+            }
             let ctx = egui::Context::default();
             let input = egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(500.0))),
