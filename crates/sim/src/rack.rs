@@ -29,11 +29,23 @@ impl Default for DataCenterRoom {
     fn default() -> Self {
         Self {
             name: "Room 01".into(),
-            width_cm: 1200,
-            depth_cm: 800,
+            width_cm: 1600,
+            depth_cm: 2800,
             rack_positions: HashMap::new(),
             cable_anchors: Vec::new(),
         }
+    }
+}
+
+pub const DATACENTER_RACK_ROWS: u64 = 10;
+pub const DATACENTER_RACKS_PER_ROW: u64 = 5;
+pub const DATACENTER_RACK_COUNT: u64 = DATACENTER_RACK_ROWS * DATACENTER_RACKS_PER_ROW;
+
+pub fn predefined_rack_position(id: RackId) -> RoomPosition {
+    let index = id.0.saturating_sub(1);
+    RoomPosition {
+        x_cm: 180 + (index % DATACENTER_RACKS_PER_ROW) as u16 * 300,
+        y_cm: 180 + (index / DATACENTER_RACKS_PER_ROW) as u16 * 270,
     }
 }
 

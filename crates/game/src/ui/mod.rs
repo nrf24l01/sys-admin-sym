@@ -1416,14 +1416,18 @@ fn rack_view(
         ui.vertical_centered(|ui| {
             ui.heading(format!("{} · {:?} SIDE", rack.name, state.rack_side));
             ui.horizontal(|ui| {
-                ui.label("Rack:");
-                let mut racks: Vec<_> = sim.racks().collect();
-                racks.sort_by_key(|rack| rack.id);
-                for candidate in racks {
-                    if ui.selectable_label(candidate.id == rack.id, &candidate.name).clicked() {
-                        state.active_rack = Some(candidate.id);
-                    }
-                }
+                ui.menu_button(format!("Select rack: {}", rack.name), |ui| {
+                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                        let mut racks: Vec<_> = sim.racks().collect();
+                        racks.sort_by_key(|rack| rack.id);
+                        for candidate in racks {
+                            if ui.selectable_label(candidate.id == rack.id, &candidate.name).clicked() {
+                                state.active_rack = Some(candidate.id);
+                                ui.close();
+                            }
+                        }
+                    });
+                });
                 if ui.button("Room view").clicked() { state.workspace = Workspace::Room; }
             });
             ui.horizontal(|ui| {

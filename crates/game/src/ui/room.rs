@@ -3,6 +3,139 @@ use bevy::prelude::MessageWriter;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use cloud_provider_sim::{CableRoutePoint, NetworkSim, RackId, RoomPosition};
 
+const ROOM_CANVAS_WIDTH: f32 = 1040.0;
+const ROOM_CANVAS_HEIGHT: f32 = 1820.0;
+
+fn paint_floor(ui: &egui::Ui, rect: Rect, room: &cloud_provider_sim::DataCenterRoom) {
+    let painter = ui.painter_at(rect);
+    let tile = 65.0;
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(50, 56, 60));
+    for column in 0..16 {
+        for row in 0..28 {
+            let square = Rect::from_min_size(
+                rect.min + Vec2::new(column as f32 * tile, row as f32 * tile),
+                Vec2::splat(tile - 1.0),
+            );
+            let shade = if (column + row) % 2 == 0 { 58 } else { 63 };
+            painter.rect_filled(square, 0.0, Color32::from_rgb(shade, shade + 5, shade + 7));
+            painter.circle_filled(
+                square.left_top() + Vec2::splat(5.0),
+                1.0,
+                Color32::from_gray(91),
+            );
+            painter.circle_filled(
+                square.right_bottom() - Vec2::splat(5.0),
+                1.0,
+                Color32::from_gray(91),
+            );
+        }
+    }
+    for row in 0..9 {
+        let y = screen(
+            RoomPosition {
+                x_cm: 0,
+                y_cm: 315 + row * 270,
+            },
+            rect,
+            room,
+        )
+        .y;
+        let aisle = Rect::from_min_max(
+            egui::pos2(rect.left() + 16.0, y - 29.0),
+            egui::pos2(rect.right() - 16.0, y + 29.0),
+        );
+        painter.rect_filled(aisle, 0.0, Color32::from_rgb(68, 74, 76));
+        painter.line_segment(
+            [aisle.left_top(), aisle.right_top()],
+            Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
+        );
+        painter.line_segment(
+            [aisle.left_bottom(), aisle.right_bottom()],
+            Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
+        );
+        painter.text(
+            egui::pos2(aisle.left() + 24.0, aisle.center().y),
+            egui::Align2::LEFT_CENTER,
+            if row % 2 == 0 {
+                "COLD AISLE"
+            } else {
+                "SERVICE AISLE"
+            },
+            egui::FontId::monospace(10.0),
+            Color32::from_gray(155),
+        );
+    }
+    let tray_x = screen(RoomPosition { x_cm: 630, y_cm: 0 }, rect, room).x;
+    painter.line_segment(
+        [
+            egui::pos2(tray_x, rect.top() + 25.0),
+            egui::pos2(tray_x, rect.bottom() - 25.0),
+        ],
+        Stroke::new(14.0, Color32::from_rgb(35, 57, 62)),
+    );
+    painter.line_segment(
+        [
+            egui::pos2(tray_x, rect.top() + 25.0),
+            egui::pos2(tray_x, rect.bottom() - 25.0),
+        ],
+        Stroke::new(2.0, Color32::from_rgb(95, 142, 150)),
+    );
+    for row in 0..10 {
+        let y = screen(
+            RoomPosition {
+                x_cm: 0,
+                y_cm: 180 + row * 270,
+            },
+            rect,
+            room,
+        )
+        .y;
+        painter.text(
+            egui::pos2(rect.left() + 18.0, y),
+            egui::Align2::LEFT_CENTER,
+            format!("ROW {:02}", row + 1),
+            egui::FontId::monospace(12.0),
+            Color32::from_gray(185),
+        );
+    }
+    for column in 0..5 {
+        let x = screen(
+            RoomPosition {
+                x_cm: 180 + column * 300,
+                y_cm: 0,
+            },
+            rect,
+            room,
+        )
+        .x;
+        painter.text(
+            egui::pos2(x, rect.top() + 18.0),
+            egui::Align2::CENTER_CENTER,
+            format!("BAY {}", (b'A' + column as u8) as char),
+            egui::FontId::monospace(12.0),
+            Color32::from_gray(185),
+        );
+    }
+    painter.rect_stroke(
+        rect.shrink(4.0),
+        2.0,
+        Stroke::new(8.0, Color32::from_rgb(108, 113, 116)),
+        egui::StrokeKind::Inside,
+    );
+    let door = Rect::from_center_size(
+        egui::pos2(rect.center().x, rect.bottom() - 5.0),
+        Vec2::new(110.0, 12.0),
+    );
+    painter.rect_filled(door, 0.0, Color32::from_rgb(56, 62, 66));
+    painter.text(
+        door.center() - Vec2::new(0.0, 24.0),
+        egui::Align2::CENTER_CENTER,
+        "ENTRANCE",
+        egui::FontId::monospace(11.0),
+        Color32::from_gray(170),
+    );
+}
+
 fn screen(position: RoomPosition, rect: Rect, room: &cloud_provider_sim::DataCenterRoom) -> Pos2 {
     egui::pos2(
         rect.left() + rect.width() * f32::from(position.x_cm) / f32::from(room.width_cm),
@@ -33,18 +166,18 @@ pub(super) fn show(
         ui.horizontal(|ui| {
             ui.heading(format!("DATACENTER / {}", sim.room.name));
             ui.separator();
-            if ui.button("Buy 12U rack · $500").clicked() { actions.write(UiAction::AddRack); }
+            ui.label("50 × 42U racks · 10 rows × 5 bays");
+            ui.separator();
             if ui.selectable_label(state.placing_room_anchor, "Place ceiling cable manager").clicked() {
                 state.placing_room_anchor = !state.placing_room_anchor;
             }
         });
-        ui.label("Click a rack to open it. Drag racks and cable managers to arrange the room. To connect racks, select a port, choose ceiling managers here, then select the destination port in its rack.");
-        let available = ui.available_size();
-        let size = Vec2::new(available.x.max(400.0), available.y.max(300.0));
+        ui.label("Click a rack to open it. Route between racks through the cable tray managers. Drag managers to adjust routes; scroll to move around the room.");
+        egui::ScrollArea::both().id_salt("datacenter-floor").show(ui, |ui| {
+        let size = Vec2::new(ROOM_CANVAS_WIDTH, ROOM_CANVAS_HEIGHT);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 4.0, Color32::from_rgb(18, 25, 31));
-        painter.rect_stroke(rect, 4.0, Stroke::new(2.0, Color32::from_gray(85)), egui::StrokeKind::Inside);
+        paint_floor(ui, rect, &sim.room);
 
         let rack_center = |rack: RackId| screen(sim.rack_room_position(rack), rect, &sim.room);
         let route_position = |point: &CableRoutePoint| -> Option<Pos2> {
@@ -118,16 +251,19 @@ pub(super) fn show(
         racks.sort_by_key(|rack| rack.id);
         for rack in racks {
             let center = rack_center(rack.id);
-            let body = Rect::from_center_size(center, Vec2::new(86.0, 60.0));
-            let hit = ui.interact(body, egui::Id::new(("room-rack", rack.id.0)), Sense::click_and_drag());
-            painter.rect_filled(body, 4.0, Color32::from_rgb(44, 56, 68));
-            painter.rect_stroke(body, 4.0, Stroke::new(2.0, if state.active_rack == Some(rack.id) { Color32::LIGHT_BLUE } else { Color32::from_gray(125) }), egui::StrokeKind::Inside);
-            painter.text(body.center_top() + Vec2::new(0.0, 17.0), egui::Align2::CENTER_CENTER, &rack.name, egui::FontId::proportional(13.0), Color32::WHITE);
-            painter.text(body.center_bottom() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, format!("{}U · {} devices", rack.units, rack.placements.len()), egui::FontId::proportional(11.0), Color32::LIGHT_GRAY);
-            if hit.clicked() { state.active_rack = Some(rack.id); state.workspace = Workspace::Rack; }
-            if hit.drag_stopped() && let Some(pointer) = hit.interact_pointer_pos() {
-                actions.write(UiAction::MoveRackInRoom { rack: rack.id, position: room_position(pointer, rect, &sim.room) });
+            let body = Rect::from_center_size(center, Vec2::new(82.0, 84.0));
+            let hit = ui.interact(body, egui::Id::new(("room-rack", rack.id.0)), Sense::click());
+            painter.rect_filled(body, 3.0, Color32::from_rgb(29, 36, 42));
+            painter.rect_stroke(body, 3.0, Stroke::new(3.0, if state.active_rack == Some(rack.id) { Color32::LIGHT_BLUE } else { Color32::from_gray(140) }), egui::StrokeKind::Inside);
+            let lid = body.shrink2(Vec2::new(8.0, 9.0));
+            painter.rect_filled(lid, 2.0, Color32::from_rgb(75, 84, 91));
+            for stripe in 0..4 {
+                let y = lid.top() + 10.0 + stripe as f32 * 10.0;
+                painter.line_segment([egui::pos2(lid.left() + 8.0, y), egui::pos2(lid.right() - 8.0, y)], Stroke::new(2.0, Color32::from_gray(115)));
             }
+            painter.text(body.center_top() + Vec2::new(0.0, 17.0), egui::Align2::CENTER_CENTER, format!("R{:02}", rack.id.0), egui::FontId::monospace(12.0), Color32::WHITE);
+            painter.text(body.center_bottom() - Vec2::new(0.0, 12.0), egui::Align2::CENTER_CENTER, format!("{} / {}U", rack.placements.len(), rack.units), egui::FontId::monospace(10.0), Color32::WHITE);
+            if hit.clicked() { state.active_rack = Some(rack.id); state.workspace = Workspace::Rack; }
         }
         for anchor in &sim.room.cable_anchors {
             let center = screen(anchor.position, rect, &sim.room);
@@ -160,5 +296,6 @@ pub(super) fn show(
             actions.write(UiAction::AddRoomCableAnchor(room_position(pointer, rect, &sim.room)));
             state.placing_room_anchor = false;
         }
+        });
     });
 }

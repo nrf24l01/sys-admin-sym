@@ -39,8 +39,6 @@ pub enum UiAction {
         rack: RackId,
         unit: u8,
     },
-    AddRack,
-    MoveRackInRoom { rack: RackId, position: cloud_provider_sim::RoomPosition },
     AddRoomCableAnchor(cloud_provider_sim::RoomPosition),
     MoveRoomCableAnchor { id: u8, position: cloud_provider_sim::RoomPosition },
     Remove(DeviceId),

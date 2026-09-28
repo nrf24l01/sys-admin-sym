@@ -4,23 +4,45 @@ use cloud_provider_sim::{
 };
 
 #[test]
-fn room_racks_and_managers_persist_and_price_cross_rack_routes() {
+fn predefined_room_has_ten_rows_of_five_racks() {
+    let sim = NetworkSim::new();
+    assert_eq!(sim.racks().count(), 50);
+    assert_eq!(sim.money, 6_000);
+    assert!(sim.racks().all(|rack| rack.units == 42));
+    assert_eq!(
+        sim.rack_room_position(RackId(1)),
+        RoomPosition {
+            x_cm: 180,
+            y_cm: 180
+        }
+    );
+    assert_eq!(
+        sim.rack_room_position(RackId(5)),
+        RoomPosition {
+            x_cm: 1380,
+            y_cm: 180
+        }
+    );
+    assert_eq!(
+        sim.rack_room_position(RackId(6)),
+        RoomPosition {
+            x_cm: 180,
+            y_cm: 450
+        }
+    );
+    assert_eq!(
+        sim.rack_room_position(RackId(50)),
+        RoomPosition {
+            x_cm: 1380,
+            y_cm: 2610
+        }
+    );
+    assert_eq!(sim.room.cable_anchors.len(), 10);
+}
+
+#[test]
+fn cable_manager_routes_between_fixed_racks_and_survives_save() {
     let mut sim = NetworkSim::new();
-    sim.execute(Command::AddRack {
-        name: "Rack 02".into(),
-        units: 12,
-    })
-    .unwrap();
-    assert_eq!(sim.money, 5_500);
-    let rack2 = RackId(2);
-    assert_eq!(sim.rack(rack2).unwrap().name, "Rack 02");
-    sim.execute(Command::AddRoomCableAnchor {
-        position: RoomPosition {
-            x_cm: 240,
-            y_cm: 160,
-        },
-    })
-    .unwrap();
     let server = match sim
         .execute(Command::BuyDevice {
             kind: DeviceTemplate::Server,
@@ -47,7 +69,7 @@ fn room_racks_and_managers_persist_and_price_cross_rack_routes() {
     .unwrap();
     sim.execute(Command::PlaceDevice {
         device: switch,
-        rack: rack2,
+        rack: RackId(2),
         unit: 1,
     })
     .unwrap();
@@ -56,10 +78,7 @@ fn room_racks_and_managers_persist_and_price_cross_rack_routes() {
     let direct = sim.minimum_cable_length(a, b).unwrap();
     let route = [CableRoutePoint::room_anchor(1)];
     let routed = sim.minimum_routed_cable_length(a, b, &route).unwrap();
-    assert!(
-        routed > direct,
-        "ceiling cable manager must add a vertical run"
-    );
+    assert!(routed > direct);
     assert_eq!(
         sim.quote_routed_colored_cable(a, b, None, CableColor::White, &route)
             .unwrap()
@@ -70,16 +89,6 @@ fn room_racks_and_managers_persist_and_price_cross_rack_routes() {
         sim.quote_routed_colored_cable(a, b, Some(direct), CableColor::White, &route),
         Err(SimError::CableTooShort { .. })
     ));
-    sim.execute(Command::MoveRackInRoom {
-        rack: rack2,
-        position: RoomPosition {
-            x_cm: 600,
-            y_cm: 160,
-        },
-    })
-    .unwrap();
-    assert!(sim.minimum_cable_length(a, b).unwrap() > direct);
-    let routed = sim.minimum_routed_cable_length(a, b, &route).unwrap();
     sim.execute(Command::BuyCableSupply {
         supply: CableSupply::CableBox305m,
     })
@@ -104,48 +113,39 @@ fn room_racks_and_managers_persist_and_price_cross_rack_routes() {
     assert_eq!(sim.link(link).unwrap().route, route);
     assert_eq!(sim.link(link).unwrap().length_cm, routed);
     assert!(matches!(
-        sim.execute(Command::MoveRackInRoom {
-            rack: rack2,
-            position: RoomPosition {
-                x_cm: 900,
-                y_cm: 160
-            },
-        }),
-        Err(SimError::CableTooShort { .. })
-    ));
-    assert_eq!(sim.rack_room_position(rack2).x_cm, 600);
-    assert!(matches!(
         sim.execute(Command::MoveRoomCableAnchor {
             id: 1,
             position: RoomPosition {
-                x_cm: 950,
-                y_cm: 160
+                x_cm: 1200,
+                y_cm: 180
             },
         }),
         Err(SimError::CableTooShort { .. })
     ));
-    assert_eq!(sim.room.cable_anchors[0].position.x_cm, 240);
+    assert_eq!(sim.room.cable_anchors[0].position.x_cm, 630);
     let restored: NetworkSim = ron::from_str(&ron::to_string(&sim).unwrap()).unwrap();
-    assert_eq!(restored.room.cable_anchors.len(), 1);
-    assert_eq!(restored.rack_room_position(rack2).x_cm, 600);
+    assert_eq!(restored.racks().count(), 50);
+    assert_eq!(restored.link(link).unwrap().route, route);
 }
 
 #[test]
-fn room_rejects_invalid_positions_and_missing_managers() {
+fn room_rejects_invalid_manager_positions() {
     let mut sim = NetworkSim::new();
     assert!(matches!(
-        sim.execute(Command::MoveRackInRoom {
-            rack: RackId(1),
-            position: RoomPosition { x_cm: 0, y_cm: 0 }
+        sim.execute(Command::MoveRoomCableAnchor {
+            id: 1,
+            position: RoomPosition { x_cm: 0, y_cm: 0 },
         }),
         Err(SimError::InvalidRoomPosition)
     ));
     assert!(matches!(
-        sim.minimum_routed_cable_length(
-            cloud_provider_sim::PortId(1),
-            cloud_provider_sim::PortId(2),
-            &[CableRoutePoint::room_anchor(42)]
-        ),
-        Err(SimError::RoomAnchorNotFound(42)) | Err(SimError::PortNotFound(_))
+        sim.execute(Command::MoveRoomCableAnchor {
+            id: 99,
+            position: RoomPosition {
+                x_cm: 300,
+                y_cm: 300
+            },
+        }),
+        Err(SimError::RoomAnchorNotFound(99))
     ));
 }

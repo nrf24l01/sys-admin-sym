@@ -69,7 +69,7 @@ impl NetworkSim {
             port_links: HashMap::new(),
             runtime: NetworkRuntime::default(),
         };
-        sim.add_rack("Rack 01", 12);
+        sim.ensure_predefined_room();
         sim
     }
 
@@ -319,6 +319,7 @@ impl NetworkSim {
         self.next_port_id = self.ports.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.next_link_id = self.links.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.next_rack_id = self.racks.keys().map(|v| v.0).max().unwrap_or(0) + 1;
+        self.ensure_predefined_room();
     }
 
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
@@ -448,17 +449,37 @@ impl NetworkSim {
             },
         );
         self.power.add_rack(id);
-        let column = (id.0.saturating_sub(1) % 5) as u16;
-        let row = (id.0.saturating_sub(1) / 5) as u16;
-        self.room.rack_positions.insert(id, RoomPosition { x_cm: 140 + column * 200, y_cm: 160 + row * 180 });
+        self.room.rack_positions.insert(id, predefined_rack_position(id));
         id
     }
 
+    fn ensure_predefined_room(&mut self) {
+        self.room.width_cm = 1600;
+        self.room.depth_cm = 2800;
+        for number in 1..=DATACENTER_RACK_COUNT {
+            let id = RackId(number);
+            let rack = self.racks.entry(id).or_insert_with(|| Rack {
+                id, name: format!("Rack {number:02}"), units: 42, placements: Vec::new(),
+            });
+            rack.units = 42;
+            self.room.rack_positions.insert(id, predefined_rack_position(id));
+            if !self.power.racks.contains_key(&id) { self.power.add_rack(id); }
+        }
+        for row in 0..DATACENTER_RACK_ROWS {
+            let id = (row + 1) as u8;
+            if !self.room.cable_anchors.iter().any(|anchor| anchor.id == id) {
+                self.room.cable_anchors.push(RoomCableAnchor {
+                    id,
+                    position: RoomPosition { x_cm: 630, y_cm: 180 + row as u16 * 270 },
+                });
+            }
+        }
+        self.next_rack_id = self.next_rack_id.max(DATACENTER_RACK_COUNT + 1);
+    }
+
     pub fn rack_room_position(&self, id: RackId) -> RoomPosition {
-        self.room.rack_positions.get(&id).copied().unwrap_or(RoomPosition {
-            x_cm: 140 + ((id.0.saturating_sub(1) % 5) as u16) * 200,
-            y_cm: 160 + ((id.0.saturating_sub(1) / 5) as u16) * 180,
-        })
+        if id.0 <= DATACENTER_RACK_COUNT { predefined_rack_position(id) }
+        else { self.room.rack_positions.get(&id).copied().unwrap_or(predefined_rack_position(id)) }
     }
 
     fn validate_room_position(&self, position: RoomPosition) -> Result<(), SimError> {
@@ -482,30 +503,6 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
-            Command::AddRack { name, units } => {
-                if !(1..=48).contains(&units) { return Err(SimError::RackPlacementOutOfBounds); }
-                let price = 500;
-                if self.money < price { return Err(SimError::InsufficientFunds { needed: price, available: self.money }); }
-                if self.next_rack_id > 20 { return Err(SimError::InvalidRoomPosition); }
-                self.money -= price;
-                self.add_rack(name, units);
-                vec![]
-            }
-            Command::MoveRackInRoom { rack, position } => {
-                if !self.racks.contains_key(&rack) { return Err(SimError::RackNotFound(rack)); }
-                self.validate_room_position(position)?;
-                if self.racks.keys().any(|other| *other != rack && {
-                    let p = self.rack_room_position(*other);
-                    p.x_cm.abs_diff(position.x_cm) < 130 && p.y_cm.abs_diff(position.y_cm) < 100
-                }) { return Err(SimError::InvalidRoomPosition); }
-                let old = self.room.rack_positions.insert(rack, position);
-                if let Err(error) = self.validate_installed_cable_lengths() {
-                    if let Some(old) = old { self.room.rack_positions.insert(rack, old); }
-                    else { self.room.rack_positions.remove(&rack); }
-                    return Err(error);
-                }
-                vec![]
-            }
             Command::AddRoomCableAnchor { position } => {
                 self.validate_room_position(position)?;
                 let id = self.room.cable_anchors.iter().map(|a| a.id).max().unwrap_or(0).checked_add(1).ok_or(SimError::InvalidRoomPosition)?;
@@ -2155,6 +2152,25 @@ fn canonical_network(address: Ipv4Addr, prefix: u8) -> Ipv4Addr {
 #[cfg(test)]
 mod route_tests {
     use super::*;
+    #[test]
+    fn older_single_rack_save_expands_to_predefined_room() {
+        let mut sim = NetworkSim::new();
+        sim.racks.retain(|id, _| *id == RackId(1));
+        sim.racks.get_mut(&RackId(1)).unwrap().units = 12;
+        sim.room.rack_positions.retain(|id, _| *id == RackId(1));
+        sim.room.cable_anchors.retain(|anchor| anchor.id == 1);
+        sim.room.cable_anchors[0].position = RoomPosition { x_cm: 240, y_cm: 160 };
+        sim.power.racks.retain(|id, _| *id == RackId(1));
+        sim.next_rack_id = 2;
+        let mut loaded: NetworkSim = ron::from_str(&ron::to_string(&sim).unwrap()).unwrap();
+        loaded.rebuild_indexes();
+        assert_eq!(loaded.racks().count(), 50);
+        assert_eq!(loaded.rack(RackId(1)).unwrap().units, 42);
+        assert_eq!(loaded.rack_room_position(RackId(50)), predefined_rack_position(RackId(50)));
+        assert!(loaded.power.racks.contains_key(&RackId(50)));
+        assert_eq!(loaded.room.cable_anchors.len(), 10);
+        assert_eq!(loaded.room.cable_anchors[0].position.x_cm, 240);
+    }
     #[test]
     fn route_commands_preserve_link_endpoints() {
         let mut sim = NetworkSim::new();

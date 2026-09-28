@@ -176,11 +176,6 @@ fn translate_ui_actions(
                 rack: *rack,
                 unit: *unit,
             }),
-            UiAction::AddRack => {
-                let next = snapshot.0.racks().count() + 1;
-                Some(Command::AddRack { name: format!("Rack {next:02}"), units: 12 })
-            }
-            UiAction::MoveRackInRoom { rack, position } => Some(Command::MoveRackInRoom { rack: *rack, position: *position }),
             UiAction::AddRoomCableAnchor(position) => Some(Command::AddRoomCableAnchor { position: *position }),
             UiAction::MoveRoomCableAnchor { id, position } => Some(Command::MoveRoomCableAnchor { id: *id, position: *position }),
             UiAction::Remove(device) => Some(Command::RemoveDevice { device: *device }),

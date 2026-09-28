@@ -11,16 +11,17 @@ bounded; this is not a full protocol stack.
 cargo run --release
 ```
 
-The game starts with one empty 12U rack in Room 01 and $6,000.
+The game starts with a predefined datacenter room containing 50 empty 42U
+racks, arranged in 10 rows of 5, and $6,000.
 
-The **ROOM** tab shows a top view of the datacenter room. Buy more 12U racks
-there, drag them into position, and click a rack to open its front or rear.
+The **ROOM** tab shows a scrollable top view with floor tiles, aisles,
+cabinet tops, and an overhead cable tray. Click a rack to open its front or rear.
 Place ceiling cable managers by choosing **Place ceiling cable manager** and
 clicking the floor plan. For a cable between racks, select its first socket
 in one rack, click rail anchors and ceiling managers in route order, then
 open the other rack and select its destination socket. Cross-rack cable
-length is calculated from rack positions and the chosen route. Rack and
-manager positions are saved with the room.
+length is calculated from the fixed rack positions and the chosen route.
+Cable manager positions are saved with the room.
 
 1. Open **SHOP** in the top bar. The separate window groups Network hardware
    into routers, switches, and cabling; Compute contains DELL server chassis,
