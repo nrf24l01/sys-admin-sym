@@ -465,9 +465,8 @@ impl NetworkSim {
             self.room.rack_positions.insert(id, predefined_rack_position(id));
             if !self.power.racks.contains_key(&id) { self.power.add_rack(id); }
         }
-        for row in 0..DATACENTER_RACK_ROWS {
-            let id = (row + 1) as u8;
-            let position = RoomPosition { x_cm: 630, y_cm: 180 + row as u16 * 270 };
+        for id in 1..=40u8 {
+            let position = predefined_cable_anchor_position(id);
             if let Some(anchor) = self.room.cable_anchors.iter_mut().find(|anchor| anchor.id == id) {
                 anchor.position = position;
             } else {
@@ -478,9 +477,11 @@ impl NetworkSim {
             }
         }
         for anchor in &mut self.room.cable_anchors {
-            if anchor.id > DATACENTER_RACK_ROWS as u8 {
+            if anchor.id > 40 {
                 let row = ((anchor.position.y_cm.saturating_sub(180) + 135) / 270).min(9);
-                anchor.position = RoomPosition { x_cm: 630, y_cm: 180 + row * 270 };
+                let x_cm = *DATACENTER_CABLE_COLUMNS_CM.iter()
+                    .min_by_key(|column| column.abs_diff(anchor.position.x_cm)).unwrap();
+                anchor.position = RoomPosition { x_cm, y_cm: 180 + row * 270 };
             }
         }
         self.next_rack_id = self.next_rack_id.max(DATACENTER_RACK_COUNT + 1);
@@ -2141,7 +2142,7 @@ mod route_tests {
         assert_eq!(loaded.rack(RackId(1)).unwrap().units, 42);
         assert_eq!(loaded.rack_room_position(RackId(50)), predefined_rack_position(RackId(50)));
         assert!(loaded.power.racks.contains_key(&RackId(50)));
-        assert_eq!(loaded.room.cable_anchors.len(), 10);
+        assert_eq!(loaded.room.cable_anchors.len(), 40);
         assert_eq!(loaded.room.cable_anchors[0].position, RoomPosition { x_cm: 630, y_cm: 180 });
     }
     #[test]

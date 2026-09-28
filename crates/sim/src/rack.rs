@@ -40,6 +40,16 @@ impl Default for DataCenterRoom {
 pub const DATACENTER_RACK_ROWS: u64 = 10;
 pub const DATACENTER_RACKS_PER_ROW: u64 = 5;
 pub const DATACENTER_RACK_COUNT: u64 = DATACENTER_RACK_ROWS * DATACENTER_RACKS_PER_ROW;
+/// Column order keeps IDs 1–10 at the original B/C tray for saved routes.
+pub const DATACENTER_CABLE_COLUMNS_CM: [u16; 4] = [630, 330, 930, 1230];
+
+pub fn predefined_cable_anchor_position(id: u8) -> RoomPosition {
+    let index = usize::from(id.saturating_sub(1));
+    RoomPosition {
+        x_cm: DATACENTER_CABLE_COLUMNS_CM[index / 10],
+        y_cm: 180 + (index % 10) as u16 * 270,
+    }
+}
 
 pub fn predefined_rack_position(id: RackId) -> RoomPosition {
     let index = id.0.saturating_sub(1);

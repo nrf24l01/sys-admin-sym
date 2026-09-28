@@ -15,8 +15,8 @@ The game starts with a predefined datacenter room containing 50 empty 42U
 racks, arranged in 10 rows of 5, and $6,000.
 
 The **ROOM** tab shows a scrollable top view with floor tiles, aisles,
-cabinet tops, and an overhead cable tray with fixed cable managers in one
-column. Click a rack to open its front or rear. For a cable between racks, select its first socket
+cabinet tops, and four overhead cable tray columns between the five rack bays.
+Fixed cable managers sit at every row crossing. Click a rack to open its front or rear. For a cable between racks, select its first socket
 in one rack, click rail anchors and ceiling managers in route order, then
 open the other rack and select its destination socket. Cross-rack cable
 length is calculated from the fixed rack positions and the chosen route.

@@ -37,21 +37,24 @@ fn predefined_room_has_ten_rows_of_five_racks() {
             y_cm: 2610
         }
     );
-    assert_eq!(sim.room.cable_anchors.len(), 10);
-    for row in 0..10 {
-        let anchor = sim
-            .room
-            .cable_anchors
-            .iter()
-            .find(|anchor| anchor.id == row + 1)
-            .unwrap();
-        assert_eq!(
-            anchor.position,
-            RoomPosition {
-                x_cm: 630,
-                y_cm: 180 + u16::from(row) * 270
-            }
-        );
+    assert_eq!(sim.room.cable_anchors.len(), 40);
+    for (column, x_cm) in [630, 330, 930, 1230].into_iter().enumerate() {
+        for row in 0..10u8 {
+            let id = column as u8 * 10 + row + 1;
+            let anchor = sim
+                .room
+                .cable_anchors
+                .iter()
+                .find(|anchor| anchor.id == id)
+                .unwrap();
+            assert_eq!(
+                anchor.position,
+                RoomPosition {
+                    x_cm,
+                    y_cm: 180 + u16::from(row) * 270
+                }
+            );
+        }
     }
 }
 

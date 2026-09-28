@@ -1,7 +1,9 @@
 use crate::app::{Selection, UiAction, UiState, Workspace};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
-use cloud_provider_sim::{CableRoutePoint, NetworkSim, RackId, RoomPosition};
+use cloud_provider_sim::{
+    CableRoutePoint, DATACENTER_CABLE_COLUMNS_CM, NetworkSim, RackId, RoomPosition,
+};
 
 const ROOM_CANVAS_WIDTH: f32 = 1040.0;
 const ROOM_CANVAS_HEIGHT: f32 = 1820.0;
@@ -65,21 +67,28 @@ fn paint_floor(ui: &egui::Ui, rect: Rect, room: &cloud_provider_sim::DataCenterR
             Color32::from_gray(155),
         );
     }
-    let tray_x = screen(RoomPosition { x_cm: 630, y_cm: 0 }, rect, room).x;
-    painter.line_segment(
-        [
-            egui::pos2(tray_x, rect.top() + 25.0),
+    let mut columns = DATACENTER_CABLE_COLUMNS_CM;
+    columns.sort();
+    for (gap, x_cm) in columns.into_iter().enumerate() {
+        let tray_x = screen(RoomPosition { x_cm, y_cm: 0 }, rect, room).x;
+        let path = [
+            egui::pos2(tray_x, rect.top() + 38.0),
             egui::pos2(tray_x, rect.bottom() - 25.0),
-        ],
-        Stroke::new(14.0, Color32::from_rgb(35, 57, 62)),
-    );
-    painter.line_segment(
-        [
-            egui::pos2(tray_x, rect.top() + 25.0),
-            egui::pos2(tray_x, rect.bottom() - 25.0),
-        ],
-        Stroke::new(2.0, Color32::from_rgb(95, 142, 150)),
-    );
+        ];
+        painter.line_segment(path, Stroke::new(14.0, Color32::from_rgb(35, 57, 62)));
+        painter.line_segment(path, Stroke::new(2.0, Color32::from_rgb(95, 142, 150)));
+        painter.text(
+            egui::pos2(tray_x, rect.top() + 18.0),
+            egui::Align2::CENTER_CENTER,
+            format!(
+                "{}/{}",
+                (b'A' + gap as u8) as char,
+                (b'B' + gap as u8) as char
+            ),
+            egui::FontId::monospace(11.0),
+            Color32::from_rgb(150, 205, 210),
+        );
+    }
     for row in 0..10 {
         let y = screen(
             RoomPosition {
@@ -155,7 +164,7 @@ pub(super) fn show(
             ui.separator();
             ui.label("50 × 42U racks · 10 rows × 5 bays");
         });
-        ui.label("Click a rack to open it. Fixed cable managers run in one column along the cable tray; click them in route order. Scroll to move around the room.");
+        ui.label("Click a rack to open it. Fixed cable trays run between every bay column; click their managers in route order. Scroll to move around the room.");
         egui::ScrollArea::both().id_salt("datacenter-floor").show(ui, |ui| {
         let size = Vec2::new(ROOM_CANVAS_WIDTH, ROOM_CANVAS_HEIGHT);
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
