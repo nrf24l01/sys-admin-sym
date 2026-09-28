@@ -467,11 +467,20 @@ impl NetworkSim {
         }
         for row in 0..DATACENTER_RACK_ROWS {
             let id = (row + 1) as u8;
-            if !self.room.cable_anchors.iter().any(|anchor| anchor.id == id) {
+            let position = RoomPosition { x_cm: 630, y_cm: 180 + row as u16 * 270 };
+            if let Some(anchor) = self.room.cable_anchors.iter_mut().find(|anchor| anchor.id == id) {
+                anchor.position = position;
+            } else {
                 self.room.cable_anchors.push(RoomCableAnchor {
                     id,
-                    position: RoomPosition { x_cm: 630, y_cm: 180 + row as u16 * 270 },
+                    position,
                 });
+            }
+        }
+        for anchor in &mut self.room.cable_anchors {
+            if anchor.id > DATACENTER_RACK_ROWS as u8 {
+                let row = ((anchor.position.y_cm.saturating_sub(180) + 135) / 270).min(9);
+                anchor.position = RoomPosition { x_cm: 630, y_cm: 180 + row * 270 };
             }
         }
         self.next_rack_id = self.next_rack_id.max(DATACENTER_RACK_COUNT + 1);
@@ -482,44 +491,8 @@ impl NetworkSim {
         else { self.room.rack_positions.get(&id).copied().unwrap_or(predefined_rack_position(id)) }
     }
 
-    fn validate_room_position(&self, position: RoomPosition) -> Result<(), SimError> {
-        if position.x_cm < 50 || position.y_cm < 50 || position.x_cm > self.room.width_cm - 50 || position.y_cm > self.room.depth_cm - 50 {
-            return Err(SimError::InvalidRoomPosition);
-        }
-        Ok(())
-    }
-
-    fn validate_installed_cable_lengths(&self) -> Result<(), SimError> {
-        for link in self.links.values() {
-            let minimum_cm = if link.route.is_empty() {
-                self.minimum_cable_length(link.a, link.b)?
-            } else {
-                self.minimum_routed_cable_length(link.a, link.b, &link.route)?
-            };
-            if link.length_cm < minimum_cm { return Err(SimError::CableTooShort { minimum_cm }); }
-        }
-        Ok(())
-    }
-
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
-            Command::AddRoomCableAnchor { position } => {
-                self.validate_room_position(position)?;
-                let id = self.room.cable_anchors.iter().map(|a| a.id).max().unwrap_or(0).checked_add(1).ok_or(SimError::InvalidRoomPosition)?;
-                self.room.cable_anchors.push(RoomCableAnchor { id, position });
-                vec![]
-            }
-            Command::MoveRoomCableAnchor { id, position } => {
-                self.validate_room_position(position)?;
-                let anchor = self.room.cable_anchors.iter_mut().find(|a| a.id == id).ok_or(SimError::RoomAnchorNotFound(id))?;
-                let old = anchor.position;
-                anchor.position = position;
-                if let Err(error) = self.validate_installed_cable_lengths() {
-                    self.room.cable_anchors.iter_mut().find(|a| a.id == id).unwrap().position = old;
-                    return Err(error);
-                }
-                vec![]
-            }
             Command::BuyCableSupply { supply } => {
                 self.buy_cable_supply(supply)?;
                 vec![SimEvent::CableSuppliesPurchased(supply)]
@@ -2169,7 +2142,7 @@ mod route_tests {
         assert_eq!(loaded.rack_room_position(RackId(50)), predefined_rack_position(RackId(50)));
         assert!(loaded.power.racks.contains_key(&RackId(50)));
         assert_eq!(loaded.room.cable_anchors.len(), 10);
-        assert_eq!(loaded.room.cable_anchors[0].position.x_cm, 240);
+        assert_eq!(loaded.room.cable_anchors[0].position, RoomPosition { x_cm: 630, y_cm: 180 });
     }
     #[test]
     fn route_commands_preserve_link_endpoints() {

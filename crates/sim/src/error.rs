@@ -21,8 +21,6 @@ pub enum SimError {
     PortNotFound(PortId),
     #[error("rack {0} does not exist")]
     RackNotFound(RackId),
-    #[error("room position is outside the room or overlaps another rack")]
-    InvalidRoomPosition,
     #[error("room cable anchor {0} does not exist")]
     RoomAnchorNotFound(u8),
     #[error("port {0} is already connected")]

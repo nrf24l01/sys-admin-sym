@@ -176,8 +176,6 @@ fn translate_ui_actions(
                 rack: *rack,
                 unit: *unit,
             }),
-            UiAction::AddRoomCableAnchor(position) => Some(Command::AddRoomCableAnchor { position: *position }),
-            UiAction::MoveRoomCableAnchor { id, position } => Some(Command::MoveRoomCableAnchor { id: *id, position: *position }),
             UiAction::Remove(device) => Some(Command::RemoveDevice { device: *device }),
             UiAction::TogglePower(device, powered) => Some(Command::SetPower {
                 device: *device,

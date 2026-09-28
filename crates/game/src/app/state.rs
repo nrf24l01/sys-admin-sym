@@ -53,7 +53,6 @@ pub struct UiState {
     pub terminal_window_focus: HashSet<DeviceId>,
     pub rack_side: RackSide,
     pub active_rack: Option<RackId>,
-    pub placing_room_anchor: bool,
     pub cable_visibility: CableVisibility,
     pub notice: Option<(String, bool)>,
     pub error_dialog: Option<String>,

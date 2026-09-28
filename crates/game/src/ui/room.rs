@@ -143,19 +143,6 @@ fn screen(position: RoomPosition, rect: Rect, room: &cloud_provider_sim::DataCen
     )
 }
 
-fn room_position(
-    point: Pos2,
-    rect: Rect,
-    room: &cloud_provider_sim::DataCenterRoom,
-) -> RoomPosition {
-    RoomPosition {
-        x_cm: ((point.x - rect.left()) / rect.width() * f32::from(room.width_cm))
-            .clamp(0.0, f32::from(room.width_cm)) as u16,
-        y_cm: ((point.y - rect.top()) / rect.height() * f32::from(room.depth_cm))
-            .clamp(0.0, f32::from(room.depth_cm)) as u16,
-    }
-}
-
 pub(super) fn show(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
@@ -167,15 +154,11 @@ pub(super) fn show(
             ui.heading(format!("DATACENTER / {}", sim.room.name));
             ui.separator();
             ui.label("50 × 42U racks · 10 rows × 5 bays");
-            ui.separator();
-            if ui.selectable_label(state.placing_room_anchor, "Place ceiling cable manager").clicked() {
-                state.placing_room_anchor = !state.placing_room_anchor;
-            }
         });
-        ui.label("Click a rack to open it. Route between racks through the cable tray managers. Drag managers to adjust routes; scroll to move around the room.");
+        ui.label("Click a rack to open it. Fixed cable managers run in one column along the cable tray; click them in route order. Scroll to move around the room.");
         egui::ScrollArea::both().id_salt("datacenter-floor").show(ui, |ui| {
         let size = Vec2::new(ROOM_CANVAS_WIDTH, ROOM_CANVAS_HEIGHT);
-        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
         paint_floor(ui, rect, &sim.room);
 
@@ -267,7 +250,7 @@ pub(super) fn show(
         }
         for anchor in &sim.room.cable_anchors {
             let center = screen(anchor.position, rect, &sim.room);
-            let hit = ui.interact(Rect::from_center_size(center, Vec2::splat(28.0)), egui::Id::new(("room-anchor", anchor.id)), Sense::click_and_drag());
+            let hit = ui.interact(Rect::from_center_size(center, Vec2::splat(28.0)), egui::Id::new(("room-anchor", anchor.id)), Sense::click());
             painter.circle_filled(center, 10.0, Color32::from_rgb(120, 170, 190));
             painter.text(center + Vec2::new(0.0, 17.0), egui::Align2::CENTER_TOP, format!("CM {}", anchor.id), egui::FontId::proportional(11.0), Color32::LIGHT_GRAY);
             if hit.clicked() {
@@ -288,13 +271,6 @@ pub(super) fn show(
                     actions.write(UiAction::ReroutePowerCable { outlet, route });
                 }
             }
-            if hit.drag_stopped() && let Some(pointer) = hit.interact_pointer_pos() {
-                actions.write(UiAction::MoveRoomCableAnchor { id: anchor.id, position: room_position(pointer, rect, &sim.room) });
-            }
-        }
-        if state.placing_room_anchor && response.clicked() && let Some(pointer) = response.interact_pointer_pos() {
-            actions.write(UiAction::AddRoomCableAnchor(room_position(pointer, rect, &sim.room)));
-            state.placing_room_anchor = false;
         }
         });
     });

@@ -38,6 +38,21 @@ fn predefined_room_has_ten_rows_of_five_racks() {
         }
     );
     assert_eq!(sim.room.cable_anchors.len(), 10);
+    for row in 0..10 {
+        let anchor = sim
+            .room
+            .cable_anchors
+            .iter()
+            .find(|anchor| anchor.id == row + 1)
+            .unwrap();
+        assert_eq!(
+            anchor.position,
+            RoomPosition {
+                x_cm: 630,
+                y_cm: 180 + u16::from(row) * 270
+            }
+        );
+    }
 }
 
 #[test]
@@ -112,40 +127,8 @@ fn cable_manager_routes_between_fixed_racks_and_survives_save() {
     };
     assert_eq!(sim.link(link).unwrap().route, route);
     assert_eq!(sim.link(link).unwrap().length_cm, routed);
-    assert!(matches!(
-        sim.execute(Command::MoveRoomCableAnchor {
-            id: 1,
-            position: RoomPosition {
-                x_cm: 1200,
-                y_cm: 180
-            },
-        }),
-        Err(SimError::CableTooShort { .. })
-    ));
     assert_eq!(sim.room.cable_anchors[0].position.x_cm, 630);
     let restored: NetworkSim = ron::from_str(&ron::to_string(&sim).unwrap()).unwrap();
     assert_eq!(restored.racks().count(), 50);
     assert_eq!(restored.link(link).unwrap().route, route);
-}
-
-#[test]
-fn room_rejects_invalid_manager_positions() {
-    let mut sim = NetworkSim::new();
-    assert!(matches!(
-        sim.execute(Command::MoveRoomCableAnchor {
-            id: 1,
-            position: RoomPosition { x_cm: 0, y_cm: 0 },
-        }),
-        Err(SimError::InvalidRoomPosition)
-    ));
-    assert!(matches!(
-        sim.execute(Command::MoveRoomCableAnchor {
-            id: 99,
-            position: RoomPosition {
-                x_cm: 300,
-                y_cm: 300
-            },
-        }),
-        Err(SimError::RoomAnchorNotFound(99))
-    ));
 }

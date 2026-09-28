@@ -39,8 +39,6 @@ pub enum UiAction {
         rack: RackId,
         unit: u8,
     },
-    AddRoomCableAnchor(cloud_provider_sim::RoomPosition),
-    MoveRoomCableAnchor { id: u8, position: cloud_provider_sim::RoomPosition },
     Remove(DeviceId),
     TogglePower(DeviceId, bool),
     /// Click a power socket. A second complementary click completes the lead.
