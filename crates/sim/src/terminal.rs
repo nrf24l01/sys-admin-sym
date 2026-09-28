@@ -36,10 +36,16 @@ pub enum TerminalCommand {
     Arp,
     Ping(Ipv4Addr),
     Traceroute(Ipv4Addr),
-    Ethtool { interface: String, driver: bool },
+    Ethtool {
+        interface: String,
+        driver: bool,
+    },
     NetstatInterfaces,
     Lsblk,
-    Smartctl { device: String, all: bool },
+    Smartctl {
+        device: String,
+        all: bool,
+    },
     Free,
     Lscpu,
     Uname,
@@ -60,12 +66,26 @@ pub fn parse_terminal_command(input: &str) -> Result<TerminalCommand, String> {
         ["route"] => Ok(TerminalCommand::Route),
         ["arp"] => Ok(TerminalCommand::Arp),
         ["help"] => Ok(TerminalCommand::Help),
-        ["ethtool", iface] => Ok(TerminalCommand::Ethtool { interface: (*iface).into(), driver: false }),
-        ["ethtool", "-i", iface] => Ok(TerminalCommand::Ethtool { interface: (*iface).into(), driver: true }),
-        ["net"] | ["netstat", "-i"] | ["ip", "-s", "link"] => Ok(TerminalCommand::NetstatInterfaces),
+        ["ethtool", iface] => Ok(TerminalCommand::Ethtool {
+            interface: (*iface).into(),
+            driver: false,
+        }),
+        ["ethtool", "-i", iface] => Ok(TerminalCommand::Ethtool {
+            interface: (*iface).into(),
+            driver: true,
+        }),
+        ["net"] | ["netstat", "-i"] | ["ip", "-s", "link"] => {
+            Ok(TerminalCommand::NetstatInterfaces)
+        }
         ["lsblk"] | ["lsblk", "-d"] => Ok(TerminalCommand::Lsblk),
-        ["smartctl", "-a", drive] => Ok(TerminalCommand::Smartctl { device: (*drive).into(), all: true }),
-        ["smartctl", "-i", drive] => Ok(TerminalCommand::Smartctl { device: (*drive).into(), all: false }),
+        ["smartctl", "-a", drive] => Ok(TerminalCommand::Smartctl {
+            device: (*drive).into(),
+            all: true,
+        }),
+        ["smartctl", "-i", drive] => Ok(TerminalCommand::Smartctl {
+            device: (*drive).into(),
+            all: false,
+        }),
         ["free"] | ["free", "-h"] => Ok(TerminalCommand::Free),
         ["lscpu"] => Ok(TerminalCommand::Lscpu),
         ["uname"] | ["uname", "-a"] => Ok(TerminalCommand::Uname),
@@ -390,6 +410,15 @@ impl NetworkSim {
             .filter_map(|id| self.port(*id).map(|p| (p.name.clone(), *id)))
             .collect();
         let interface = |name: &str| interface_ids.get(name).copied();
+        let link_status = |sim: &NetworkSim, p: &crate::Port| {
+            if !p.enabled {
+                ("DOWN", "DOWN")
+            } else if sim.port_link_up(p.id) {
+                ("UP,LOWER_UP", "UP")
+            } else {
+                ("UP,NO-CARRIER", "DOWN")
+            }
+        };
         let show_addr = |sim: &NetworkSim, ids: &[PortId]| -> Vec<String> {
             ids.iter()
                 .filter_map(|id| sim.port(*id))
@@ -402,111 +431,252 @@ impl NetworkSim {
                             .unwrap_or_default(),
                         _ => String::new(),
                     };
-                    format!(
-                        "{}: {} {}",
-                        p.name,
-                        if p.enabled { "UP" } else { "DOWN" },
-                        if addr.is_empty() { "".into() } else { addr }
-                    )
+                    let (flags, state) = link_status(sim, p);
+                    let address = if addr.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" inet {addr}")
+                    };
+                    format!("{}: <{}> state {}{}", p.name, flags, state, address)
                 })
                 .collect()
         };
         match command {
             TerminalCommand::Hostname => output(true, server.hostname.clone()),
-            TerminalCommand::Uname => output(true, format!("Linux {} 6.6.0-sim #1 SMP x86_64 GNU/Linux", server.hostname)),
+            TerminalCommand::Uname => output(
+                true,
+                format!(
+                    "Linux {} 6.6.0-sim #1 SMP x86_64 GNU/Linux",
+                    server.hostname
+                ),
+            ),
             TerminalCommand::Lscpu => {
-                let cpus: Vec<_> = server.hardware.as_ref().into_iter().flat_map(|h| &h.cpus)
-                    .filter_map(|id| crate::server_catalog().parts.iter().find(|p| &p.id == id)).collect();
-                let model = cpus.first().map_or(if server.hardware.is_some() { "no processor installed" } else { "legacy processor" }, |cpu| cpu.name.as_str());
-                TerminalOutput { success: true, lines: vec![
-                    "Architecture: x86_64".into(),
-                    format!("Socket(s): {}", if server.hardware.is_some() { cpus.len() } else { 1 }),
-                    format!("Model name: {model}"),
-                ] }
+                let cpus: Vec<_> = server
+                    .hardware
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|h| &h.cpus)
+                    .filter_map(|id| crate::server_catalog().parts.iter().find(|p| &p.id == id))
+                    .collect();
+                let model = cpus.first().map_or(
+                    if server.hardware.is_some() {
+                        "no processor installed"
+                    } else {
+                        "legacy processor"
+                    },
+                    |cpu| cpu.name.as_str(),
+                );
+                TerminalOutput {
+                    success: true,
+                    lines: vec![
+                        "Architecture: x86_64".into(),
+                        format!(
+                            "Socket(s): {}",
+                            if server.hardware.is_some() {
+                                cpus.len()
+                            } else {
+                                1
+                            }
+                        ),
+                        format!("Model name: {model}"),
+                    ],
+                }
             }
             TerminalCommand::Free => {
-                let gib = server.hardware.as_ref().map_or(16, |h| h.ram.iter()
-                    .filter_map(|id| crate::server_catalog().parts.iter().find(|p| &p.id == id))
-                    .filter_map(|p| match p.kind { crate::ServerPartKind::Ram { capacity_gb, .. } => Some(u32::from(capacity_gb)), _ => None }).sum());
-                TerminalOutput { success: true, lines: vec![
-                    "               total        used        free".into(),
-                    format!("Mem:           {gib}Gi         0Gi        {gib}Gi"),
-                    "Swap:            0B          0B          0B".into(),
-                ] }
+                let gib = server.hardware.as_ref().map_or(16, |h| {
+                    h.ram
+                        .iter()
+                        .filter_map(|id| crate::server_catalog().parts.iter().find(|p| &p.id == id))
+                        .filter_map(|p| match p.kind {
+                            crate::ServerPartKind::Ram { capacity_gb, .. } => {
+                                Some(u32::from(capacity_gb))
+                            }
+                            _ => None,
+                        })
+                        .sum()
+                });
+                TerminalOutput {
+                    success: true,
+                    lines: vec![
+                        "               total        used        free".into(),
+                        format!("Mem:           {gib}Gi         0Gi        {gib}Gi"),
+                        "Swap:            0B          0B          0B".into(),
+                    ],
+                }
             }
-            TerminalCommand::Ethtool { interface: name, driver } => {
-                let Some(port_id) = interface(&name) else { return output(false, format!("Cannot find device \"{name}\"")); };
-                let Some(port) = self.port(port_id) else { return output(false, "interface not found"); };
-                let card = server.hardware.as_ref().and_then(|h| h.card_ports.iter().enumerate()
-                    .find(|(_, ports)| ports.contains(&port_id)).map(|(slot, _)| slot))
+            TerminalCommand::Ethtool {
+                interface: name,
+                driver,
+            } => {
+                let Some(port_id) = interface(&name) else {
+                    return output(false, format!("Cannot find device \"{name}\""));
+                };
+                let Some(port) = self.port(port_id) else {
+                    return output(false, "interface not found");
+                };
+                let card = server
+                    .hardware
+                    .as_ref()
+                    .and_then(|h| {
+                        h.card_ports
+                            .iter()
+                            .enumerate()
+                            .find(|(_, ports)| ports.contains(&port_id))
+                            .map(|(slot, _)| slot)
+                    })
                     .and_then(|slot| server.hardware.as_ref()?.pcie.get(slot)?.as_deref())
                     .and_then(|id| crate::server_catalog().parts.iter().find(|p| p.id == id));
                 if driver {
-                    return TerminalOutput { success: true, lines: vec![
-                        format!("driver: {}", if card.is_some() { "igb-sim" } else { "onboard-sim" }),
-                        format!("bus-info: {}", card.map_or("onboard".into(), |p| p.id.clone())),
-                    ] };
+                    return TerminalOutput {
+                        success: true,
+                        lines: vec![
+                            format!(
+                                "driver: {}",
+                                if card.is_some() {
+                                    "igb-sim"
+                                } else {
+                                    "onboard-sim"
+                                }
+                            ),
+                            format!(
+                                "bus-info: {}",
+                                card.map_or("onboard".into(), |p| p.id.clone())
+                            ),
+                        ],
+                    };
                 }
                 let detected = self.port_link_up(port_id);
-                TerminalOutput { success: true, lines: vec![
-                    format!("Settings for {name}:"),
-                    format!("    Supported ports: [{}]", if port.connector.supports_cabling() { "TP" } else { "FIBRE" }),
-                    format!("    Supported link modes: up to {}Mb/s", port.max_speed.mbps()),
-                    format!("    Advertised link modes: up to {}Mb/s", port.advertised_speed.mbps()),
-                    format!("    Speed: {}", self.port_link_speed(port_id).map_or("Unknown!".into(), |speed| format!("{}Mb/s", speed.mbps()))),
-                    "    Duplex: Full".into(),
-                    "    Auto-negotiation: on".into(),
-                    format!("    Link detected: {}", if detected { "yes" } else { "no" }),
-                ] }
+                TerminalOutput {
+                    success: true,
+                    lines: vec![
+                        format!("Settings for {name}:"),
+                        format!(
+                            "    Supported ports: [{}]",
+                            if port.connector.supports_cabling() {
+                                "TP"
+                            } else {
+                                "FIBRE"
+                            }
+                        ),
+                        format!(
+                            "    Supported link modes: up to {}Mb/s",
+                            port.max_speed.mbps()
+                        ),
+                        format!(
+                            "    Advertised link modes: up to {}Mb/s",
+                            port.advertised_speed.mbps()
+                        ),
+                        format!(
+                            "    Speed: {}",
+                            self.port_link_speed(port_id)
+                                .map_or("Unknown!".into(), |speed| format!("{}Mb/s", speed.mbps()))
+                        ),
+                        "    Duplex: Full".into(),
+                        "    Auto-negotiation: on".into(),
+                        format!("    Link detected: {}", if detected { "yes" } else { "no" }),
+                    ],
+                }
             }
             TerminalCommand::NetstatInterfaces => {
                 let mut lines = vec!["Iface          RX-OK   TX-OK   Link".into()];
                 for id in &server.ports {
                     if let Some(port) = self.port(*id) {
                         let stats = self.port_telemetry(*id);
-                        lines.push(format!("{:<12} {:>5}   {:>5}   {}", port.name, stats.rx_frames, stats.tx_frames,
-                            if self.port_link_up(*id) { "up" } else { "down" }));
+                        lines.push(format!(
+                            "{:<12} {:>5}   {:>5}   {}",
+                            port.name,
+                            stats.rx_frames,
+                            stats.tx_frames,
+                            if self.port_link_up(*id) { "up" } else { "down" }
+                        ));
                     }
                 }
-                TerminalOutput { lines, success: true }
+                TerminalOutput {
+                    lines,
+                    success: true,
+                }
             }
             TerminalCommand::Lsblk => {
                 let mut lines = vec!["NAME   SIZE  ROTA  TYPE  MODEL".into()];
                 let mut ordinal = 0;
-                for id in server.hardware.as_ref().into_iter().flat_map(|h| &h.drives).flatten() {
-                    if let Some(drive) = crate::drive_catalog().drives.iter().find(|d| &d.id == id) {
+                for id in server
+                    .hardware
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|h| &h.drives)
+                    .flatten()
+                {
+                    if let Some(drive) = crate::drive_catalog().drives.iter().find(|d| &d.id == id)
+                    {
                         let name = crate::linux_drive_name(ordinal);
-                        lines.push(format!("{name:<5} {:>4}G  {}     disk  {}", drive.capacity_gb,
-                            if drive.kind == crate::DriveKind::Hdd { 1 } else { 0 }, drive.name));
+                        lines.push(format!(
+                            "{name:<5} {:>4}G  {}     disk  {}",
+                            drive.capacity_gb,
+                            if drive.kind == crate::DriveKind::Hdd {
+                                1
+                            } else {
+                                0
+                            },
+                            drive.name
+                        ));
                         ordinal += 1;
                     }
                 }
-                TerminalOutput { lines, success: true }
+                TerminalOutput {
+                    lines,
+                    success: true,
+                }
             }
             TerminalCommand::Smartctl { device: path, all } => {
                 let name = path.strip_prefix("/dev/").unwrap_or(&path);
                 let mut ordinal = 0;
-                for id in server.hardware.as_ref().into_iter().flat_map(|h| &h.drives).flatten() {
-                    if let Some(drive) = crate::drive_catalog().drives.iter().find(|d| &d.id == id) {
+                for id in server
+                    .hardware
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|h| &h.drives)
+                    .flatten()
+                {
+                    if let Some(drive) = crate::drive_catalog().drives.iter().find(|d| &d.id == id)
+                    {
                         if crate::linux_drive_name(ordinal) == name {
                             let mut lines = vec![
                                 format!("Device Model: {}", drive.name),
                                 format!("User Capacity: {} GB", drive.capacity_gb),
                                 format!("Transport protocol: {}", drive.interface),
-                                format!("Rotation: {}", if drive.kind == crate::DriveKind::Hdd { "HDD" } else { "Solid State Device" }),
+                                format!(
+                                    "Rotation: {}",
+                                    if drive.kind == crate::DriveKind::Hdd {
+                                        "HDD"
+                                    } else {
+                                        "Solid State Device"
+                                    }
+                                ),
                             ];
                             if all {
                                 lines.extend([
-                                    format!("Rated read: {} MB/s, {} IOPS", drive.read_mb_s, drive.read_iops),
-                                    format!("Rated write: {} MB/s, {} IOPS", drive.write_mb_s, drive.write_iops),
+                                    format!(
+                                        "Rated read: {} MB/s, {} IOPS",
+                                        drive.read_mb_s, drive.read_iops
+                                    ),
+                                    format!(
+                                        "Rated write: {} MB/s, {} IOPS",
+                                        drive.write_mb_s, drive.write_iops
+                                    ),
                                 ]);
                             }
-                            return TerminalOutput { success: true, lines };
+                            return TerminalOutput {
+                                success: true,
+                                lines,
+                            };
                         }
                         ordinal += 1;
                     }
                 }
-                output(false, format!("smartctl: cannot open {path}: No such device"))
+                output(
+                    false,
+                    format!("smartctl: cannot open {path}: No such device"),
+                )
             }
             TerminalCommand::IpAddrShow(which) => {
                 let ids: Vec<_> = which
@@ -554,23 +724,8 @@ impl NetworkSim {
                         .iter()
                         .filter_map(|id| self.port(*id))
                         .map(|p| {
-                            let flags = if !p.enabled {
-                                "DOWN"
-                            } else if self.port_link_up(p.id) {
-                                "UP,LOWER_UP"
-                            } else {
-                                "UP,NO-CARRIER"
-                            };
-                            format!(
-                                "{}: <{}> state {}",
-                                p.name,
-                                flags,
-                                if p.enabled && self.port_link_up(p.id) {
-                                    "UP"
-                                } else {
-                                    "DOWN"
-                                }
-                            )
+                            let (flags, state) = link_status(self, p);
+                            format!("{}: <{}> state {}", p.name, flags, state)
                         })
                         .collect(),
                     success: true,

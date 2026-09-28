@@ -14,10 +14,25 @@ pub enum UiAction {
     BuyServerChassis,
     BuyServerPart(String),
     BuyDrive(String),
-    InstallDrive { device: DeviceId, drive_id: String, bay: Option<usize> },
-    RemoveDrive { device: DeviceId, bay: usize },
-    InstallServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
-    RemoveServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
+    InstallDrive {
+        device: DeviceId,
+        drive_id: String,
+        bay: Option<usize>,
+    },
+    RemoveDrive {
+        device: DeviceId,
+        bay: usize,
+    },
+    InstallServerPart {
+        device: DeviceId,
+        part_id: String,
+        slot: Option<usize>,
+    },
+    RemoveServerPart {
+        device: DeviceId,
+        part_id: String,
+        slot: Option<usize>,
+    },
     BuyCableSupply(cloud_provider_sim::CableSupply),
     Place {
         device: DeviceId,

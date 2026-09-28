@@ -122,7 +122,9 @@ impl DeviceKind {
                     if let Some(port) = server.ports.get(index) {
                         for (slot_index, ports) in hardware.card_ports.iter().enumerate() {
                             if let Some(card_index) = ports.iter().position(|id| id == port) {
-                                if let Some(slot) = crate::server_catalog().chassis.pcie_slots.get(slot_index) {
+                                if let Some(slot) =
+                                    crate::server_catalog().chassis.pcie_slots.get(slot_index)
+                                {
                                     return slot.port_position(card_index, ports.len());
                                 }
                             }

@@ -1,6 +1,6 @@
 use cloud_provider_sim::{
-    CableSupply, Command, DeviceKind, DeviceTemplate, NetworkSim, RackId, ServerPartKind, SimError,
-    SimEvent, server_catalog,
+    CableSupply, Command, DeviceKind, DeviceTemplate, NetworkSim, OutletId, PowerEndpoint, RackId,
+    ServerPartKind, SimError, SimEvent, SourceId, server_catalog,
 };
 
 fn chassis(sim: &mut NetworkSim) -> cloud_provider_sim::DeviceId {
@@ -26,6 +26,78 @@ fn install(
         slot,
     })
     .unwrap();
+}
+
+#[test]
+fn unplugged_pcie_interfaces_report_no_carrier_in_linux_commands() {
+    let mut sim = NetworkSim::new();
+    let id = chassis(&mut sim);
+    install(&mut sim, id, "xeon_e_2434", None);
+    install(&mut sim, id, "ddr5_ecc_16gb", None);
+    install(&mut sim, id, "r360_psu_600w", None);
+    install(&mut sim, id, "intel_i350_t4", Some(1));
+    sim.execute(Command::PlaceDevice {
+        device: id,
+        rack: RackId(1),
+        unit: 1,
+    })
+    .unwrap();
+    sim.execute(Command::ConnectPower {
+        outlet: OutletId {
+            source: SourceId::Rack(RackId(1)),
+            index: 0,
+        },
+        endpoint: PowerEndpoint::Device(id),
+    })
+    .unwrap();
+    sim.execute(Command::SetPower {
+        device: id,
+        powered: true,
+    })
+    .unwrap();
+    let DeviceKind::Server(server) = &sim.device(id).unwrap().kind else {
+        panic!()
+    };
+    let card_names: Vec<_> = server.hardware.as_ref().unwrap().card_ports[1]
+        .iter()
+        .map(|port| sim.port(*port).unwrap().name.clone())
+        .collect();
+    assert_eq!(card_names.len(), 4);
+    for name in &card_names {
+        let addr = sim.execute_console(id, "ip a");
+        let line = addr
+            .lines
+            .iter()
+            .find(|line| line.starts_with(&format!("{name}:")))
+            .unwrap();
+        assert!(line.contains("<UP,NO-CARRIER> state DOWN"), "{line}");
+        let summary = sim.execute_console(id, "ip");
+        assert!(
+            summary
+                .lines
+                .iter()
+                .any(|line| line.starts_with(name) && line.ends_with("NO-CARRIER"))
+        );
+        let link = sim.execute_console(id, &format!("ip link show dev {name}"));
+        assert!(link.lines[0].contains("<UP,NO-CARRIER> state DOWN"));
+        let ethtool = sim.execute_console(id, &format!("ethtool {name}"));
+        assert!(
+            ethtool
+                .lines
+                .iter()
+                .any(|line| line.contains("Link detected: no"))
+        );
+    }
+    assert!(
+        sim.execute_console(id, &format!("ip link set dev {} down", card_names[0]))
+            .success
+    );
+    assert!(
+        sim.execute_console(id, "ip a")
+            .lines
+            .iter()
+            .any(|line| line.starts_with(&format!("{}: <DOWN> state DOWN", card_names[0])))
+    );
 }
 
 #[test]

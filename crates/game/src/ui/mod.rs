@@ -40,7 +40,10 @@ impl RoutedCableId {
 struct RoutedCable {
     id: RoutedCableId,
     route: Vec<CableRoutePoint>,
-    endpoints: ((CableRoutePoint, Option<egui::Pos2>), (CableRoutePoint, Option<egui::Pos2>)),
+    endpoints: (
+        (CableRoutePoint, Option<egui::Pos2>),
+        (CableRoutePoint, Option<egui::Pos2>),
+    ),
     color: egui::Color32,
 }
 
@@ -208,7 +211,8 @@ pub fn main_ui(
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
             power_connectors: contexts
                 .add_image(EguiTextureHandle::Strong(images.power_connectors.clone())),
-            power_plugs_rear: contexts.add_image(EguiTextureHandle::Strong(images.power_plugs_rear.clone())),
+            power_plugs_rear: contexts
+                .add_image(EguiTextureHandle::Strong(images.power_plugs_rear.clone())),
         });
     }
     let ctx = contexts.ctx_mut()?;
@@ -368,7 +372,6 @@ fn top_bar(
             });
         });
 }
-
 
 fn inspector_panel(
     viewport: &mut egui::Ui,
@@ -594,36 +597,90 @@ fn server_hardware_inspector(
     let chassis = &catalog.chassis;
     ui.separator();
     ui.strong("Server hardware");
-    ui.label(format!("CPU {}/{} · RAM {}/{} · PSU {}/{}",
-        hardware.cpus.len(), chassis.cpu_sockets, hardware.ram.len(), chassis.dimm_slots,
-        hardware.power_supplies.len(), chassis.psu_bays));
-    let cpu_lanes: u16 = hardware.cpus.iter().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
-        .filter_map(|part| match part.kind { ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)), _ => None }).sum();
-    let used_lanes: u16 = hardware.pcie.iter().flatten().filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
-        .filter_map(|part| match &part.kind { ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, .. } } => Some(u16::from(*lanes)), _ => None }).sum();
+    ui.label(format!(
+        "CPU {}/{} · RAM {}/{} · PSU {}/{}",
+        hardware.cpus.len(),
+        chassis.cpu_sockets,
+        hardware.ram.len(),
+        chassis.dimm_slots,
+        hardware.power_supplies.len(),
+        chassis.psu_bays
+    ));
+    let cpu_lanes: u16 = hardware
+        .cpus
+        .iter()
+        .filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+        .filter_map(|part| match part.kind {
+            ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)),
+            _ => None,
+        })
+        .sum();
+    let used_lanes: u16 = hardware
+        .pcie
+        .iter()
+        .flatten()
+        .filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
+        .filter_map(|part| match &part.kind {
+            ServerPartKind::PciCard {
+                card: PciCard::Ethernet { lanes, .. },
+            } => Some(u16::from(*lanes)),
+            _ => None,
+        })
+        .sum();
     ui.label(format!("PCIe lanes: {used_lanes}/{cpu_lanes}"));
-    if hardware.ready() { ui.colored_label(egui::Color32::GREEN, "Required hardware installed"); }
-    else { ui.weak("Install a CPU, RAM and power supply to complete the server."); }
+    if hardware.ready() {
+        ui.colored_label(egui::Color32::GREEN, "Required hardware installed");
+    } else {
+        ui.weak("Install a CPU, RAM and power supply to complete the server.");
+    }
     for (index, slot) in chassis.pcie_slots.iter().enumerate() {
         let installed = hardware.pcie.get(index).and_then(Option::as_deref);
         ui.horizontal(|ui| {
-            ui.label(format!("{}: x{} / Gen {}", slot.name, slot.lanes, slot.generation));
+            ui.label(format!(
+                "{}: x{} / Gen {}",
+                slot.name, slot.lanes, slot.generation
+            ));
             if let Some(id) = installed {
-                let name = catalog.parts.iter().find(|part| part.id == id).map_or(id, |part| part.name.as_str());
+                let name = catalog
+                    .parts
+                    .iter()
+                    .find(|part| part.id == id)
+                    .map_or(id, |part| part.name.as_str());
                 ui.label(name);
                 if ui.button("Remove").clicked() {
-                    actions.write(UiAction::RemoveServerPart { device, part_id: id.into(), slot: Some(index) });
+                    actions.write(UiAction::RemoveServerPart {
+                        device,
+                        part_id: id.into(),
+                        slot: Some(index),
+                    });
                 }
             } else {
                 ui.weak("empty");
                 for part in &catalog.parts {
-                    let ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, width, .. } } = &part.kind else { continue };
+                    let ServerPartKind::PciCard {
+                        card:
+                            PciCard::Ethernet {
+                                lanes,
+                                generation,
+                                width,
+                                ..
+                            },
+                    } = &part.kind
+                    else {
+                        continue;
+                    };
                     if sim.server_parts.get(&part.id).copied().unwrap_or(0) > 0
-                        && slot.lanes >= *lanes && slot.width >= *width && slot.generation >= *generation
+                        && slot.lanes >= *lanes
+                        && slot.width >= *width
+                        && slot.generation >= *generation
                         && used_lanes + u16::from(*lanes) <= cpu_lanes
                         && ui.button(format!("Install {}", part.name)).clicked()
                     {
-                        actions.write(UiAction::InstallServerPart { device, part_id: part.id.clone(), slot: Some(index) });
+                        actions.write(UiAction::InstallServerPart {
+                            device,
+                            part_id: part.id.clone(),
+                            slot: Some(index),
+                        });
                     }
                 }
             }
@@ -634,16 +691,41 @@ fn server_hardware_inspector(
         let installed = match &part.kind {
             ServerPartKind::Cpu { .. } => hardware.cpus.iter().filter(|id| *id == &part.id).count(),
             ServerPartKind::Ram { .. } => hardware.ram.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::PowerSupply { .. } => hardware.power_supplies.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::PciCard { .. } => hardware.pcie.iter().filter(|id| id.as_deref() == Some(part.id.as_str())).count(),
+            ServerPartKind::PowerSupply { .. } => hardware
+                .power_supplies
+                .iter()
+                .filter(|id| *id == &part.id)
+                .count(),
+            ServerPartKind::PciCard { .. } => hardware
+                .pcie
+                .iter()
+                .filter(|id| id.as_deref() == Some(part.id.as_str()))
+                .count(),
         };
         ui.horizontal(|ui| {
-            ui.label(format!("{} · inventory {owned} · installed {installed}", part.name));
-            if ui.add_enabled(owned > 0, egui::Button::new("Install")).clicked() {
-                actions.write(UiAction::InstallServerPart { device, part_id: part.id.clone(), slot: None });
+            ui.label(format!(
+                "{} · inventory {owned} · installed {installed}",
+                part.name
+            ));
+            if ui
+                .add_enabled(owned > 0, egui::Button::new("Install"))
+                .clicked()
+            {
+                actions.write(UiAction::InstallServerPart {
+                    device,
+                    part_id: part.id.clone(),
+                    slot: None,
+                });
             }
-            if installed > 0 && !matches!(part.kind, ServerPartKind::PciCard { .. }) && ui.button("Remove").clicked() {
-                actions.write(UiAction::RemoveServerPart { device, part_id: part.id.clone(), slot: None });
+            if installed > 0
+                && !matches!(part.kind, ServerPartKind::PciCard { .. })
+                && ui.button("Remove").clicked()
+            {
+                actions.write(UiAction::RemoveServerPart {
+                    device,
+                    part_id: part.id.clone(),
+                    slot: None,
+                });
             }
         });
     }
@@ -654,17 +736,37 @@ fn server_hardware_inspector(
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("{} ({})", slot.name, slot.interface));
             if let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) {
-                if let Some(drive) = cloud_provider_sim::drive_catalog().drives.iter().find(|d| d.id == id) {
-                    ui.label(format!("{} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
-                        drive.name, drive.read_mb_s, drive.read_iops, drive.write_mb_s, drive.write_iops));
-                } else { ui.label(id); }
-                if ui.button("Remove drive").clicked() { actions.write(UiAction::RemoveDrive { device, bay }); }
+                if let Some(drive) = cloud_provider_sim::drive_catalog()
+                    .drives
+                    .iter()
+                    .find(|d| d.id == id)
+                {
+                    ui.label(format!(
+                        "{} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
+                        drive.name,
+                        drive.read_mb_s,
+                        drive.read_iops,
+                        drive.write_mb_s,
+                        drive.write_iops
+                    ));
+                } else {
+                    ui.label(id);
+                }
+                if ui.button("Remove drive").clicked() {
+                    actions.write(UiAction::RemoveDrive { device, bay });
+                }
             } else {
                 ui.weak("empty");
                 for drive in &cloud_provider_sim::drive_catalog().drives {
-                    if drive.interface == slot.interface && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
-                        && ui.button(format!("Install {}", drive.name)).clicked() {
-                        actions.write(UiAction::InstallDrive { device, drive_id: drive.id.clone(), bay: Some(bay) });
+                    if drive.interface == slot.interface
+                        && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
+                        && ui.button(format!("Install {}", drive.name)).clicked()
+                    {
+                        actions.write(UiAction::InstallDrive {
+                            device,
+                            drive_id: drive.id.clone(),
+                            bay: Some(bay),
+                        });
                     }
                 }
             }
@@ -2140,7 +2242,9 @@ fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
         DeviceKind::Router(_) => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
         DeviceKind::Ups(_) if side == RackSide::Front => (90.0 / 2048.0, 0.0, 1958.0 / 2048.0, 0.5),
         DeviceKind::Ups(_) => (0.0, 0.5, 1.0, 1.0),
-        DeviceKind::Pdu(_) if side == RackSide::Front => (78.0 / 2048.0, 128.0 / 768.0, 1970.0 / 2048.0, 370.0 / 768.0),
+        DeviceKind::Pdu(_) if side == RackSide::Front => {
+            (78.0 / 2048.0, 128.0 / 768.0, 1970.0 / 2048.0, 370.0 / 768.0)
+        }
         DeviceKind::Pdu(_) => (78.0 / 2048.0, 375.0 / 768.0, 1970.0 / 2048.0, 619.0 / 768.0),
         _ => (0.0, 0.0, 1.0, 1.0),
     };
@@ -2159,17 +2263,27 @@ fn device_power_inlet_rect(kind: &DeviceKind, panel: egui::Rect) -> Option<egui:
     if inlet.connector == PowerInletConnector::CiscoFourPin {
         return Some(egui::Rect::from_center_size(
             normalized_panel_position(panel, inlet.position),
-            egui::vec2((panel.width() * 0.04).clamp(12.0, 24.0), (panel.height() * 0.4).clamp(12.0, 24.0)),
+            egui::vec2(
+                (panel.width() * 0.04).clamp(12.0, 24.0),
+                (panel.height() * 0.4).clamp(12.0, 24.0),
+            ),
         ));
     }
-    Some(equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap_or_else(|| {
-        egui::Rect::from_center_size(normalized_panel_position(panel, inlet.position), egui::vec2(16.0, 22.0))
-    }))
+    Some(
+        equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap_or_else(|| {
+            egui::Rect::from_center_size(
+                normalized_panel_position(panel, inlet.position),
+                egui::vec2(16.0, 22.0),
+            )
+        }),
+    )
 }
 
 fn power_connector_kind(sim: &NetworkSim, socket: PowerSocket) -> cables::ConnectorKind {
     if let PowerSocket::Inlet(PowerEndpoint::Device(id)) = socket
-        && sim.device(id).and_then(|device| device.kind.power_inlet())
+        && sim
+            .device(id)
+            .and_then(|device| device.kind.power_inlet())
             .is_some_and(|inlet| inlet.connector == PowerInletConnector::CiscoFourPin)
     {
         return cables::ConnectorKind::CiscoFourPin;
@@ -2240,16 +2354,27 @@ fn ups_lcd_rect(panel: egui::Rect) -> egui::Rect {
     )
 }
 
-fn power_socket_location(sim: &NetworkSim, socket: PowerSocket, view_side: RackSide) -> Option<CableRoutePoint> {
-    let source_device = |source| sim.devices().find(|device| match &device.kind {
-        DeviceKind::Ups(ups) => ups.source == Some(source),
-        DeviceKind::Pdu(pdu) => pdu.source == Some(source),
-        _ => false,
-    });
+fn power_socket_location(
+    sim: &NetworkSim,
+    socket: PowerSocket,
+    view_side: RackSide,
+) -> Option<CableRoutePoint> {
+    let source_device = |source| {
+        sim.devices().find(|device| match &device.kind {
+            DeviceKind::Ups(ups) => ups.source == Some(source),
+            DeviceKind::Pdu(pdu) => pdu.source == Some(source),
+            _ => false,
+        })
+    };
     let (device, inlet) = match socket {
         PowerSocket::Outlet(outlet) => {
             if let SourceId::Rack(rack) = outlet.source {
-                return Some(CableRoutePoint { rack, unit: sim.rack(rack)?.units, side: view_side, offset_cm: 0 });
+                return Some(CableRoutePoint {
+                    rack,
+                    unit: sim.rack(rack)?.units,
+                    side: view_side,
+                    offset_cm: 0,
+                });
             }
             (source_device(outlet.source)?, false)
         }
@@ -2257,8 +2382,17 @@ fn power_socket_location(sim: &NetworkSim, socket: PowerSocket, view_side: RackS
         PowerSocket::Inlet(PowerEndpoint::Source(source)) => (source_device(source)?, true),
     };
     let placement = device.rack?;
-    let side = if inlet { device.kind.power_inlet()?.side } else { RackSide::Rear };
-    Some(CableRoutePoint { rack: placement.rack, unit: placement.unit, side, offset_cm: if inlet { 48 } else { 0 } })
+    let side = if inlet {
+        device.kind.power_inlet()?.side
+    } else {
+        RackSide::Rear
+    };
+    Some(CableRoutePoint {
+        rack: placement.rack,
+        unit: placement.unit,
+        side,
+        offset_cm: if inlet { 48 } else { 0 },
+    })
 }
 
 fn power_preview_is_valid(sim: &NetworkSim, outlet: OutletId, endpoint: PowerEndpoint) -> bool {
@@ -2347,28 +2481,65 @@ fn paint_server_backplane(
     powered: bool,
 ) {
     use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
-    let DeviceKind::Server(server) = kind else { return };
-    let Some(hardware) = &server.hardware else { return };
+    let DeviceKind::Server(server) = kind else {
+        return;
+    };
+    let Some(hardware) = &server.hardware else {
+        return;
+    };
     let catalog = server_catalog();
     for (slot_index, slot) in catalog.chassis.pcie_slots.iter().enumerate() {
-        let Some(part_id) = hardware.pcie.get(slot_index).and_then(Option::as_deref) else { continue };
-        let Some(part) = catalog.parts.iter().find(|part| part.id == part_id) else { continue };
+        let Some(part_id) = hardware.pcie.get(slot_index).and_then(Option::as_deref) else {
+            continue;
+        };
+        let Some(part) = catalog.parts.iter().find(|part| part.id == part_id) else {
+            continue;
+        };
         let [left, top, right, bottom] = slot.face_rect;
         let plate = egui::Rect::from_min_max(
-            egui::pos2(panel.left() + panel.width() * left, panel.top() + panel.height() * top),
-            egui::pos2(panel.left() + panel.width() * right, panel.top() + panel.height() * bottom),
+            egui::pos2(
+                panel.left() + panel.width() * left,
+                panel.top() + panel.height() * top,
+            ),
+            egui::pos2(
+                panel.left() + panel.width() * right,
+                panel.top() + panel.height() * bottom,
+            ),
         );
-        let metal = if powered { egui::Color32::from_rgb(79, 86, 89) } else { egui::Color32::from_gray(59) };
+        let metal = if powered {
+            egui::Color32::from_rgb(79, 86, 89)
+        } else {
+            egui::Color32::from_gray(59)
+        };
         painter.rect_filled(plate, 1.0, metal);
-        painter.rect_stroke(plate, 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(125)), egui::StrokeKind::Inside);
+        painter.rect_stroke(
+            plate,
+            1.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(125)),
+            egui::StrokeKind::Inside,
+        );
         match &part.kind {
-            ServerPartKind::PciCard { card: PciCard::Ethernet { .. } } => {
+            ServerPartKind::PciCard {
+                card: PciCard::Ethernet { .. },
+            } => {
                 for port_id in hardware.card_ports.get(slot_index).into_iter().flatten() {
-                    let Some(index) = server.ports.iter().position(|id| id == port_id) else { continue };
-                    let socket = rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
+                    let Some(index) = server.ports.iter().position(|id| id == port_id) else {
+                        continue;
+                    };
+                    let socket =
+                        rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
                     painter.rect_filled(socket, 1.0, egui::Color32::from_rgb(8, 12, 14));
-                    painter.rect_stroke(socket, 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(162)), egui::StrokeKind::Inside);
-                    painter.rect_filled(socket.shrink2(egui::vec2(socket.width() * 0.20, socket.height() * 0.24)), 0.0, egui::Color32::from_rgb(24, 31, 33));
+                    painter.rect_stroke(
+                        socket,
+                        1.0,
+                        egui::Stroke::new(1.0, egui::Color32::from_gray(162)),
+                        egui::StrokeKind::Inside,
+                    );
+                    painter.rect_filled(
+                        socket.shrink2(egui::vec2(socket.width() * 0.20, socket.height() * 0.24)),
+                        0.0,
+                        egui::Color32::from_rgb(24, 31, 33),
+                    );
                 }
             }
             _ => {}
@@ -2377,21 +2548,61 @@ fn paint_server_backplane(
 }
 
 fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &DeviceKind) {
-    let DeviceKind::Server(server) = kind else { return };
-    let Some(hardware) = &server.hardware else { return };
-    for (bay, slot) in cloud_provider_sim::server_catalog().chassis.drive_bays.iter().enumerate() {
-        let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) else { continue };
+    let DeviceKind::Server(server) = kind else {
+        return;
+    };
+    let Some(hardware) = &server.hardware else {
+        return;
+    };
+    for (bay, slot) in cloud_provider_sim::server_catalog()
+        .chassis
+        .drive_bays
+        .iter()
+        .enumerate()
+    {
+        let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) else {
+            continue;
+        };
         let [left, top, right, bottom] = slot.face_rect;
         let tray = egui::Rect::from_min_max(
-            egui::pos2(panel.left() + panel.width() * left, panel.top() + panel.height() * top),
-            egui::pos2(panel.left() + panel.width() * right, panel.top() + panel.height() * bottom),
+            egui::pos2(
+                panel.left() + panel.width() * left,
+                panel.top() + panel.height() * top,
+            ),
+            egui::pos2(
+                panel.left() + panel.width() * right,
+                panel.top() + panel.height() * bottom,
+            ),
         );
-        painter.rect_stroke(tray, 2.0, egui::Stroke::new(1.5, egui::Color32::from_gray(190)), egui::StrokeKind::Inside);
-        let model = cloud_provider_sim::drive_catalog().drives.iter().find(|drive| drive.id == id);
-        let label = model.map_or("DRIVE", |drive| if drive.kind == cloud_provider_sim::DriveKind::Ssd { "SSD" } else { "HDD" });
-        let badge = egui::Rect::from_min_size(tray.left_bottom() - egui::vec2(0.0, 11.0), egui::vec2(tray.width(), 11.0));
+        painter.rect_stroke(
+            tray,
+            2.0,
+            egui::Stroke::new(1.5, egui::Color32::from_gray(190)),
+            egui::StrokeKind::Inside,
+        );
+        let model = cloud_provider_sim::drive_catalog()
+            .drives
+            .iter()
+            .find(|drive| drive.id == id);
+        let label = model.map_or("DRIVE", |drive| {
+            if drive.kind == cloud_provider_sim::DriveKind::Ssd {
+                "SSD"
+            } else {
+                "HDD"
+            }
+        });
+        let badge = egui::Rect::from_min_size(
+            tray.left_bottom() - egui::vec2(0.0, 11.0),
+            egui::vec2(tray.width(), 11.0),
+        );
         painter.rect_filled(badge, 1.0, egui::Color32::from_black_alpha(210));
-        painter.text(badge.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::monospace(8.0), egui::Color32::from_rgb(175, 214, 216));
+        painter.text(
+            badge.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::monospace(8.0),
+            egui::Color32::from_rgb(175, 214, 216),
+        );
     }
 }
 
@@ -2460,14 +2671,33 @@ mod power_geometry_tests {
         assert!((inlet.x - (10.0 + 480.0 * 0.146)).abs() < f32::EPSILON);
         assert!((inlet.y - (20.0 + 40.0 * 0.63)).abs() < f32::EPSILON);
         let mut sim = NetworkSim::new();
-        let SimEvent::DeviceAdded(id) = sim.execute(cloud_provider_sim::Command::BuyDevice { kind: DeviceTemplate::Router }).unwrap()[0] else { unreachable!() };
+        let SimEvent::DeviceAdded(id) = sim
+            .execute(cloud_provider_sim::Command::BuyDevice {
+                kind: DeviceTemplate::Router,
+            })
+            .unwrap()[0]
+        else {
+            unreachable!()
+        };
         let kind = &sim.device(id).unwrap().kind;
         let hitbox = device_power_inlet_rect(kind, panel).unwrap();
         assert!(hitbox.center().distance(inlet) < 0.001);
         let rear_c14 = equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap();
         assert!(!hitbox.intersects(rear_c14));
-        assert!(matches!(power_connector_kind(&sim, PowerSocket::Inlet(PowerEndpoint::Device(id))), cables::ConnectorKind::CiscoFourPin));
-        assert!(matches!(power_connector_kind(&sim, PowerSocket::Outlet(OutletId { source: SourceId::Rack(RackId(1)), index: 0 })), cables::ConnectorKind::Iec));
+        assert!(matches!(
+            power_connector_kind(&sim, PowerSocket::Inlet(PowerEndpoint::Device(id))),
+            cables::ConnectorKind::CiscoFourPin
+        ));
+        assert!(matches!(
+            power_connector_kind(
+                &sim,
+                PowerSocket::Outlet(OutletId {
+                    source: SourceId::Rack(RackId(1)),
+                    index: 0
+                })
+            ),
+            cables::ConnectorKind::Iec
+        ));
     }
 
     #[test]
@@ -2528,9 +2758,18 @@ mod power_geometry_tests {
     fn ups_lcd_uses_real_screen_bounds() {
         let panel = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(480.0, 40.0));
         let lcd = ups_lcd_rect(panel);
-        let uv = equipment_uv(&DeviceKind::Ups(cloud_provider_sim::Ups::default()), RackSide::Front);
-        assert!((uv.left() + (lcd.left() - panel.left()) / panel.width() * uv.width() - 0.681).abs() < 0.0001);
-        assert!((uv.left() + (lcd.right() - panel.left()) / panel.width() * uv.width() - 0.781).abs() < 0.0001);
+        let uv = equipment_uv(
+            &DeviceKind::Ups(cloud_provider_sim::Ups::default()),
+            RackSide::Front,
+        );
+        assert!(
+            (uv.left() + (lcd.left() - panel.left()) / panel.width() * uv.width() - 0.681).abs()
+                < 0.0001
+        );
+        assert!(
+            (uv.left() + (lcd.right() - panel.left()) / panel.width() * uv.width() - 0.781).abs()
+                < 0.0001
+        );
         assert!((lcd.top() - (20.0 + 40.0 * 0.25)).abs() < f32::EPSILON);
         assert!((lcd.bottom() - (20.0 + 40.0 * 0.71)).abs() < f32::EPSILON);
     }
@@ -2629,11 +2868,21 @@ mod tests {
     fn server_rear_backplane_gains_card_face_and_jacks_when_installed() {
         use cloud_provider_sim::{Command, SimEvent};
         let mut sim = NetworkSim::new();
-        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else { panic!() };
+        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else {
+            panic!()
+        };
         let empty = sim.device(id).unwrap().kind.clone();
         for part_id in ["xeon_e_2434", "intel_i350_t4"] {
-            sim.execute(Command::BuyServerPart { part_id: part_id.into() }).unwrap();
-            sim.execute(Command::InstallServerPart { device: id, part_id: part_id.into(), slot: None }).unwrap();
+            sim.execute(Command::BuyServerPart {
+                part_id: part_id.into(),
+            })
+            .unwrap();
+            sim.execute(Command::InstallServerPart {
+                device: id,
+                part_id: part_id.into(),
+                slot: None,
+            })
+            .unwrap();
         }
         let populated = sim.device(id).unwrap().kind.clone();
         let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
@@ -2653,15 +2902,27 @@ mod tests {
     fn server_front_marks_only_installed_drive_bays() {
         use cloud_provider_sim::{Command, SimEvent};
         let mut sim = NetworkSim::new();
-        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else { panic!() };
+        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else {
+            panic!()
+        };
         let empty = sim.device(id).unwrap().kind.clone();
-        sim.execute(Command::BuyDrive { drive_id: "enterprise_ssd_960gb".into() }).unwrap();
-        sim.execute(Command::InstallDrive { device: id, drive_id: "enterprise_ssd_960gb".into(), bay: Some(2) }).unwrap();
+        sim.execute(Command::BuyDrive {
+            drive_id: "enterprise_ssd_960gb".into(),
+        })
+        .unwrap();
+        sim.execute(Command::InstallDrive {
+            device: id,
+            drive_id: "enterprise_ssd_960gb".into(),
+            bay: Some(2),
+        })
+        .unwrap();
         let populated = sim.device(id).unwrap().kind.clone();
         let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
         let shape_count = |kind: &DeviceKind| {
             let ctx = egui::Context::default();
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| paint_server_drives(ui.painter(), panel, kind));
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                paint_server_drives(ui.painter(), panel, kind)
+            });
             let count = output.shapes.len();
             output.textures_delta.clear();
             count
@@ -2692,12 +2953,29 @@ mod tests {
         let kind = DeviceKind::PatchPanel(cloud_provider_sim::PatchPanel { ports: vec![] });
         let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 50.0));
         for indices in [&front, &rear] {
-            let sockets: Vec<_> = indices.iter().map(|index|
-                rack_port_rect(&kind, panel, *index, PortConnector::Rj45,
-                    if index % 2 == 0 { RackSide::Rear } else { RackSide::Front })).collect();
+            let sockets: Vec<_> = indices
+                .iter()
+                .map(|index| {
+                    rack_port_rect(
+                        &kind,
+                        panel,
+                        *index,
+                        PortConnector::Rj45,
+                        if index % 2 == 0 {
+                            RackSide::Rear
+                        } else {
+                            RackSide::Front
+                        },
+                    )
+                })
+                .collect();
             for (index, socket) in sockets.iter().enumerate() {
                 assert!(panel.contains_rect(*socket));
-                assert!(sockets[index + 1..].iter().all(|other| !socket.intersects(*other)));
+                assert!(
+                    sockets[index + 1..]
+                        .iter()
+                        .all(|other| !socket.intersects(*other))
+                );
             }
         }
         assert_eq!(

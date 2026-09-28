@@ -14,7 +14,8 @@ cargo run --release
 The game starts with one empty 12U rack and $6,000.
 
 1. Open **SHOP** in the top bar. The separate window groups Network hardware
-   into routers, switches, and cabling; Compute contains DELL servers; Power
+   into routers, switches, and cabling; Compute contains DELL server chassis,
+   CPU, RAM, power supplies, PCIe cards, and storage drives; Power
    contains UPS and PDU models. Search and filter by price, affordability, rack
    size, RJ45 port count, or C13 outlet count, then buy equipment for inventory.
 2. Select an inventory device, open **RACK**, and click an empty rack unit.

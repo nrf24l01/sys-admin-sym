@@ -1215,10 +1215,15 @@ mod tests {
     #[test]
     fn automatic_cross_face_rail_uses_same_unit_on_both_faces() {
         let front = CableRoutePoint {
-            rack: RackId(1), unit: 19, side: RackSide::Front, offset_cm: 0,
+            rack: RackId(1),
+            unit: 19,
+            side: RackSide::Front,
+            offset_cm: 0,
         };
         let rear = CableRoutePoint {
-            unit: 10, side: RackSide::Rear, ..front
+            unit: 10,
+            side: RackSide::Rear,
+            ..front
         };
         let front_socket = egui::pos2(50.0, 19.0);
         let rear_socket = egui::pos2(50.0, 10.0);
@@ -1226,7 +1231,13 @@ mod tests {
         let rear_rail = egui::pos2(0.0, 19.0);
         let anchors = vec![
             (front, front_rail),
-            (CableRoutePoint { side: RackSide::Rear, ..front }, rear_rail),
+            (
+                CableRoutePoint {
+                    side: RackSide::Rear,
+                    ..front
+                },
+                rear_rail,
+            ),
             (rear, egui::pos2(0.0, 10.0)),
         ];
         assert_eq!(
@@ -1294,8 +1305,22 @@ mod tests {
             // the opposite endpoint's unit where this cable crosses faces.
             let source = port_location(&sim, ports[0]).unwrap();
             if source.unit != location.unit {
-                anchors.push((CableRoutePoint { unit: source.unit, offset_cm: 0, ..location }, egui::pos2(20.0, 60.0)));
-                anchors.push((CableRoutePoint { unit: source.unit, offset_cm: 48, ..location }, egui::pos2(200.0, 60.0)));
+                anchors.push((
+                    CableRoutePoint {
+                        unit: source.unit,
+                        offset_cm: 0,
+                        ..location
+                    },
+                    egui::pos2(20.0, 60.0),
+                ));
+                anchors.push((
+                    CableRoutePoint {
+                        unit: source.unit,
+                        offset_cm: 48,
+                        ..location
+                    },
+                    egui::pos2(200.0, 60.0),
+                ));
             }
             let ctx = egui::Context::default();
             let input = egui::RawInput {

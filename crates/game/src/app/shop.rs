@@ -12,6 +12,10 @@ pub enum ShopSection {
     Switches,
     Cabling,
     DellServers,
+    Cpu,
+    Ram,
+    PowerSupplies,
+    PciCards,
     Storage,
     Ups,
     Pdu,
@@ -21,7 +25,12 @@ impl ShopSection {
     pub fn category(self) -> ShopCategory {
         match self {
             Self::Routers | Self::Switches | Self::Cabling => ShopCategory::Network,
-            Self::DellServers | Self::Storage => ShopCategory::Compute,
+            Self::DellServers
+            | Self::Cpu
+            | Self::Ram
+            | Self::PowerSupplies
+            | Self::PciCards
+            | Self::Storage => ShopCategory::Compute,
             Self::Ups | Self::Pdu => ShopCategory::Power,
         }
     }

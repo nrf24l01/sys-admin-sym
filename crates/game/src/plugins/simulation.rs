@@ -765,9 +765,16 @@ mod tests {
         let (sim, device) = device_sim();
         let endpoint = PowerEndpoint::Device(device);
         let first = cloud_provider_sim::CableRoutePoint {
-            rack: RackId(1), unit: 3, side: cloud_provider_sim::RackSide::Front, offset_cm: 48,
+            rack: RackId(1),
+            unit: 3,
+            side: cloud_provider_sim::RackSide::Front,
+            offset_cm: 48,
         };
-        let last = cloud_provider_sim::CableRoutePoint { unit: 9, side: cloud_provider_sim::RackSide::Rear, ..first };
+        let last = cloud_provider_sim::CableRoutePoint {
+            unit: 9,
+            side: cloud_provider_sim::RackSide::Rear,
+            ..first
+        };
         let mut state = UiState::default();
         power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint));
         state.pending_power_route = vec![first, last];

@@ -1,35 +1,67 @@
 use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
-use cloud_provider_sim::{CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, ServerPart, ServerPartKind, drive_catalog, server_catalog};
+use cloud_provider_sim::{
+    CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, ServerPart, ServerPartKind,
+    drive_catalog, server_catalog,
+};
 
 fn drive_matches(drive: &DriveModel, state: &ShopState, money: i64) -> bool {
     state.category == ShopCategory::Compute
         && state.section.is_none_or(|s| s == ShopSection::Storage)
-        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+        && state.rack_units.is_none()
+        && state.ports.is_none()
+        && state.outlets.is_none()
         && (state.search.trim().is_empty()
-            || format!("{} {}", drive.name, drive.id).to_lowercase().contains(&state.search.trim().to_lowercase()))
+            || format!("{} {}", drive.name, drive.id)
+                .to_lowercase()
+                .contains(&state.search.trim().to_lowercase()))
         && (!state.affordable_only || drive.price <= money)
         && state.max_price.is_none_or(|max| drive.price <= max)
 }
 
 fn part_matches(part: &ServerPart, state: &ShopState, money: i64) -> bool {
+    let section = match part.kind {
+        ServerPartKind::Cpu { .. } => ShopSection::Cpu,
+        ServerPartKind::Ram { .. } => ShopSection::Ram,
+        ServerPartKind::PowerSupply { .. } => ShopSection::PowerSupplies,
+        ServerPartKind::PciCard { .. } => ShopSection::PciCards,
+    };
     state.category == ShopCategory::Compute
-        && state.section.is_none_or(|s| s == ShopSection::DellServers)
-        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+        && state.section.is_none_or(|s| s == section)
+        && state.rack_units.is_none()
+        && state.ports.is_none()
+        && state.outlets.is_none()
         && (state.search.trim().is_empty()
-            || format!("{} {}", part.name, part.id).to_lowercase().contains(&state.search.trim().to_lowercase()))
+            || format!("{} {}", part.name, part.id)
+                .to_lowercase()
+                .contains(&state.search.trim().to_lowercase()))
         && (!state.affordable_only || part.price <= money)
         && state.max_price.is_none_or(|max| part.price <= max)
 }
 
 fn part_description(part: &ServerPart) -> String {
     match &part.kind {
-        ServerPartKind::Cpu { socket, pcie_lanes, tdp_w } => format!("{socket} · {pcie_lanes} PCIe lanes · {tdp_w} W TDP"),
-        ServerPartKind::Ram { memory_type, capacity_gb } => format!("{capacity_gb} GB · {memory_type}"),
+        ServerPartKind::Cpu {
+            socket,
+            pcie_lanes,
+            tdp_w,
+        } => format!("{socket} · {pcie_lanes} PCIe lanes · {tdp_w} W TDP"),
+        ServerPartKind::Ram {
+            memory_type,
+            capacity_gb,
+        } => format!("{capacity_gb} GB · {memory_type}"),
         ServerPartKind::PowerSupply { capacity_w } => format!("{capacity_w} W power supply"),
-        ServerPartKind::PciCard { card: PciCard::Ethernet { lanes, generation, rj45_ports, speed_mbps, .. } } =>
-            format!("{rj45_ports} × RJ45 · {speed_mbps} Mb/s · PCIe Gen {generation} x{lanes}"),
+        ServerPartKind::PciCard {
+            card:
+                PciCard::Ethernet {
+                    lanes,
+                    generation,
+                    rj45_ports,
+                    speed_mbps,
+                    ..
+                },
+        } => format!("{rj45_ports} × RJ45 · {speed_mbps} Mb/s · PCIe Gen {generation} x{lanes}"),
     }
 }
 
@@ -293,7 +325,14 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
         (
             ShopCategory::Compute,
             "Compute",
-            &[(ShopSection::DellServers, "DELL servers"), (ShopSection::Storage, "Storage drives")][..],
+            &[
+                (ShopSection::DellServers, "DELL servers"),
+                (ShopSection::Cpu, "CPU"),
+                (ShopSection::Ram, "RAM"),
+                (ShopSection::PowerSupplies, "Power supplies"),
+                (ShopSection::PciCards, "PCIe cards"),
+                (ShopSection::Storage, "Storage drives"),
+            ][..],
         ),
         (
             ShopCategory::Power,
@@ -535,18 +574,74 @@ mod tests {
             .filter(|product| product.matches(&state, 6000))
             .collect();
         assert_eq!(products.len(), 1);
-        assert!(matches!(
-            products[0].buy(),
-            UiAction::BuyServerChassis
-        ));
+        assert!(matches!(products[0].buy(), UiAction::BuyServerChassis));
     }
 
     #[test]
     fn storage_section_lists_drives_separately_from_server_parts() {
-        let mut state = ShopState { category: ShopCategory::Compute, section: Some(ShopSection::Storage), ..Default::default() };
-        assert!(server_catalog().parts.iter().all(|part| !part_matches(part, &state, 6000)));
-        assert_eq!(drive_catalog().drives.iter().filter(|drive| drive_matches(drive, &state, 6000)).count(), 2);
+        let mut state = ShopState {
+            category: ShopCategory::Compute,
+            section: Some(ShopSection::Storage),
+            ..Default::default()
+        };
+        assert!(
+            server_catalog()
+                .parts
+                .iter()
+                .all(|part| !part_matches(part, &state, 6000))
+        );
+        assert_eq!(
+            drive_catalog()
+                .drives
+                .iter()
+                .filter(|drive| drive_matches(drive, &state, 6000))
+                .count(),
+            2
+        );
         state.search = "SSD".into();
-        assert_eq!(drive_catalog().drives.iter().filter(|drive| drive_matches(drive, &state, 6000)).count(), 1);
+        assert_eq!(
+            drive_catalog()
+                .drives
+                .iter()
+                .filter(|drive| drive_matches(drive, &state, 6000))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn compute_sections_only_show_their_server_parts() {
+        let catalog = server_catalog();
+        let mut state = ShopState {
+            category: ShopCategory::Compute,
+            ..Default::default()
+        };
+        assert_eq!(
+            catalog
+                .parts
+                .iter()
+                .filter(|part| part_matches(part, &state, 6000))
+                .count(),
+            catalog.parts.len()
+        );
+        for section in [
+            ShopSection::DellServers,
+            ShopSection::Cpu,
+            ShopSection::Ram,
+            ShopSection::PowerSupplies,
+            ShopSection::PciCards,
+        ] {
+            state.section = Some(section);
+            let matching: Vec<_> = catalog
+                .parts
+                .iter()
+                .filter(|part| part_matches(part, &state, 6000))
+                .collect();
+            if section == ShopSection::DellServers {
+                assert!(matching.is_empty());
+            } else {
+                assert_eq!(matching.len(), 1, "{section:?}");
+            }
+        }
     }
 }

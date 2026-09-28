@@ -136,9 +136,18 @@ impl ServerHardware {
                 _ => None,
             })
             .sum();
-        let drive_w: u32 = self.drives.iter().flatten()
-            .filter_map(|id| crate::drive_catalog().drives.iter().find(|drive| &drive.id == id))
-            .map(|drive| u32::from(drive.power_w)).sum();
+        let drive_w: u32 = self
+            .drives
+            .iter()
+            .flatten()
+            .filter_map(|id| {
+                crate::drive_catalog()
+                    .drives
+                    .iter()
+                    .find(|drive| &drive.id == id)
+            })
+            .map(|drive| u32::from(drive.power_w))
+            .sum();
         100 + cpu_w + self.ram.len() as u32 * 5 + card_w + drive_w
     }
 
