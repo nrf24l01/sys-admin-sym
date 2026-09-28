@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use cloud_provider_sim::{
-    CableColor, CableRoutePoint, DeviceId, LinkId, NetworkSim, PortId, RackSide,
+    CableColor, CableRoutePoint, DeviceId, LinkId, NetworkSim, PortId, RackId, RackSide,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -15,8 +15,9 @@ impl Default for SimSnapshot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Workspace {
-    #[default]
     Rack,
+    #[default]
+    Room,
     Topology,
 }
 
@@ -51,6 +52,8 @@ pub struct UiState {
     pub terminal_windows: HashSet<DeviceId>,
     pub terminal_window_focus: HashSet<DeviceId>,
     pub rack_side: RackSide,
+    pub active_rack: Option<RackId>,
+    pub placing_room_anchor: bool,
     pub cable_visibility: CableVisibility,
     pub notice: Option<(String, bool)>,
     pub error_dialog: Option<String>,

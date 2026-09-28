@@ -10,6 +10,17 @@ pub struct CableRoutePoint {
     pub offset_cm: u16,
 }
 
+impl CableRoutePoint {
+    /// Rack zero is reserved for a ceiling cable manager in the room.
+    pub fn room_anchor(id: u8) -> Self {
+        Self { rack: crate::RackId(0), unit: id, side: crate::RackSide::Rear, offset_cm: 0 }
+    }
+
+    pub fn room_anchor_id(self) -> Option<u8> {
+        (self.rack == crate::RackId(0)).then_some(self.unit)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
     pub id: LinkId,

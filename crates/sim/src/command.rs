@@ -7,6 +7,10 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
+    AddRack { name: String, units: u8 },
+    MoveRackInRoom { rack: RackId, position: crate::RoomPosition },
+    AddRoomCableAnchor { position: crate::RoomPosition },
+    MoveRoomCableAnchor { id: u8, position: crate::RoomPosition },
     BuyCableSupply {
         supply: crate::CableSupply,
     },

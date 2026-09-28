@@ -125,8 +125,7 @@ impl NetworkSim {
         let cm = if placements[0].0 == placements[1].0 {
             (placements[0].1 - placements[1].1).hypot(placements[0].2 - placements[1].2)
         } else {
-            // Racks have no world positions yet; retain the inter-rack route allowance.
-            500.0
+            self.room_distance(placements[0], placements[1])?
         };
         Ok((cm * 1.05).ceil() as u32)
     }
@@ -145,13 +144,17 @@ impl NetworkSim {
             .collect::<Result<Vec<_>, _>>()?;
         let mut points = Vec::with_capacity(route.len() + 2);
         points.push(endpoints[0]);
-        points.extend(route.iter().map(|point| {
-            (
-                point.rack,
-                f32::from(point.offset_cm) / 48.0 * RACK_FACE_WIDTH_CM,
-                -f32::from(point.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM),
-            )
-        }));
+        for point in route {
+            if let Some(id) = point.room_anchor_id() {
+                let anchor = self.room.cable_anchors.iter().find(|anchor| anchor.id == id)
+                    .ok_or(SimError::RoomAnchorNotFound(id))?;
+                points.push((RackId(0), f32::from(anchor.position.x_cm), f32::from(anchor.position.y_cm)));
+            } else {
+                points.push((point.rack,
+                    f32::from(point.offset_cm) / 48.0 * RACK_FACE_WIDTH_CM,
+                    -f32::from(point.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)));
+            }
+        }
         points.push(endpoints[1]);
         let mut total = 0.0;
         for (index, pair) in points.windows(2).enumerate() {
@@ -160,7 +163,7 @@ impl NetworkSim {
             let segment = if previous.0 == next.0 {
                 (previous.1 - next.1).hypot(previous.2 - next.2)
             } else {
-                500.0
+                self.room_distance(previous, next)?
             };
             total += if index == 0 || index + 1 == points.len() - 1 {
                 segment * 1.05
@@ -169,6 +172,21 @@ impl NetworkSim {
             };
         }
         Ok(total.ceil() as u32)
+    }
+
+    fn room_distance(&self, a: (RackId, f32, f32), b: (RackId, f32, f32)) -> Result<f32, SimError> {
+        let coordinates = |point: (RackId, f32, f32)| -> Result<(f32, f32, f32), SimError> {
+            if point.0 == RackId(0) {
+                return Ok((point.1, point.2, 250.0));
+            }
+            if self.rack(point.0).is_none() { return Err(SimError::RackNotFound(point.0)); }
+            let room = self.rack_room_position(point.0);
+            Ok((f32::from(room.x_cm) + point.1 - RACK_FACE_WIDTH_CM * 0.5,
+                f32::from(room.y_cm), -point.2))
+        };
+        let a = coordinates(a)?;
+        let b = coordinates(b)?;
+        Ok(((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)).sqrt())
     }
 
     fn port_position(&self, id: PortId) -> Result<(crate::RackId, f32, f32), SimError> {
@@ -241,6 +259,21 @@ impl NetworkSim {
             reused: existing.is_some(),
             color,
         })
+    }
+
+    pub fn quote_routed_colored_cable(
+        &self,
+        a: PortId,
+        b: PortId,
+        length_cm: Option<u32>,
+        color: CableColor,
+        route: &[crate::CableRoutePoint],
+    ) -> Result<CableQuote, SimError> {
+        let minimum_cm = self.minimum_routed_cable_length(a, b, route)?;
+        if let Some(length) = length_cm && length < minimum_cm {
+            return Err(SimError::CableTooShort { minimum_cm });
+        }
+        self.quote_colored_cable(a, b, Some(length_cm.unwrap_or(minimum_cm)), color)
     }
 
     pub(crate) fn consume_cable(&mut self, quote: CableQuote) -> Result<(), SimError> {

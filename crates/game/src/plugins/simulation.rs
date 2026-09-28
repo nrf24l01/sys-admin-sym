@@ -176,6 +176,13 @@ fn translate_ui_actions(
                 rack: *rack,
                 unit: *unit,
             }),
+            UiAction::AddRack => {
+                let next = snapshot.0.racks().count() + 1;
+                Some(Command::AddRack { name: format!("Rack {next:02}"), units: 12 })
+            }
+            UiAction::MoveRackInRoom { rack, position } => Some(Command::MoveRackInRoom { rack: *rack, position: *position }),
+            UiAction::AddRoomCableAnchor(position) => Some(Command::AddRoomCableAnchor { position: *position }),
+            UiAction::MoveRoomCableAnchor { id, position } => Some(Command::MoveRoomCableAnchor { id: *id, position: *position }),
             UiAction::Remove(device) => Some(Command::RemoveDevice { device: *device }),
             UiAction::TogglePower(device, powered) => Some(Command::SetPower {
                 device: *device,
@@ -220,11 +227,12 @@ fn translate_ui_actions(
                 if let Some(first) = state.pending_cable {
                     if first != *port {
                         let length_cm = state.cable_length_cm;
-                        match snapshot.0.quote_colored_cable(
+                        match snapshot.0.quote_routed_colored_cable(
                             first,
                             *port,
                             length_cm,
                             state.cable_color,
+                            &state.pending_cable_route,
                         ) {
                             Ok(quote) => {
                                 let stock = snapshot.0.cable_inventory();

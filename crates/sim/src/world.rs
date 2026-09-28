@@ -10,6 +10,8 @@ pub struct NetworkSim {
     pub(crate) links: HashMap<LinkId, Link>,
     pub(crate) racks: HashMap<RackId, Rack>,
     #[serde(default)]
+    pub room: DataCenterRoom,
+    #[serde(default)]
     pub power: PowerSystem,
     pub money: i64,
     #[serde(default)]
@@ -49,6 +51,7 @@ impl NetworkSim {
             ports: HashMap::new(),
             links: HashMap::new(),
             racks: HashMap::new(),
+            room: DataCenterRoom::default(),
             power: PowerSystem::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
@@ -445,11 +448,81 @@ impl NetworkSim {
             },
         );
         self.power.add_rack(id);
+        let column = (id.0.saturating_sub(1) % 5) as u16;
+        let row = (id.0.saturating_sub(1) / 5) as u16;
+        self.room.rack_positions.insert(id, RoomPosition { x_cm: 140 + column * 200, y_cm: 160 + row * 180 });
         id
+    }
+
+    pub fn rack_room_position(&self, id: RackId) -> RoomPosition {
+        self.room.rack_positions.get(&id).copied().unwrap_or(RoomPosition {
+            x_cm: 140 + ((id.0.saturating_sub(1) % 5) as u16) * 200,
+            y_cm: 160 + ((id.0.saturating_sub(1) / 5) as u16) * 180,
+        })
+    }
+
+    fn validate_room_position(&self, position: RoomPosition) -> Result<(), SimError> {
+        if position.x_cm < 50 || position.y_cm < 50 || position.x_cm > self.room.width_cm - 50 || position.y_cm > self.room.depth_cm - 50 {
+            return Err(SimError::InvalidRoomPosition);
+        }
+        Ok(())
+    }
+
+    fn validate_installed_cable_lengths(&self) -> Result<(), SimError> {
+        for link in self.links.values() {
+            let minimum_cm = if link.route.is_empty() {
+                self.minimum_cable_length(link.a, link.b)?
+            } else {
+                self.minimum_routed_cable_length(link.a, link.b, &link.route)?
+            };
+            if link.length_cm < minimum_cm { return Err(SimError::CableTooShort { minimum_cm }); }
+        }
+        Ok(())
     }
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::AddRack { name, units } => {
+                if !(1..=48).contains(&units) { return Err(SimError::RackPlacementOutOfBounds); }
+                let price = 500;
+                if self.money < price { return Err(SimError::InsufficientFunds { needed: price, available: self.money }); }
+                if self.next_rack_id > 20 { return Err(SimError::InvalidRoomPosition); }
+                self.money -= price;
+                self.add_rack(name, units);
+                vec![]
+            }
+            Command::MoveRackInRoom { rack, position } => {
+                if !self.racks.contains_key(&rack) { return Err(SimError::RackNotFound(rack)); }
+                self.validate_room_position(position)?;
+                if self.racks.keys().any(|other| *other != rack && {
+                    let p = self.rack_room_position(*other);
+                    p.x_cm.abs_diff(position.x_cm) < 130 && p.y_cm.abs_diff(position.y_cm) < 100
+                }) { return Err(SimError::InvalidRoomPosition); }
+                let old = self.room.rack_positions.insert(rack, position);
+                if let Err(error) = self.validate_installed_cable_lengths() {
+                    if let Some(old) = old { self.room.rack_positions.insert(rack, old); }
+                    else { self.room.rack_positions.remove(&rack); }
+                    return Err(error);
+                }
+                vec![]
+            }
+            Command::AddRoomCableAnchor { position } => {
+                self.validate_room_position(position)?;
+                let id = self.room.cable_anchors.iter().map(|a| a.id).max().unwrap_or(0).checked_add(1).ok_or(SimError::InvalidRoomPosition)?;
+                self.room.cable_anchors.push(RoomCableAnchor { id, position });
+                vec![]
+            }
+            Command::MoveRoomCableAnchor { id, position } => {
+                self.validate_room_position(position)?;
+                let anchor = self.room.cable_anchors.iter_mut().find(|a| a.id == id).ok_or(SimError::RoomAnchorNotFound(id))?;
+                let old = anchor.position;
+                anchor.position = position;
+                if let Err(error) = self.validate_installed_cable_lengths() {
+                    self.room.cable_anchors.iter_mut().find(|a| a.id == id).unwrap().position = old;
+                    return Err(error);
+                }
+                vec![]
+            }
             Command::BuyCableSupply { supply } => {
                 self.buy_cable_supply(supply)?;
                 vec![SimEvent::CableSuppliesPurchased(supply)]
@@ -2003,6 +2076,11 @@ impl NetworkSim {
         Ok(())
     }
     fn validate_route_point(&self, point: &CableRoutePoint) -> Result<(), SimError> {
+        if let Some(id) = point.room_anchor_id() {
+            return if self.room.cable_anchors.iter().any(|anchor| anchor.id == id) {
+                Ok(())
+            } else { Err(SimError::RoomAnchorNotFound(id)) };
+        }
         let rack = self
             .racks
             .get(&point.rack)

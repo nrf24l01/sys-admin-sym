@@ -7,6 +7,7 @@ mod cables;
 mod equipment;
 mod inventory;
 mod rack;
+mod room;
 mod shop;
 use cables::{CableScene, CableView, PowerCableView};
 use equipment::equipment_power_port_position;
@@ -296,7 +297,7 @@ fn top_bar(
                 ui.strong(format!("${}", sim.money));
                 ui.separator();
                 for (workspace, label) in
-                    [(Workspace::Rack, "RACK"), (Workspace::Topology, "TOPOLOGY")]
+                    [(Workspace::Room, "ROOM"), (Workspace::Rack, "RACK"), (Workspace::Topology, "TOPOLOGY")]
                 {
                     if ui
                         .selectable_label(state.workspace == workspace, label)
@@ -1393,6 +1394,7 @@ fn workspace(
     actions: &mut MessageWriter<UiAction>,
 ) {
     match state.workspace {
+        Workspace::Room => room::show(viewport, sim, state, actions),
         Workspace::Rack => rack_view(viewport, sim, state, textures, cables, actions),
         Workspace::Topology => topology_view(viewport, sim, actions),
     }
@@ -1407,11 +1409,23 @@ fn rack_view(
     actions: &mut MessageWriter<UiAction>,
 ) {
     egui::CentralPanel::default().show(viewport, |ui| {
-        let Some(rack) = sim.racks().min_by_key(|r| r.id) else {
+        let Some(rack) = state.active_rack.and_then(|id| sim.rack(id))
+            .or_else(|| sim.racks().min_by_key(|r| r.id)) else {
             return;
         };
         ui.vertical_centered(|ui| {
             ui.heading(format!("{} · {:?} SIDE", rack.name, state.rack_side));
+            ui.horizontal(|ui| {
+                ui.label("Rack:");
+                let mut racks: Vec<_> = sim.racks().collect();
+                racks.sort_by_key(|rack| rack.id);
+                for candidate in racks {
+                    if ui.selectable_label(candidate.id == rack.id, &candidate.name).clicked() {
+                        state.active_rack = Some(candidate.id);
+                    }
+                }
+                if ui.button("Room view").clicked() { state.workspace = Workspace::Room; }
+            });
             ui.horizontal(|ui| {
                 for side in [RackSide::Front, RackSide::Rear] {
                     if ui
@@ -1994,7 +2008,7 @@ fn rack_view(
                         Some(cables::CreationTarget {
                             location: cables::port_location(sim, *port)?, rect: *rect,
                             same_socket: first == *port,
-                            valid: sim.quote_colored_cable(first, *port, state.cable_length_cm, state.cable_color).is_ok(),
+                            valid: sim.quote_routed_colored_cable(first, *port, state.cable_length_cm, state.cable_color, &state.pending_cable_route).is_ok(),
                         })
                     }).collect(),
                     PendingCableId::Power(source) => power_socket_rects.iter().filter_map(|(target, rect)| {
@@ -2172,11 +2186,12 @@ fn rack_view(
                         .pending_cable
                         .filter(|first| *first != port_id)
                         .map(|first| {
-                            match sim.quote_colored_cable(
+                            match sim.quote_routed_colored_cable(
                                 first,
                                 port_id,
                                 state.cable_length_cm,
                                 state.cable_color,
+                                &state.pending_cable_route,
                             ) {
                                 Ok(q) if q.reused => format!(
                                     "\nReuse {:.2} m finished lead (no materials used)",
