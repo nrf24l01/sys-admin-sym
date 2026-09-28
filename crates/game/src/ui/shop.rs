@@ -1,7 +1,17 @@
 use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
-use cloud_provider_sim::{CableSupply, DeviceTemplate, NetworkSim, PciCard, ServerPart, ServerPartKind, server_catalog};
+use cloud_provider_sim::{CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, ServerPart, ServerPartKind, drive_catalog, server_catalog};
+
+fn drive_matches(drive: &DriveModel, state: &ShopState, money: i64) -> bool {
+    state.category == ShopCategory::Compute
+        && state.section.is_none_or(|s| s == ShopSection::Storage)
+        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+        && (state.search.trim().is_empty()
+            || format!("{} {}", drive.name, drive.id).to_lowercase().contains(&state.search.trim().to_lowercase()))
+        && (!state.affordable_only || drive.price <= money)
+        && state.max_price.is_none_or(|max| drive.price <= max)
+}
 
 fn part_matches(part: &ServerPart, state: &ShopState, money: i64) -> bool {
     state.category == ShopCategory::Compute
@@ -198,16 +208,17 @@ pub(super) fn show(
                         .filter(|product| product.matches(state, sim.money))
                         .collect();
                     let parts: Vec<_> = server_catalog().parts.iter().filter(|part| part_matches(part, state, sim.money)).collect();
+                    let drives: Vec<_> = drive_catalog().drives.iter().filter(|drive| drive_matches(drive, state, sim.money)).collect();
                     ui.label(format!(
                         "{} product{}",
-                        products.len() + parts.len(),
-                        if products.len() + parts.len() == 1 { "" } else { "s" }
+                        products.len() + parts.len() + drives.len(),
+                        if products.len() + parts.len() + drives.len() == 1 { "" } else { "s" }
                     ));
                     egui::ScrollArea::vertical()
                         .id_salt("shop-products")
                         .max_height(ui.available_height().max(120.0))
                         .show(ui, |ui| {
-                            if products.is_empty() && parts.is_empty() {
+                            if products.is_empty() && parts.is_empty() && drives.is_empty() {
                                 ui.weak("No products match these filters.");
                                 if ui.button("Clear filters").clicked() {
                                     state.clear_filters();
@@ -249,6 +260,18 @@ pub(super) fn show(
                                     });
                                 }
                             }
+                            for drive in drives {
+                                ui.group(|ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    ui.strong(&drive.name);
+                                    ui.weak(format!("{} GB · {} · {} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
+                                        drive.capacity_gb, if drive.kind == cloud_provider_sim::DriveKind::Ssd { "SSD" } else { "HDD" }, drive.interface,
+                                        drive.read_mb_s, drive.read_iops, drive.write_mb_s, drive.write_iops));
+                                    if ui.add_enabled(sim.money >= drive.price, egui::Button::new(format!("Buy — ${}", drive.price))).clicked() {
+                                        actions.write(UiAction::BuyDrive(drive.id.clone()));
+                                    }
+                                });
+                            }
                         });
                 });
             });
@@ -270,7 +293,7 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
         (
             ShopCategory::Compute,
             "Compute",
-            &[(ShopSection::DellServers, "DELL servers")][..],
+            &[(ShopSection::DellServers, "DELL servers"), (ShopSection::Storage, "Storage drives")][..],
         ),
         (
             ShopCategory::Power,
@@ -516,5 +539,14 @@ mod tests {
             products[0].buy(),
             UiAction::BuyServerChassis
         ));
+    }
+
+    #[test]
+    fn storage_section_lists_drives_separately_from_server_parts() {
+        let mut state = ShopState { category: ShopCategory::Compute, section: Some(ShopSection::Storage), ..Default::default() };
+        assert!(server_catalog().parts.iter().all(|part| !part_matches(part, &state, 6000)));
+        assert_eq!(drive_catalog().drives.iter().filter(|drive| drive_matches(drive, &state, 6000)).count(), 2);
+        state.search = "SSD".into();
+        assert_eq!(drive_catalog().drives.iter().filter(|drive| drive_matches(drive, &state, 6000)).count(), 1);
     }
 }

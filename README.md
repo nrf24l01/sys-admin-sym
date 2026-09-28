@@ -23,6 +23,9 @@ The game starts with one empty 12U rack and $6,000.
    and install owned parts in its inspector. The PCIe slot list shows lane use;
    a card adds four working rear RJ45 ports and changes the rear backplane.
    The server powers on only after its required parts are installed.
+   Buy HDDs or SSDs in **Compute → Storage drives** and install them in the
+   server's four drive bays. Each model lists capacity, read/write speed, and
+   read/write IOPS; installed drives appear on the front panel.
 3. Buy an APC Smart-UPS or PDU, place it in the rack, then connect active
    devices by clicking an empty power outlet or inlet and then its complementary
    socket. Click the same pending socket to cancel. Right-click an occupied
@@ -53,8 +56,9 @@ The game starts with one empty 12U rack and $6,000.
    and `configure terminal`; use `?` for supported commands. VLANs, switchports,
    router IP addresses/subinterfaces, shutdown, and startup configurations are
    backed by the simulator. Each device has its own console and history.
-7. Select a server and use `ip`, `route`, `arp`, `ping <ip>`, or
-   `traceroute <ip>` in its terminal.
+7. Servers use a Linux-style terminal. Use `ip`, `ethtool eth0`, `netstat -i`,
+   `lsblk`, `smartctl -a /dev/sda`, `free -h`, `lscpu`, `ping <ip>`, or
+   `traceroute <ip>`. Cisco IOS commands apply only to switches and routers.
 
 See [the IOS-style console guide](docs/IOS_GUIDE.md) for Cisco reference manuals,
 a working switch/router configuration example, interface names, and the exact

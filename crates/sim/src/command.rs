@@ -33,6 +33,9 @@ pub enum Command {
     },
     BuyServerChassis,
     BuyServerPart { part_id: String },
+    BuyDrive { drive_id: String },
+    InstallDrive { device: DeviceId, drive_id: String, bay: Option<usize> },
+    RemoveDrive { device: DeviceId, bay: usize },
     InstallServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
     RemoveServerPart { device: DeviceId, part_id: String, slot: Option<usize> },
     SellDevice {

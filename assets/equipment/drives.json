@@ -1,0 +1,6 @@
+{
+  "drives": [
+    { "id": "enterprise_hdd_2tb", "name": "2 TB Enterprise SATA HDD", "kind": "hdd", "interface": "SATA", "capacity_gb": 2000, "read_mb_s": 220, "write_mb_s": 210, "read_iops": 180, "write_iops": 170, "power_w": 9, "price": 130 },
+    { "id": "enterprise_ssd_960gb", "name": "960 GB Enterprise SATA SSD", "kind": "ssd", "interface": "SATA", "capacity_gb": 960, "read_mb_s": 550, "write_mb_s": 520, "read_iops": 98000, "write_iops": 30000, "power_w": 4, "price": 230 }
+  ]
+}

@@ -647,6 +647,29 @@ fn server_hardware_inspector(
             }
         });
     }
+    ui.separator();
+    ui.strong("Drive bays");
+    ui.weak("Buy drives in Compute → Storage drives, then install them here.");
+    for (bay, slot) in chassis.drive_bays.iter().enumerate() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("{} ({})", slot.name, slot.interface));
+            if let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) {
+                if let Some(drive) = cloud_provider_sim::drive_catalog().drives.iter().find(|d| d.id == id) {
+                    ui.label(format!("{} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
+                        drive.name, drive.read_mb_s, drive.read_iops, drive.write_mb_s, drive.write_iops));
+                } else { ui.label(id); }
+                if ui.button("Remove drive").clicked() { actions.write(UiAction::RemoveDrive { device, bay }); }
+            } else {
+                ui.weak("empty");
+                for drive in &cloud_provider_sim::drive_catalog().drives {
+                    if drive.interface == slot.interface && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
+                        && ui.button(format!("Install {}", drive.name)).clicked() {
+                        actions.write(UiAction::InstallDrive { device, drive_id: drive.id.clone(), bay: Some(bay) });
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn power_controls(
@@ -1201,7 +1224,7 @@ fn terminal_window(
             ui.colored_label(
                 egui::Color32::from_rgb(125, 190, 145),
                 if server {
-                    "SERVER CONSOLE • LIVE"
+                    "LINUX CONSOLE • LIVE"
                 } else {
                     "IOS CONSOLE • LIVE"
                 },
@@ -1506,6 +1529,8 @@ fn rack_view(
                                             ui.painter().image(texture, panel_rect, equipment_uv(&device.kind, state.rack_side), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
                                             if state.rack_side == RackSide::Rear {
                                                 paint_server_backplane(ui.painter(), panel_rect, &device.kind, device.powered);
+                                            } else {
+                                                paint_server_drives(ui.painter(), panel_rect, &device.kind);
                                             }
                                             if matches!(device.kind, DeviceKind::Ups(_)) && state.rack_side == RackSide::Front {
                                                 let lcd = ups_lcd_rect(panel_rect);
@@ -2351,6 +2376,25 @@ fn paint_server_backplane(
     }
 }
 
+fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &DeviceKind) {
+    let DeviceKind::Server(server) = kind else { return };
+    let Some(hardware) = &server.hardware else { return };
+    for (bay, slot) in cloud_provider_sim::server_catalog().chassis.drive_bays.iter().enumerate() {
+        let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) else { continue };
+        let [left, top, right, bottom] = slot.face_rect;
+        let tray = egui::Rect::from_min_max(
+            egui::pos2(panel.left() + panel.width() * left, panel.top() + panel.height() * top),
+            egui::pos2(panel.left() + panel.width() * right, panel.top() + panel.height() * bottom),
+        );
+        painter.rect_stroke(tray, 2.0, egui::Stroke::new(1.5, egui::Color32::from_gray(190)), egui::StrokeKind::Inside);
+        let model = cloud_provider_sim::drive_catalog().drives.iter().find(|drive| drive.id == id);
+        let label = model.map_or("DRIVE", |drive| if drive.kind == cloud_provider_sim::DriveKind::Ssd { "SSD" } else { "HDD" });
+        let badge = egui::Rect::from_min_size(tray.left_bottom() - egui::vec2(0.0, 11.0), egui::vec2(tray.width(), 11.0));
+        painter.rect_filled(badge, 1.0, egui::Color32::from_black_alpha(210));
+        painter.text(badge.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::monospace(8.0), egui::Color32::from_rgb(175, 214, 216));
+    }
+}
+
 fn connector_label(connector: PortConnector) -> &'static str {
     match connector {
         PortConnector::Rj45 => "RJ45",
@@ -2598,6 +2642,26 @@ mod tests {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
                 paint_server_backplane(ui.painter(), panel, kind, true);
             });
+            let count = output.shapes.len();
+            output.textures_delta.clear();
+            count
+        };
+        assert!(shape_count(&populated) > shape_count(&empty));
+    }
+
+    #[test]
+    fn server_front_marks_only_installed_drive_bays() {
+        use cloud_provider_sim::{Command, SimEvent};
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else { panic!() };
+        let empty = sim.device(id).unwrap().kind.clone();
+        sim.execute(Command::BuyDrive { drive_id: "enterprise_ssd_960gb".into() }).unwrap();
+        sim.execute(Command::InstallDrive { device: id, drive_id: "enterprise_ssd_960gb".into(), bay: Some(2) }).unwrap();
+        let populated = sim.device(id).unwrap().kind.clone();
+        let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
+        let shape_count = |kind: &DeviceKind| {
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| paint_server_drives(ui.painter(), panel, kind));
             let count = output.shapes.len();
             output.textures_delta.clear();
             count

@@ -6,6 +6,12 @@
     "dimm_slots": 4,
     "memory_type": "DDR5 ECC UDIMM",
     "psu_bays": 2,
+    "drive_bays": [
+      { "name": "Bay 1", "interface": "SATA", "face_rect": [0.13, 0.22, 0.28, 0.86] },
+      { "name": "Bay 2", "interface": "SATA", "face_rect": [0.34, 0.22, 0.49, 0.86] },
+      { "name": "Bay 3", "interface": "SATA", "face_rect": [0.55, 0.22, 0.70, 0.86] },
+      { "name": "Bay 4", "interface": "SATA", "face_rect": [0.76, 0.22, 0.91, 0.86] }
+    ],
     "pcie_slots": [
       { "name": "PCIe 1", "lanes": 8, "generation": 4, "width": 8, "face_rect": [0.30, 0.10, 0.62, 0.43] },
       { "name": "PCIe 2", "lanes": 8, "generation": 4, "width": 16, "face_rect": [0.30, 0.57, 0.62, 0.90] }

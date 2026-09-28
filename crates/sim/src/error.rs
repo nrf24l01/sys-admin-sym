@@ -60,6 +60,10 @@ pub enum SimError {
     ServerPartNotOwned(String),
     #[error("server hardware: {0}")]
     ServerHardware(String),
+    #[error("unknown drive model: {0}")]
+    UnknownDrive(String),
+    #[error("drive is not in inventory: {0}")]
+    DriveNotOwned(String),
     #[error("link does not exist")]
     LinkNotFound,
     #[error("device must be removed from its rack first")]

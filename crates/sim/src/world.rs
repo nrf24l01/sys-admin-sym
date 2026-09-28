@@ -16,6 +16,8 @@ pub struct NetworkSim {
     pub(crate) cable_inventory: CableInventory,
     #[serde(default)]
     pub server_parts: HashMap<String, u32>,
+    #[serde(default)]
+    pub drive_inventory: HashMap<String, u32>,
     pub topology_revision: u64,
     pub routing_revision: u64,
     #[serde(default)]
@@ -51,6 +53,7 @@ impl NetworkSim {
             money: 6_000,
             cable_inventory: CableInventory::default(),
             server_parts: HashMap::new(),
+            drive_inventory: HashMap::new(),
             topology_revision: 0,
             routing_revision: 0,
             ios_configs: HashMap::new(),
@@ -210,6 +213,9 @@ impl NetworkSim {
                     if hardware.pcie.len() < slots { hardware.pcie.resize(slots, None); }
                     if hardware.card_ports.len() < hardware.pcie.len() {
                         hardware.card_ports.resize_with(hardware.pcie.len(), Vec::new);
+                    }
+                    if hardware.drives.len() < server_catalog().chassis.drive_bays.len() {
+                        hardware.drives.resize(server_catalog().chassis.drive_bays.len(), None);
                     }
                 }
             }
@@ -492,6 +498,7 @@ impl NetworkSim {
                 server.hardware = Some(ServerHardware {
                     pcie: vec![None; server_catalog().chassis.pcie_slots.len()],
                     card_ports: vec![Vec::new(); server_catalog().chassis.pcie_slots.len()],
+                    drives: vec![None; server_catalog().chassis.drive_bays.len()],
                     ..Default::default()
                 });
                 self.update_server_load(id);
@@ -499,6 +506,18 @@ impl NetworkSim {
             }
             Command::BuyServerPart { part_id } => {
                 self.buy_server_part(&part_id)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::BuyDrive { drive_id } => {
+                self.buy_drive(&drive_id)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::InstallDrive { device, drive_id, bay } => {
+                self.install_drive(device, &drive_id, bay)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::RemoveDrive { device, bay } => {
+                self.remove_drive(device, bay)?;
                 vec![SimEvent::ConnectivityChanged]
             }
             Command::InstallServerPart { device, part_id, slot } => {
@@ -923,6 +942,54 @@ impl NetworkSim {
         Ok(())
     }
 
+    fn buy_drive(&mut self, drive_id: &str) -> Result<(), SimError> {
+        let drive = drive_catalog().drives.iter().find(|d| d.id == drive_id)
+            .ok_or_else(|| SimError::UnknownDrive(drive_id.into()))?;
+        if self.money < drive.price {
+            return Err(SimError::InsufficientFunds { needed: drive.price, available: self.money });
+        }
+        self.money -= drive.price;
+        *self.drive_inventory.entry(drive_id.into()).or_default() += 1;
+        Ok(())
+    }
+
+    fn install_drive(&mut self, device: DeviceId, drive_id: &str, bay: Option<usize>) -> Result<(), SimError> {
+        let drive = drive_catalog().drives.iter().find(|d| d.id == drive_id)
+            .ok_or_else(|| SimError::UnknownDrive(drive_id.into()))?;
+        if self.drive_inventory.get(drive_id).copied().unwrap_or(0) == 0 {
+            return Err(SimError::DriveNotOwned(drive_id.into()));
+        }
+        let DeviceKind::Server(server) = &self.devices.get(&device).ok_or(SimError::DeviceNotFound(device))?.kind
+            else { return Err(SimError::ServerHardware("selected device is not a server".into())); };
+        let hardware = server.hardware.as_ref().ok_or_else(|| SimError::ServerHardware("legacy server has no configurable drive bays".into()))?;
+        let chassis = &server_catalog().chassis;
+        let compatible = |index: usize| chassis.drive_bays.get(index).is_some_and(|slot|
+            slot.interface == drive.interface && hardware.drives.get(index).is_some_and(Option::is_none));
+        let index = bay.or_else(|| (0..chassis.drive_bays.len()).find(|&i| compatible(i)))
+            .ok_or_else(|| SimError::ServerHardware("no compatible free drive bay".into()))?;
+        if !compatible(index) {
+            return Err(SimError::ServerHardware("drive bay is occupied or incompatible".into()));
+        }
+        let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind else { unreachable!() };
+        server.hardware.as_mut().unwrap().drives[index] = Some(drive_id.into());
+        *self.drive_inventory.get_mut(drive_id).unwrap() -= 1;
+        self.update_server_load(device);
+        self.sync_effective_power();
+        Ok(())
+    }
+
+    fn remove_drive(&mut self, device: DeviceId, bay: usize) -> Result<(), SimError> {
+        let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).ok_or(SimError::DeviceNotFound(device))?.kind
+            else { return Err(SimError::ServerHardware("selected device is not a server".into())); };
+        let drive = server.hardware.as_mut().and_then(|h| h.drives.get_mut(bay))
+            .and_then(Option::take)
+            .ok_or_else(|| SimError::ServerHardware("drive bay is empty".into()))?;
+        *self.drive_inventory.entry(drive).or_default() += 1;
+        self.update_server_load(device);
+        self.sync_effective_power();
+        Ok(())
+    }
+
     fn install_server_part(&mut self, device: DeviceId, part_id: &str, slot: Option<usize>) -> Result<(), SimError> {
         let catalog = server_catalog();
         let part = catalog.parts.iter().find(|p| p.id == part_id)
@@ -1086,6 +1153,9 @@ impl NetworkSim {
                     .chain(&hardware.power_supplies)
                     .chain(hardware.pcie.iter().flatten()) {
                     *self.server_parts.entry(part.clone()).or_default() += 1;
+                }
+                for drive in hardware.drives.iter().flatten() {
+                    *self.drive_inventory.entry(drive.clone()).or_default() += 1;
                 }
             }
         }

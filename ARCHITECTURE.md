@@ -48,6 +48,13 @@ saves receive a refund for previously purchased fans.
 The initial [Xeon E-2434](https://www.intel.com/content/www/us/en/products/sku/236192/intel-xeon-e2434-processor-12m-cache-3-40-ghz/specifications.html)
 and [I350 adapter](https://www.intel.com/content/dam/doc/product-brief/ethernet-i350-server-adapter-brief.pdf)
 specifications are from Intel; chassis base power is a game estimate.
+Drive models and rated throughput/IOPS live in `assets/equipment/drives.json`.
+The R360's four SATA bays are declared in the server chassis JSON. Purchased
+drives are saved in a separate storage inventory; installation validates the
+bay interface and updates the server's power load. The Linux console projects
+installed drives as `/dev/sd*` devices, while `ethtool` and `netstat -i` read
+the simulated network ports and runtime counters. Drive ratings describe the
+model; filesystem and measured disk I/O are not simulated yet.
 
 Cable inventory is domain state: a 305 m bulk box is raw stock, connector packs
 provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.

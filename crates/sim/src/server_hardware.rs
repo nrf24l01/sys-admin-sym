@@ -15,7 +15,15 @@ pub struct ServerChassis {
     pub dimm_slots: usize,
     pub memory_type: String,
     pub psu_bays: usize,
+    pub drive_bays: Vec<DriveBay>,
     pub pcie_slots: Vec<PcieSlot>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DriveBay {
+    pub name: String,
+    pub interface: String,
+    pub face_rect: [f32; 4],
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -99,6 +107,8 @@ pub struct ServerHardware {
     /// One entry per physical chassis slot. `None` means the slot is empty.
     pub pcie: Vec<Option<String>>,
     #[serde(default)]
+    pub drives: Vec<Option<String>>,
+    #[serde(default)]
     pub card_ports: Vec<Vec<crate::PortId>>,
 }
 
@@ -126,7 +136,10 @@ impl ServerHardware {
                 _ => None,
             })
             .sum();
-        100 + cpu_w + self.ram.len() as u32 * 5 + card_w
+        let drive_w: u32 = self.drives.iter().flatten()
+            .filter_map(|id| crate::drive_catalog().drives.iter().find(|drive| &drive.id == id))
+            .map(|drive| u32::from(drive.power_w)).sum();
+        100 + cpu_w + self.ram.len() as u32 * 5 + card_w + drive_w
     }
 
     pub fn ready(&self) -> bool {
