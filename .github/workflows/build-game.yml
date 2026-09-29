@@ -85,10 +85,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xauth mesa-vulkan-drivers libvulkan1 libx11-6 libxrandr2 libxcursor1 libxi6 libxkbcommon-x11-0
-          test -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          lvp_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
+          if [ -z "$lvp_icd" ]; then
+            echo 'Mesa Lavapipe Vulkan driver manifest was not installed' >&2
+            exit 1
+          fi
+          echo "Using software Vulkan driver: $lvp_icd"
           set +e
           timeout 30s xvfb-run -a env WGPU_BACKEND=vulkan \
-            VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json \
+            VK_DRIVER_FILES="$lvp_icd" \
             target/${{ matrix.target }}/release/cloud-provider-sim > linux-smoke.log 2>&1
           status=$?
           set -e
