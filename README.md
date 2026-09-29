@@ -16,7 +16,7 @@ cargo run --release
 Open [Build game on GitHub Actions](https://github.com/nrf24l01/sys-admin-sym/actions/workflows/build-game.yml),
 choose the latest successful run, and download one of its **Artifacts**:
 
-- `game-x86_64-unknown-linux-musl` for 64-bit Linux.
+- `game-x86_64-unknown-linux-gnu` for 64-bit Linux.
 - `game-x86_64-pc-windows-gnu` for 64-bit Windows.
 
 GitHub downloads an outer artifact ZIP. Extract it, then extract the
@@ -25,16 +25,19 @@ together. On Linux, run `chmod +x cloud-provider-sim` if needed, then launch
 `./cloud-provider-sim`. On Windows, launch `cloud-provider-sim.exe`.
 The game saves `cloud-provider-save.db` in its current working directory.
 
-The Linux build uses a static musl C runtime; the Windows build statically
-links the MinGW runtime. A graphical desktop and working graphics driver are still
-required. The ZIPs contain the runtime assets and do not require Rust or the
-Visual C++ redistributable. GitHub sign-in with repository read access is
-required to download workflow artifacts; the inner ZIP can be shared directly.
+The Linux build includes Rust dependencies in the executable and uses the host's
+glibc and desktop libraries; winit needs to load X11 libraries at runtime.
+The Windows build statically links the MinGW runtime. A graphical desktop and
+working graphics driver are still required. The ZIPs contain the runtime assets
+and do not require Rust or the Visual C++ redistributable. GitHub sign-in with
+repository read access is required to download workflow artifacts; the inner ZIP
+can be shared directly.
 
 The [build workflow](.github/workflows/build-game.yml) runs on pushes to
 `main` that change Rust code, assets, packaging code, or the workflow itself,
 and can also be started manually with **Run workflow**. It runs workspace
-tests and a ZIP packaging test before either release build. Both x86-64 builds
+tests and a ZIP packaging test before either release build. CI also launches the
+Linux build under Xvfb to catch startup failures. Both x86-64 builds
 use `cross` in Docker with GitHub Actions caches and upload ZIP artifacts retained
 for 30 days. It needs only a GitHub-hosted Linux runner with Docker and
 `contents: read` permission; no secrets or

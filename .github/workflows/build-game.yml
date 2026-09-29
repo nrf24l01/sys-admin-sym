@@ -49,14 +49,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             extension: ""
           - target: x86_64-pc-windows-gnu
             extension: .exe
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+crt-static
       CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static
     steps:
       - name: Check out source
@@ -80,12 +79,24 @@ jobs:
           fi
       - name: Build release game
         run: cross build --release --locked --target ${{ matrix.target }} -p cloud-provider-game --bin cloud-provider-sim
-      - name: Verify Linux executable has no dynamic loader
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Smoke test Linux game under X11
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
-          if readelf -l target/${{ matrix.target }}/release/cloud-provider-sim | grep -q INTERP; then
-            echo 'Linux executable unexpectedly has a dynamic loader' >&2
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libx11-6 libxrandr2 libxcursor1 libxi6 libxkbcommon-x11-0
+          set +e
+          timeout 30s xvfb-run -a env WGPU_BACKEND=gl \
+            target/${{ matrix.target }}/release/cloud-provider-sim > linux-smoke.log 2>&1
+          status=$?
+          set -e
+          cat linux-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            echo "Linux game exited with status $status during launch" >&2
+            exit 1
+          fi
+          if grep -q 'panicked at' linux-smoke.log; then
+            echo 'Linux game panicked during launch' >&2
             exit 1
           fi
       - name: Verify Windows executable needs no bundled runtime DLLs
