@@ -1,0 +1,112 @@
+name: Build game
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - Cross.toml
+      - crates/**
+      - assets/**
+      - tools/package_game.py
+      - tools/test_package_game.py
+      - .github/workflows/build-game.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test workspace and package
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Cache Cargo dependencies and test build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: rust-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            rust-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Run Rust tests
+        run: cargo test --workspace --locked
+      - name: Test portable ZIP packaging
+        run: python3 -m unittest discover -s tools -p test_package_game.py
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            extension: ""
+          - target: x86_64-pc-windows-gnu
+            extension: .exe
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Cache Cargo dependencies and release build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/cross
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: rust-build-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            rust-build-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Install cross
+        run: |
+          if ! command -v cross >/dev/null; then
+            cargo install cross --locked --version 0.2.5
+          fi
+      - name: Build release game
+        run: cross build --release --locked --target ${{ matrix.target }} -p cloud-provider-game --bin cloud-provider-sim
+      - name: Verify Linux executable has no dynamic loader
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        shell: bash
+        run: |
+          if readelf -l target/${{ matrix.target }}/release/cloud-provider-sim | grep -q INTERP; then
+            echo 'Linux executable unexpectedly has a dynamic loader' >&2
+            exit 1
+          fi
+      - name: Verify Windows executable needs no bundled runtime DLLs
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        shell: bash
+        run: |
+          imports="$(objdump -p target/${{ matrix.target }}/release/cloud-provider-sim.exe | grep 'DLL Name:' || true)"
+          if printf '%s\n' "$imports" | grep -Eiq 'libgcc|libstdc\+\+|libwinpthread|vcruntime|msvcp'; then
+            printf 'Unexpected runtime DLL dependency:\n%s\n' "$imports" >&2
+            exit 1
+          fi
+      - name: Package executable, assets, and instructions
+        run: >-
+          python tools/package_game.py
+          --executable target/${{ matrix.target }}/release/cloud-provider-sim${{ matrix.extension }}
+          --assets assets
+          --readme README.md
+          --output dist/cloud-provider-sim-${{ matrix.target }}.zip
+      - name: Upload shareable ZIP
+        uses: actions/upload-artifact@v7
+        with:
+          name: game-${{ matrix.target }}
+          path: dist/cloud-provider-sim-${{ matrix.target }}.zip
+          if-no-files-found: error
+          retention-days: 30
