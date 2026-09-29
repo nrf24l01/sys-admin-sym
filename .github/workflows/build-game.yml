@@ -22,7 +22,7 @@ jobs:
     name: Test workspace and package
     runs-on: ubuntu-latest
     env:
-      CARGO_INCREMENTAL: 0
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -55,8 +55,9 @@ jobs:
             extension: .exe
     runs-on: ubuntu-latest
     env:
-      CARGO_INCREMENTAL: 0
-      RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static
+      CARGO_INCREMENTAL: "0"
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+crt-static
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static
     steps:
       - name: Check out source
         uses: actions/checkout@v6
