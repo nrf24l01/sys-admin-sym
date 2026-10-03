@@ -201,6 +201,10 @@ fn resolve<'a>(input: &str, grammar: &'a [&str]) -> Result<(&'a str, Vec<String>
 }
 
 impl NetworkSim {
+    pub fn console_management_ip(&self, device: DeviceId) -> Option<Ipv4Addr> {
+        self.ios_configs.get(&device)?.management_ip
+    }
+
     pub fn console_hostname(&self, device: DeviceId) -> Option<&str> {
         let dev = self.device(device)?;
         match &dev.kind {

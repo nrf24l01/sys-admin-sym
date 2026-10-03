@@ -111,7 +111,9 @@ impl ConsoleSession {
 
     fn disconnects(&self, input: &str) -> bool {
         let input = input.trim();
-        input == "~." || input == "logout" || (input == "exit" && !self.prompt.ends_with('#'))
+        input == "~."
+            || input == "logout"
+            || (input == "exit" && !self.prompt.ends_with('#') && !self.prompt.starts_with("ssh:"))
     }
 }
 
@@ -126,6 +128,8 @@ mod tests {
             ("Switch>", true),
             ("Switch#", false),
             ("Switch(config)#", false),
+            ("ssh:2 web$", false),
+            ("ssh:2 Switch>", false),
         ] {
             let session = ConsoleSession {
                 client: GameClient::new("127.0.0.1".into(), 47655, "game".into()),

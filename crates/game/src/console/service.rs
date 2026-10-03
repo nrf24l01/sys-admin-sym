@@ -84,6 +84,9 @@ impl<'a> ConsoleService<'a> {
                 _ => Vec::new(),
             })
             .collect();
+        if let Some(address) = self.sim.console_management_ip(device.id) {
+            addresses.push(address.to_string());
+        }
         addresses.sort();
         addresses.dedup();
         addresses

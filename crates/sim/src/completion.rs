@@ -28,6 +28,7 @@ const LINUX_COMMANDS: &[&str] = &[
     "smartctl -i <drive>",
     "ping <address>",
     "traceroute <address>",
+    "ssh <address>",
     "ip -s link",
     "ip addr",
     "ip address",
@@ -60,6 +61,14 @@ const LINUX_COMMANDS: &[&str] = &[
 impl NetworkSim {
     /// Complete the token before the cursor without executing a command or changing mode.
     pub fn console_completions(&self, device: DeviceId, input: &str) -> ConsoleCompletion {
+        let mut device = device;
+        let mut visited = std::collections::HashSet::new();
+        while let Some(target) = self.ssh_sessions.get(&device) {
+            if !visited.insert(device) {
+                return ConsoleCompletion::default();
+            }
+            device = *target;
+        }
         let start = input
             .char_indices()
             .rfind(|(_, c)| c.is_whitespace())
@@ -188,6 +197,11 @@ impl NetworkSim {
                         .collect(),
                     _ => Vec::new(),
                 })
+                .chain(
+                    self.ios_configs
+                        .values()
+                        .filter_map(|config| config.management_ip.map(|ip| ip.to_string())),
+                )
                 .collect(),
             "<cidr>" => dev
                 .ports()
@@ -229,6 +243,44 @@ impl NetworkSim {
 mod tests {
     use super::*;
     use crate::{Command, DeviceTemplate, Ipv4InterfaceConfig, SimEvent};
+
+    #[test]
+    fn completion_follows_in_game_ssh_and_includes_management_ips() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(server) = sim.execute(Command::BuyServerChassis).unwrap()[0]
+        else {
+            panic!()
+        };
+        let SimEvent::DeviceAdded(switch) = sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Switch,
+            })
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        sim.ios_configs.entry(switch).or_default().management_ip =
+            Some("192.0.2.3".parse().unwrap());
+        assert_eq!(
+            sim.console_completions(server, "ssh 192.").candidates,
+            ["192.0.2.3"]
+        );
+        sim.ssh_sessions.insert(server, switch);
+        sim.console_modes.insert(switch, IosMode::Privileged);
+        assert_eq!(
+            sim.console_completions(server, "conf").candidates,
+            ["configure"]
+        );
+        assert!(sim.console_completions(server, "lsc").candidates.is_empty());
+        assert_eq!(sim.ssh_sessions.get(&server), Some(&switch));
+        assert_eq!(sim.console_modes.get(&switch), Some(&IosMode::Privileged));
+        sim.ssh_sessions.insert(switch, server);
+        assert!(
+            sim.console_completions(server, "conf")
+                .candidates
+                .is_empty()
+        );
+    }
 
     #[test]
     fn ios_completion_tracks_mode_and_preserves_configuration() {
