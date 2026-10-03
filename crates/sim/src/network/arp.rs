@@ -16,7 +16,10 @@ impl NetworkSim {
                 .iter()
                 .find(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
                 .and_then(|i| i.address),
-            PortConfig::Switch(_) | PortConfig::PatchPanel | PortConfig::CableManager => None,
+            PortConfig::Switch(_)
+            | PortConfig::PatchPanel
+            | PortConfig::CableManager
+            | PortConfig::Infrastructure => None,
         }
     }
 
@@ -51,7 +54,7 @@ impl NetworkSim {
                             > 1;
                 (trunk && iface.vlan.is_some()).then_some(vlan)
             }
-            PortConfig::PatchPanel | PortConfig::CableManager => None,
+            PortConfig::PatchPanel | PortConfig::CableManager | PortConfig::Infrastructure => None,
         }
     }
 
@@ -82,7 +85,19 @@ impl NetworkSim {
         let requests = self.transmit_frame(port, request);
         let mut replies = HashSet::new();
         for delivery in requests {
-            let Some(ip) = self.interface_ipv4(delivery.port, delivery.vlan) else {
+            let Some(ip) = self
+                .interface_ipv4(delivery.port, delivery.vlan)
+                .or_else(|| {
+                    self.public_ipv4_blocks()
+                        .iter()
+                        .find(|block| {
+                            block.uplink == delivery.port
+                                && block.gateway() == target
+                                && block.contains_host(source_ip)
+                        })
+                        .map(|block| block.gateway())
+                })
+            else {
                 continue;
             };
             if ip != target {

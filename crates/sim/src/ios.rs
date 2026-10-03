@@ -7,6 +7,8 @@ use std::net::Ipv4Addr;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IosDeviceConfig {
     pub hostname: Option<String>,
+    #[serde(default)]
+    pub management_ip: Option<Ipv4Addr>,
     pub descriptions: HashMap<String, String>,
 }
 
@@ -77,7 +79,12 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "interface range <range...>",
                 ]);
                 if switch {
-                    commands.extend(["vlan <id>", "no vlan <id>"]);
+                    commands.extend([
+                        "vlan <id>",
+                        "no vlan <id>",
+                        "management ip <address>",
+                        "no management ip",
+                    ]);
                 }
             }
             if matches!(mode, IosMode::Vlan(_)) {
@@ -195,6 +202,13 @@ fn resolve<'a>(input: &str, grammar: &'a [&str]) -> Result<(&'a str, Vec<String>
 
 impl NetworkSim {
     pub fn terminal_prompt(&self, device: DeviceId) -> String {
+        if let Some(target) = self.ssh_sessions.get(&device) {
+            return format!("ssh:{} {}", target, self.local_terminal_prompt(*target));
+        }
+        self.local_terminal_prompt(device)
+    }
+
+    fn local_terminal_prompt(&self, device: DeviceId) -> String {
         let Some(dev) = self.device(device) else {
             return "?>".into();
         };
@@ -237,6 +251,62 @@ impl NetworkSim {
 
     /// Execute one console line atomically. Invalid commands cannot partially configure a range.
     pub fn execute_console(&mut self, device: DeviceId, input: &str) -> TerminalOutput {
+        let input = input.trim();
+        if input == "exit" && self.ssh_sessions.remove(&device).is_some() {
+            return reply(true, "SSH connection closed");
+        }
+        if let Some(target) = self.ssh_sessions.get(&device).copied() {
+            if !self.device(target).is_some_and(|target| target.powered) {
+                self.ssh_sessions.remove(&device);
+                return reply(false, "SSH connection lost: target is offline");
+            }
+            return self.execute_console(target, input);
+        }
+        if let Some(address) = input.strip_prefix("ssh ") {
+            let Ok(address) = address.parse::<Ipv4Addr>() else {
+                return reply(false, "usage: ssh <management-ip>");
+            };
+            let source = self.device(device).and_then(|dev| match &dev.kind {
+                DeviceKind::Server(server) => server
+                    .ports
+                    .iter()
+                    .copied()
+                    .find(|id| self.port(*id).is_some_and(|p| p.name == "mgmt0")),
+                _ => None,
+            });
+            let Some(source) = source else {
+                return reply(false, "SSH requires a server management interface");
+            };
+            let target = self.devices().find_map(|dev| match &dev.kind {
+                DeviceKind::Server(server) if dev.id != device => server.ports.iter().find(|id| self.port(**id).is_some_and(|p| p.name == "mgmt0" && matches!(&p.config, PortConfig::Server(config) if config.ipv4.as_ref().is_some_and(|ip| ip.address == address)))).map(|_| dev.id),
+                DeviceKind::Switch(_) if self.ios_configs.get(&dev.id).is_some_and(|config| config.management_ip == Some(address)) => Some(dev.id),
+                DeviceKind::Router(router) if router.interfaces.iter().any(|interface| interface.address == Some(address)) => Some(dev.id),
+                _ => None,
+            });
+            let Some(target) = target else {
+                return reply(false, "management IP not found");
+            };
+            let reachable = if matches!(
+                self.device(target).map(|d| &d.kind),
+                Some(DeviceKind::Switch(_))
+            ) {
+                let same_subnet = self.port(source).is_some_and(|port| matches!(&port.config, PortConfig::Server(config) if config.ipv4.as_ref().is_some_and(|ip| ip.contains(address))));
+                same_subnet && self.management_path_reaches(source, target)
+            } else {
+                self.ping(source, address).reachable
+            };
+            if !reachable {
+                return reply(false, "management IP is unreachable");
+            }
+            self.ssh_sessions.insert(device, target);
+            return reply(
+                true,
+                format!(
+                    "Connected to {} via SSH",
+                    self.device(target).map_or("?", |dev| dev.name.as_str())
+                ),
+            );
+        }
         let Some(dev) = self.device(device) else {
             return reply(false, "% Device not found.");
         };
@@ -412,6 +482,16 @@ impl NetworkSim {
                 self.ios_configs.entry(device).or_default().hostname = Some(name.clone());
             }
             "no hostname" => self.ios_configs.entry(device).or_default().hostname = None,
+            "management ip <address>" => {
+                let address = args[0]
+                    .parse::<Ipv4Addr>()
+                    .map_err(|_| "% Invalid management IPv4 address.")?;
+                if address.is_unspecified() || address.is_multicast() || address.is_broadcast() {
+                    return Err("% Invalid management IPv4 address.".into());
+                }
+                self.ios_configs.entry(device).or_default().management_ip = Some(address);
+            }
+            "no management ip" => self.ios_configs.entry(device).or_default().management_ip = None,
             "write memory" | "copy running-config startup-config" => {
                 self.startup_configs.insert(
                     device,
@@ -975,6 +1055,9 @@ impl NetworkSim {
                 )
             ),
         ];
+        if let Some(address) = meta.management_ip {
+            lines.push(format!("management ip {address}"));
+        }
         if let DeviceKind::Switch(sw) = &dev.kind {
             let mut vlans = sw.vlans.clone();
             vlans.sort_by_key(|v| v.id.0);

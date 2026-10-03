@@ -86,8 +86,21 @@ fn dell_can_connect_directly_to_c1111_and_reach_the_internet() {
             (ethernet, lan)
         };
         sim.execute(Command::Connect { a, b }).unwrap();
+        assert!(!sim.ping(ethernet, ip("8.8.8.8")).reachable);
+        let uplink = sim
+            .network_outlets()
+            .find(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
+            .unwrap()
+            .port;
+        let wan = ports(&sim, router)[0];
+        sim.execute(Command::Connect { a: wan, b: uplink }).unwrap();
         let result = sim.ping(ethernet, ip("8.8.8.8"));
         assert!(result.reachable, "{result:?}");
+        let uplink_link = sim.link_for_port(wan).unwrap().id;
+        sim.execute(Command::Disconnect { link: uplink_link })
+            .unwrap();
+        assert!(!sim.ping(ethernet, ip("8.8.8.8")).reachable);
+        sim.execute(Command::Connect { a: wan, b: uplink }).unwrap();
         let link = sim.link_for_port(ethernet).unwrap().id;
         sim.execute(Command::Disconnect { link }).unwrap();
         assert!(sim.link_for_port(ethernet).is_none());
@@ -394,6 +407,16 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     .unwrap();
     sim.execute(Command::Connect { a: ap, b: swp[1] }).unwrap();
     sim.execute(Command::Connect { a: bp, b: swp[2] }).unwrap();
+    let uplink = sim
+        .network_outlets()
+        .find(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
+        .unwrap()
+        .port;
+    sim.execute(Command::Connect {
+        a: rp[0],
+        b: uplink,
+    })
+    .unwrap();
     (sim, router, switch, a, b)
 }
 

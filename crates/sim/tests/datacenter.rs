@@ -1,6 +1,6 @@
 use cloud_provider_sim::{
     CableColor, CableRoutePoint, CableSupply, Command, DeviceTemplate, NetworkSim, RackId,
-    RoomPosition, SimError, SimEvent,
+    RoomCableLayout, RoomPosition, SimError, SimEvent,
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn predefined_room_has_ten_rows_of_five_racks() {
             y_cm: 2610
         }
     );
-    assert_eq!(sim.room.cable_anchors.len(), 40);
+    assert_eq!(sim.room.cable_anchors.len(), RoomCableLayout::ANCHOR_COUNT);
     for (column, x_cm) in [630, 330, 930, 1230].into_iter().enumerate() {
         for row in 0..10u8 {
             let id = column as u8 * 10 + row + 1;
@@ -56,6 +56,39 @@ fn predefined_room_has_ten_rows_of_five_racks() {
             );
         }
     }
+}
+
+#[test]
+fn cable_managers_cover_both_sides_of_each_rack_and_every_tray_crossing() {
+    let sim = NetworkSim::new();
+    let anchors = &sim.room.cable_anchors;
+    let positions: std::collections::HashSet<_> = anchors
+        .iter()
+        .map(|anchor| (anchor.position.x_cm, anchor.position.y_cm))
+        .collect();
+    let ids: std::collections::HashSet<_> = anchors.iter().map(|anchor| anchor.id).collect();
+    assert_eq!(positions.len(), RoomCableLayout::ANCHOR_COUNT);
+    assert_eq!(ids.len(), RoomCableLayout::ANCHOR_COUNT);
+    for rack in sim.racks() {
+        for position in RoomCableLayout::rack_access_positions(rack.id) {
+            assert!(positions.contains(&(position.x_cm, position.y_cm)));
+        }
+    }
+    for y_cm in RoomCableLayout::horizontal_rows_cm() {
+        for x_cm in cloud_provider_sim::DATACENTER_CABLE_COLUMNS_CM {
+            assert!(positions.contains(&(x_cm, y_cm)));
+        }
+    }
+    assert!(
+        anchors
+            .iter()
+            .all(|anchor| anchor.position.x_cm < sim.room.width_cm
+                && anchor.position.y_cm < sim.room.depth_cm)
+    );
+    let mut loaded: NetworkSim = ron::from_str(&ron::to_string(&sim).unwrap()).unwrap();
+    loaded.rebuild_indexes();
+    loaded.rebuild_indexes();
+    assert_eq!(loaded.room.cable_anchors, *anchors);
 }
 
 #[test]

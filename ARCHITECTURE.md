@@ -37,8 +37,15 @@ physical PCIe slot width, generation, and the CPU's total available lanes.
 Ethernet cards are PCI card variants and allocate ordinary server `Port` records,
 so existing cabling, link negotiation, IP configuration, and persistence apply.
 Removing a card disconnects its cables and returns it to inventory. A new
-chassis requires CPU, RAM, and a power supply before power can be requested;
+chassis includes a 600 W power supply and requires CPU and RAM before power can be requested;
 preexisting servers retain their original assembled behavior.
+The shop also offers a full pack that installs a CPU, 16 GB RAM, a four-port NIC,
+and a 960 GB SSD in one atomic purchase. Separate power supplies are no longer
+sold; older saves receive a one-time refund for owned or installed PSUs. Server
+compute capacity sums core count times clock MHz across CPUs. Memory capacity
+uses the installed module's DDR generation and DIMM class coefficients. Live
+network capacity sums negotiated rates on connected data ports; `mgmt0` is a
+separate management NIC and does not contribute resource capacity.
 The initial R360 slot layout follows Dell's
 [expansion slot guide](https://www.dell.com/support/manuals/en-in/poweredge-r360/r360_ism/expansion-card-installation-guidelines?guid=guid-9ffebd78-0ef4-4614-b698-c450c609054f&lang=en-us)
 documentation. Installed PCIe cards cover the corresponding rear slot in the
@@ -78,6 +85,31 @@ Link/status checks connector, power, placement, enablement, cable length, and
 negotiated rate. Activity uses runtime transmit/receive timestamps. Inventory
 models shared bulk stock, finished leads, and five common jacket colors rather
 than separate supplier SKUs.
+
+`RoomCableLayout` defines 220 fixed cable managers: 40 on vertical trays,
+100 above and below racks, and 80 at horizontal/vertical tray intersections.
+The room renderer uses the same layout for horizontal trays. IDs 1–40 retain
+their original locations, and loading older saves adds the new managers.
+
+The room owns two global uplink RJ45 sockets and each rack owns one LAN RJ45
+socket. These are permanent `NetworkOutlet` endpoints, saved with ordinary
+Ethernet links. Rack LAN sockets share one simulated broadcast network.
+They are drawn and selected as RJ45 ports in the room and rack views. Servers
+can receive sequential private addresses from the room's `10.0.0.0/16` pool.
+The Network shop sells simulated public `/29` blocks for a selected uplink;
+each block provides one provider gateway and five server addresses. Servers
+can claim an address on a data port, and inbound ICMP reaches it only when the
+selected uplink, switching path, server port and return path are active. The
+addresses use `203.0.113.0/24`, a documentation-only range, so no real-world
+Internet service is implied. Block purchases and assignments persist in saves.
+`DataCenterResources` credits a powered server only when a live data port has a
+physical path to the corresponding room network. Public Internet diagnostics
+also require a router WAN interface to have a live
+physical path to an uplink socket. The server console can open
+an SSH session by management IP when its `mgmt0` interface can reach a server,
+router, or switch. Switch management IPs are configured in IOS global mode with
+`management ip <address>`. `TerminalRenderer` owns the terminal UI separately
+from simulation command execution.
 
 ## Network backend and OSI scope
 

@@ -282,7 +282,7 @@ fn simulated_wan_reply_updates_source_rx_and_tx() {
         vlan: Some(VlanId(1)),
         address: Some(ip("192.0.2.1")),
         prefix: 24,
-        internet_connected: true,
+        internet_connected: false,
     })
     .unwrap();
     sim.execute(Command::SetIpv4 {
@@ -295,6 +295,13 @@ fn simulated_wan_reply_updates_source_rx_and_tx() {
         b: source,
     })
     .unwrap();
+    let uplink = sim
+        .network_outlets()
+        .find(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
+        .unwrap()
+        .port;
+    let wan = sim.device(router).unwrap().ports()[0];
+    sim.execute(Command::Connect { a: wan, b: uplink }).unwrap();
     assert!(sim.ping_mut(source, ip("8.8.8.8")).reachable);
     let telemetry = sim.port_telemetry(source);
     assert!(

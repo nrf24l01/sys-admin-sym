@@ -13,7 +13,12 @@ pub struct CableRoutePoint {
 impl CableRoutePoint {
     /// Rack zero is reserved for a ceiling cable manager in the room.
     pub fn room_anchor(id: u8) -> Self {
-        Self { rack: crate::RackId(0), unit: id, side: crate::RackSide::Rear, offset_cm: 0 }
+        Self {
+            rack: crate::RackId(0),
+            unit: id,
+            side: crate::RackSide::Rear,
+            offset_cm: 0,
+        }
     }
 
     pub fn room_anchor_id(self) -> Option<u8> {

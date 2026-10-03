@@ -2,8 +2,8 @@ use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::{
-    CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, ServerPart, ServerPartKind,
-    drive_catalog, server_catalog,
+    CableSupply, DeviceTemplate, DriveModel, NetworkOutletKind, NetworkSim, PciCard,
+    PublicIpv4Block, ServerFullPack, ServerPart, ServerPartKind, drive_catalog, server_catalog,
 };
 
 fn drive_matches(drive: &DriveModel, state: &ShopState, money: i64) -> bool {
@@ -24,7 +24,7 @@ fn part_matches(part: &ServerPart, state: &ShopState, money: i64) -> bool {
     let section = match part.kind {
         ServerPartKind::Cpu { .. } => ShopSection::Cpu,
         ServerPartKind::Ram { .. } => ShopSection::Ram,
-        ServerPartKind::PowerSupply { .. } => ShopSection::PowerSupplies,
+        ServerPartKind::PowerSupply { .. } => return false,
         ServerPartKind::PciCard { .. } => ShopSection::PciCards,
     };
     state.category == ShopCategory::Compute
@@ -46,7 +46,12 @@ fn part_description(part: &ServerPart) -> String {
             socket,
             pcie_lanes,
             tdp_w,
-        } => format!("{socket} · {pcie_lanes} PCIe lanes · {tdp_w} W TDP"),
+            cores,
+            frequency_mhz,
+        } => format!(
+            "{socket} · {cores} cores @ {} MHz · {pcie_lanes} PCIe lanes · {tdp_w} W TDP",
+            frequency_mhz
+        ),
         ServerPartKind::Ram {
             memory_type,
             capacity_gb,
@@ -147,7 +152,7 @@ const PRODUCTS: &[Product] = &[
     },
     Product {
         name: "Dell PowerEdge R360",
-        description: "R360 chassis with onboard network ports; CPU, memory, PSU and PCIe cards sold separately",
+        description: "1U R360 chassis · integrated 600 W PSU · full pack available with CPU, RAM, NIC and SSD",
         section: ShopSection::DellServers,
         purchase: Purchase::ServerChassis,
         ports: Some(3),
@@ -241,16 +246,25 @@ pub(super) fn show(
                         .collect();
                     let parts: Vec<_> = server_catalog().parts.iter().filter(|part| part_matches(part, state, sim.money)).collect();
                     let drives: Vec<_> = drive_catalog().drives.iter().filter(|drive| drive_matches(drive, state, sim.money)).collect();
+                    let uplink_offers: Vec<_> = sim.network_outlets().filter(|outlet| {
+                        matches!(outlet.kind, NetworkOutletKind::Uplink { .. })
+                            && state.category == ShopCategory::Network
+                            && state.section.is_none_or(|section| section == ShopSection::PublicIp)
+                            && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+                            && (state.search.trim().is_empty() || format!("public IPv4 /29 range {}", sim.port(outlet.port).map_or("", |port| port.name.as_str())).to_lowercase().contains(&state.search.trim().to_lowercase()))
+                            && (!state.affordable_only || sim.money >= PublicIpv4Block::PRICE)
+                            && state.max_price.is_none_or(|max| PublicIpv4Block::PRICE <= max)
+                    }).collect();
                     ui.label(format!(
                         "{} product{}",
-                        products.len() + parts.len() + drives.len(),
-                        if products.len() + parts.len() + drives.len() == 1 { "" } else { "s" }
+                        products.len() + parts.len() + drives.len() + uplink_offers.len(),
+                        if products.len() + parts.len() + drives.len() + uplink_offers.len() == 1 { "" } else { "s" }
                     ));
                     egui::ScrollArea::vertical()
                         .id_salt("shop-products")
                         .max_height(ui.available_height().max(120.0))
                         .show(ui, |ui| {
-                            if products.is_empty() && parts.is_empty() && drives.is_empty() {
+                            if products.is_empty() && parts.is_empty() && drives.is_empty() && uplink_offers.is_empty() {
                                 ui.weak("No products match these filters.");
                                 if ui.button("Clear filters").clicked() {
                                     state.clear_filters();
@@ -269,7 +283,8 @@ pub(super) fn show(
                                             .add_enabled(
                                                 sim.money >= product.price(),
                                                 egui::Button::new(format!(
-                                                    "Buy — ${}",
+                                                    "{} — ${}",
+                                                    if matches!(product.purchase, Purchase::ServerChassis) { "Buy chassis" } else { "Buy" },
                                                     product.price()
                                                 )),
                                             )
@@ -277,7 +292,35 @@ pub(super) fn show(
                                         {
                                             actions.write(product.buy());
                                         }
+                                        if matches!(product.purchase, Purchase::ServerChassis)
+                                            && ui.add_enabled(
+                                                sim.money >= ServerFullPack::price(),
+                                                egui::Button::new(format!(
+                                                    "Order full pack — ${}",
+                                                    ServerFullPack::price()
+                                                )),
+                                            ).on_hover_text("Chassis, CPU, 16 GB RAM, 4-port network card and 960 GB SSD; PSU included")
+                                            .clicked()
+                                        {
+                                            actions.write(UiAction::BuyServerFullPack);
+                                        }
                                     });
+                                    if matches!(product.purchase, Purchase::ServerChassis) {
+                                        ui.weak("Full pack: CPU, 16 GB RAM, 4-port NIC and 960 GB SSD. Integrated PSU included.");
+                                    }
+                                });
+                            }
+                            for outlet in uplink_offers {
+                                ui.group(|ui| {
+                                    let name = sim.port(outlet.port).map_or("UPLINK", |port| port.name.as_str());
+                                    ui.strong(format!("Public IPv4 /29 · {name}"));
+                                    ui.weak("Five server addresses and one provider gateway. The range is routed to this uplink port.");
+                                    let count = sim.public_ipv4_blocks().iter().filter(|block| block.uplink == outlet.port).count();
+                                    ui.label(format!("{count} range{} on {name}", if count == 1 { "" } else { "s" }));
+                                    if ui.add_enabled(sim.money >= PublicIpv4Block::PRICE && sim.public_ipv4_blocks().len() < 32,
+                                        egui::Button::new(format!("Order on {name} — ${}", PublicIpv4Block::PRICE))).clicked() {
+                                        actions.write(UiAction::BuyPublicIpv4Block { uplink: outlet.port });
+                                    }
                                 });
                             }
                             {
@@ -320,6 +363,7 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
                 (ShopSection::Routers, "Routers"),
                 (ShopSection::Switches, "Switches"),
                 (ShopSection::Cabling, "Cabling"),
+                (ShopSection::PublicIp, "Public IPv4"),
             ][..],
         ),
         (
@@ -329,7 +373,6 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
                 (ShopSection::DellServers, "DELL servers"),
                 (ShopSection::Cpu, "CPU"),
                 (ShopSection::Ram, "RAM"),
-                (ShopSection::PowerSupplies, "Power supplies"),
                 (ShopSection::PciCards, "PCIe cards"),
                 (ShopSection::Storage, "Storage drives"),
             ][..],
@@ -416,6 +459,94 @@ mod tests {
     use super::*;
 
     #[test]
+    fn public_range_order_targets_the_chosen_uplink_port() {
+        use bevy::{
+            ecs::system::SystemState,
+            prelude::{Messages, World},
+        };
+        let sim = NetworkSim::new();
+        let uplink = sim
+            .network_outlets()
+            .find(|outlet| {
+                sim.port(outlet.port)
+                    .is_some_and(|port| port.name == "UPLINK 2")
+            })
+            .unwrap()
+            .port;
+        let ctx = egui::Context::default();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut state = ShopState {
+            open: true,
+            category: ShopCategory::Network,
+            section: Some(ShopSection::PublicIp),
+            ..Default::default()
+        };
+        let label = format!("Order on UPLINK 2 — ${}", PublicIpv4Block::PRICE);
+        let mut position = None;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    );
+                },
+            );
+            position = output.shapes.iter().find_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.text() == label
+                {
+                    return Some(egui::Rect::from_min_size(text.pos, text.galley.size()).center());
+                }
+                None
+            });
+            output.textures_delta.clear();
+        }
+        let position = position.expect("UPLINK 2 purchase button is visible");
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::PointerMoved(position),
+                        egui::Event::PointerButton {
+                            pos: position,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    );
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let purchases: Vec<_> = world.resource_mut::<Messages<UiAction>>().drain().collect();
+        assert_eq!(purchases.len(), 1);
+        assert!(
+            matches!(purchases[0], UiAction::BuyPublicIpv4Block { uplink: chosen } if chosen == uplink)
+        );
+    }
+
+    #[test]
     fn shop_window_filters_products_and_buy_emits_the_selected_purchase() {
         use bevy::{
             ecs::system::SystemState,
@@ -452,12 +583,10 @@ mod tests {
                 },
             );
             buy_position = output.shapes.iter().find_map(|shape| {
-                if let egui::Shape::Text(text) = &shape.shape {
-                    if text.galley.text() == "Buy — $500" {
-                        return Some(
-                            egui::Rect::from_min_size(text.pos, text.galley.size()).center(),
-                        );
-                    }
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.text() == "Buy — $500"
+                {
+                    return Some(egui::Rect::from_min_size(text.pos, text.galley.size()).center());
                 }
                 None
             });
@@ -496,6 +625,68 @@ mod tests {
             purchases[0],
             UiAction::Buy(DeviceTemplate::Switch)
         ));
+        state.select(ShopCategory::Compute, Some(ShopSection::DellServers));
+        state.clear_filters();
+        state.section = Some(ShopSection::DellServers);
+        let label = format!("Order full pack — ${}", ServerFullPack::price());
+        let mut full_pack_position = None;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    )
+                },
+            );
+            full_pack_position = output.shapes.iter().find_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.text() == label
+                {
+                    return Some(egui::Rect::from_min_size(text.pos, text.galley.size()).center());
+                }
+                None
+            });
+            output.textures_delta.clear();
+        }
+        let position = full_pack_position.expect("full pack order button is visible");
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::PointerMoved(position),
+                        egui::Event::PointerButton {
+                            pos: position,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    )
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let purchases: Vec<_> = world.resource_mut::<Messages<UiAction>>().drain().collect();
+        assert_eq!(purchases.len(), 1);
+        assert!(matches!(purchases[0], UiAction::BuyServerFullPack));
         state.open = false;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
             show(
@@ -628,7 +819,6 @@ mod tests {
             ShopSection::DellServers,
             ShopSection::Cpu,
             ShopSection::Ram,
-            ShopSection::PowerSupplies,
             ShopSection::PciCards,
         ] {
             state.section = Some(section);

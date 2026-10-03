@@ -76,6 +76,7 @@ pub struct ConsoleState {
 
 #[derive(Debug, Clone, Default)]
 pub struct ServerDraft {
+    pub synced_ipv4: Option<cloud_provider_sim::Ipv4InterfaceConfig>,
     pub address: String,
     pub prefix: String,
     pub gateway: String,

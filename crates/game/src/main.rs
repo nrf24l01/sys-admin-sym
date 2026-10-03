@@ -7,7 +7,10 @@ mod persistence;
 mod plugins;
 mod ui;
 
-fn asset_root_for(executable: &std::path::Path, workspace_assets: &std::path::Path) -> std::path::PathBuf {
+fn asset_root_for(
+    executable: &std::path::Path,
+    workspace_assets: &std::path::Path,
+) -> std::path::PathBuf {
     let beside_executable = executable.parent().map(|parent| parent.join("assets"));
     beside_executable
         .filter(|path| path.is_dir())
@@ -52,7 +55,8 @@ mod tests {
 
     #[test]
     fn packaged_assets_next_to_executable_take_precedence() {
-        let bundle = std::env::temp_dir().join(format!("cloud-provider-assets-{}", std::process::id()));
+        let bundle =
+            std::env::temp_dir().join(format!("cloud-provider-assets-{}", std::process::id()));
         let assets = bundle.join("assets");
         std::fs::create_dir_all(&assets).unwrap();
         let executable = bundle.join("cloud-provider-sim");

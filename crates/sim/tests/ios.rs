@@ -231,6 +231,13 @@ fn router_subinterfaces_trunks_and_gateway_ping_work_from_cli() {
     );
     assert!(sim.ping(ap, "10.0.30.2".parse().unwrap()).reachable);
     assert!(sim.ping(ap, "10.0.20.1".parse().unwrap()).reachable);
+    let uplink = sim
+        .network_outlets()
+        .find(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
+        .unwrap()
+        .port;
+    let wan = port(&sim, router, 0);
+    link(&mut sim, wan, uplink);
     assert!(sim.ping(ap, "8.8.8.8".parse().unwrap()).reachable);
     run(&mut sim, router, "ping 10.0.20.2\ntraceroute 10.0.30.2");
     run(

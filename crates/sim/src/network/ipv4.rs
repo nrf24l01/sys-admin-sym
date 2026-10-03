@@ -48,6 +48,12 @@ where
         fn visit_unit<E>(self) -> Result<Self::Value, E> {
             Ok(None)
         }
+        fn visit_some<D: serde::Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            VlanId::deserialize(deserializer).map(Some)
+        }
         fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
             u16::try_from(v)
                 .map(|v| Some(VlanId(v)))

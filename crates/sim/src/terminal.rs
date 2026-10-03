@@ -239,7 +239,7 @@ impl NetworkSim {
         match command {
             TerminalCommand::Help => output(
                 true,
-                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>",
+                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>, ssh <management-ip>, exit",
             ),
             TerminalCommand::Ip => {
                 let lines = server
@@ -792,7 +792,7 @@ impl NetworkSim {
                         true,
                     );
                 }
-                if !replace && name.as_deref().and_then(&interface).and_then(|p| self.port(p)).is_some_and(|p| matches!(&p.config, PortConfig::Server(c) if c.ipv4.as_ref().is_some_and(|v| v.gateway.is_some()))) {
+                if !replace && name.as_deref().and_then(interface).and_then(|p| self.port(p)).is_some_and(|p| matches!(&p.config, PortConfig::Server(c) if c.ipv4.as_ref().is_some_and(|v| v.gateway.is_some()))) {
                     return output(false, "File exists: default route already configured; use replace");
                 }
                 self.change_gateway(server, &interface, name.as_deref(), gateway, false, false)

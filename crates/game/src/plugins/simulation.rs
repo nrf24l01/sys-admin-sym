@@ -164,6 +164,10 @@ fn translate_ui_actions(
             }
             UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
             UiAction::BuyServerChassis => Some(Command::BuyServerChassis),
+            UiAction::BuyServerFullPack => Some(Command::BuyServerFullPack),
+            UiAction::BuyPublicIpv4Block { uplink } => Some(Command::BuyPublicIpv4Block { uplink: *uplink }),
+            UiAction::AssignPublicIpv4 { port, network } => Some(Command::AssignPublicIpv4 { port: *port, network: *network }),
+            UiAction::AssignLanIpv4 { port } => Some(Command::AssignLanIpv4 { port: *port }),
             UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart { part_id: part_id.clone() }),
             UiAction::BuyDrive(drive_id) => Some(Command::BuyDrive { drive_id: drive_id.clone() }),
             UiAction::InstallDrive { device, drive_id, bay } => Some(Command::InstallDrive { device: *device, drive_id: drive_id.clone(), bay: *bay }),

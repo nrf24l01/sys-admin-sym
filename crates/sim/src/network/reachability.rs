@@ -275,6 +275,47 @@ impl NetworkSim {
                     }
                 }
                 PortConfig::Switch(_) => {}
+                PortConfig::Infrastructure => {
+                    if let Some(block) = self.public_block_for_address(p.source)
+                        && block.uplink == d.port
+                        && self.server_ipv4(out).is_some_and(|ip| {
+                            ip.address == p.source && ip.gateway == Some(block.gateway())
+                        })
+                        && !p.destination.is_private()
+                        && let IcmpMessage::EchoRequest {
+                            identifier,
+                            sequence,
+                        } = icmp
+                    {
+                        self.hop(
+                            h,
+                            port.device,
+                            Some(d.port),
+                            Some(d.port),
+                            "public Internet echo reply",
+                        );
+                        let reply = Ipv4Packet {
+                            source: p.destination,
+                            destination: p.source,
+                            ttl: 64,
+                            protocol: 1,
+                        };
+                        if self.deliver(
+                            d.port,
+                            VlanId(1),
+                            MacAddress::for_port(out),
+                            reply,
+                            IcmpMessage::EchoReply {
+                                identifier,
+                                sequence,
+                            },
+                            h,
+                            depth + 1,
+                        ) {
+                            return true;
+                        }
+                    }
+                }
                 PortConfig::PatchPanel | PortConfig::CableManager => {}
             }
         }
@@ -333,7 +374,7 @@ impl NetworkSim {
             if !p.destination.is_private()
                 && self.router_interfaces(r).iter().any(|(p, i)| {
                     i.internet_connected
-                        && self.port(*p).is_some_and(|port| port.enabled)
+                        && self.wan_reaches_uplink(*p)
                         && self.device_active(r)
                         && i.vlan.is_none_or(|v| self.port_vlan_available(*p, v))
                 })

@@ -12,6 +12,17 @@ pub enum UiAction {
     SelectPowerCable(OutletId),
     Buy(DeviceTemplate),
     BuyServerChassis,
+    BuyServerFullPack,
+    BuyPublicIpv4Block {
+        uplink: PortId,
+    },
+    AssignPublicIpv4 {
+        port: PortId,
+        network: std::net::Ipv4Addr,
+    },
+    AssignLanIpv4 {
+        port: PortId,
+    },
     BuyServerPart(String),
     BuyDrive(String),
     InstallDrive {

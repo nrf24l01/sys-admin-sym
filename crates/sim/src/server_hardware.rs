@@ -15,6 +15,8 @@ pub struct ServerChassis {
     pub dimm_slots: usize,
     pub memory_type: String,
     pub psu_bays: usize,
+    #[serde(default = "ServerChassis::default_integrated_psu_watts")]
+    pub integrated_psu_watts: u16,
     pub drive_bays: Vec<DriveBay>,
     pub pcie_slots: Vec<PcieSlot>,
 }
@@ -60,6 +62,10 @@ pub struct ServerPart {
 pub enum ServerPartKind {
     Cpu {
         socket: String,
+        #[serde(default)]
+        cores: u16,
+        #[serde(default)]
+        frequency_mhz: u32,
         pcie_lanes: u8,
         tdp_w: u16,
     },
@@ -73,6 +79,35 @@ pub enum ServerPartKind {
     PciCard {
         card: PciCard,
     },
+}
+
+impl ServerPartKind {
+    pub fn memory_score_gb(&self) -> Option<u64> {
+        let Self::Ram {
+            memory_type,
+            capacity_gb,
+        } = self
+        else {
+            return None;
+        };
+        let generation = if memory_type.contains("DDR5") {
+            5
+        } else if memory_type.contains("DDR4") {
+            4
+        } else if memory_type.contains("DDR3") {
+            3
+        } else {
+            return None;
+        };
+        let module = if memory_type.contains("RDIMM") {
+            12
+        } else if memory_type.contains("UDIMM") {
+            10
+        } else {
+            9
+        };
+        Some(u64::from(*capacity_gb) * generation * module / 30)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,6 +131,39 @@ pub fn server_catalog() -> &'static ServerCatalog {
     })
 }
 
+/// The ready-to-use server offered by the equipment shop.
+pub struct ServerFullPack;
+
+impl ServerFullPack {
+    pub const CPU: &'static str = "xeon_e_2434";
+    pub const RAM: &'static str = "ddr5_ecc_16gb";
+    pub const NIC: &'static str = "intel_i350_t4";
+    pub const DRIVE: &'static str = "enterprise_ssd_960gb";
+
+    pub fn price() -> i64 {
+        let parts = server_catalog();
+        let drive = crate::drive_catalog();
+        crate::DeviceTemplate::Server.price()
+            + [Self::CPU, Self::RAM, Self::NIC]
+                .iter()
+                .map(|id| {
+                    parts
+                        .parts
+                        .iter()
+                        .find(|part| part.id == *id)
+                        .expect("full pack part exists")
+                        .price
+                })
+                .sum::<i64>()
+            + drive
+                .drives
+                .iter()
+                .find(|model| model.id == Self::DRIVE)
+                .expect("full pack drive exists")
+                .price
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ServerHardware {
     pub cpus: Vec<String>,
@@ -113,6 +181,32 @@ pub struct ServerHardware {
 }
 
 impl ServerHardware {
+    pub fn compute_mhz(&self) -> u64 {
+        let catalog = server_catalog();
+        self.cpus
+            .iter()
+            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
+            .filter_map(|part| match part.kind {
+                ServerPartKind::Cpu {
+                    cores,
+                    frequency_mhz,
+                    ..
+                } => Some(u64::from(cores) * u64::from(frequency_mhz)),
+                _ => None,
+            })
+            .sum()
+    }
+
+    /// Memory capacity weighted by generation and module class, in equivalent GB.
+    pub fn memory_score_gb(&self) -> u64 {
+        let catalog = server_catalog();
+        self.ram
+            .iter()
+            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
+            .filter_map(|part| part.kind.memory_score_gb())
+            .sum()
+    }
+
     pub fn load_watts(&self) -> u32 {
         let catalog = server_catalog();
         let cpu_w: u32 = self
@@ -152,20 +246,15 @@ impl ServerHardware {
     }
 
     pub fn ready(&self) -> bool {
-        if self.cpus.is_empty() || self.ram.is_empty() || self.power_supplies.is_empty() {
+        if self.cpus.is_empty() || self.ram.is_empty() {
             return false;
         }
-        let catalog = server_catalog();
-        let psu_w: u32 = self
-            .power_supplies
-            .iter()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match part.kind {
-                ServerPartKind::PowerSupply { capacity_w } => Some(u32::from(capacity_w)),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
-        psu_w >= self.load_watts()
+        u32::from(server_catalog().chassis.integrated_psu_watts) >= self.load_watts()
+    }
+}
+
+impl ServerChassis {
+    fn default_integrated_psu_watts() -> u16 {
+        600
     }
 }

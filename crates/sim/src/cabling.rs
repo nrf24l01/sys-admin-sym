@@ -100,28 +100,7 @@ impl NetworkSim {
     /// Straight socket-to-socket distance plus 5% installation slack, rounded
     /// up to a cm. Routed connections use `minimum_routed_cable_length` instead.
     pub fn minimum_cable_length(&self, a: PortId, b: PortId) -> Result<u32, SimError> {
-        let placements: Vec<_> = [a, b]
-            .iter()
-            .map(|id| {
-                let p = self.port(*id).ok_or(SimError::PortNotFound(*id))?;
-                let device = self
-                    .device(p.device)
-                    .ok_or(SimError::CableDevicesNotInstalled)?;
-                let placement = device.rack.ok_or(SimError::CableDevicesNotInstalled)?;
-                let index = device
-                    .ports()
-                    .iter()
-                    .position(|port| port == id)
-                    .ok_or(SimError::PortNotFound(*id))?;
-                let (x, y) = device.kind.port_position_normalized(index);
-                Ok((
-                    placement.rack,
-                    x * RACK_FACE_WIDTH_CM,
-                    -f32::from(placement.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)
-                        + y * RACK_FACE_HEIGHT_CM,
-                ))
-            })
-            .collect::<Result<_, _>>()?;
+        let placements = [self.port_position(a)?, self.port_position(b)?];
         let cm = if placements[0].0 == placements[1].0 {
             (placements[0].1 - placements[1].1).hypot(placements[0].2 - placements[1].2)
         } else {
@@ -146,13 +125,23 @@ impl NetworkSim {
         points.push(endpoints[0]);
         for point in route {
             if let Some(id) = point.room_anchor_id() {
-                let anchor = self.room.cable_anchors.iter().find(|anchor| anchor.id == id)
+                let anchor = self
+                    .room
+                    .cable_anchors
+                    .iter()
+                    .find(|anchor| anchor.id == id)
                     .ok_or(SimError::RoomAnchorNotFound(id))?;
-                points.push((RackId(0), f32::from(anchor.position.x_cm), f32::from(anchor.position.y_cm)));
+                points.push((
+                    RackId(0),
+                    f32::from(anchor.position.x_cm),
+                    f32::from(anchor.position.y_cm),
+                ));
             } else {
-                points.push((point.rack,
+                points.push((
+                    point.rack,
                     f32::from(point.offset_cm) / 48.0 * RACK_FACE_WIDTH_CM,
-                    -f32::from(point.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)));
+                    -f32::from(point.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM),
+                ));
             }
         }
         points.push(endpoints[1]);
@@ -179,10 +168,15 @@ impl NetworkSim {
             if point.0 == RackId(0) {
                 return Ok((point.1, point.2, 250.0));
             }
-            if self.rack(point.0).is_none() { return Err(SimError::RackNotFound(point.0)); }
+            if self.rack(point.0).is_none() {
+                return Err(SimError::RackNotFound(point.0));
+            }
             let room = self.rack_room_position(point.0);
-            Ok((f32::from(room.x_cm) + point.1 - RACK_FACE_WIDTH_CM * 0.5,
-                f32::from(room.y_cm), -point.2))
+            Ok((
+                f32::from(room.x_cm) + point.1 - RACK_FACE_WIDTH_CM * 0.5,
+                f32::from(room.y_cm),
+                -point.2,
+            ))
         };
         let a = coordinates(a)?;
         let b = coordinates(b)?;
@@ -190,6 +184,23 @@ impl NetworkSim {
     }
 
     fn port_position(&self, id: PortId) -> Result<(crate::RackId, f32, f32), SimError> {
+        if let Some(outlet) = self.network_outlet(id) {
+            return Ok(match outlet.kind {
+                crate::NetworkOutletKind::Uplink { position } => (
+                    crate::RackId(0),
+                    f32::from(position.x_cm),
+                    f32::from(position.y_cm),
+                ),
+                crate::NetworkOutletKind::Lan { rack } => {
+                    let units = self.rack(rack).ok_or(SimError::RackNotFound(rack))?.units;
+                    (
+                        rack,
+                        RACK_FACE_WIDTH_CM * 0.5,
+                        -f32::from(units) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM),
+                    )
+                }
+            });
+        }
         let p = self.port(id).ok_or(SimError::PortNotFound(id))?;
         let device = self
             .device(p.device)
@@ -270,7 +281,9 @@ impl NetworkSim {
         route: &[crate::CableRoutePoint],
     ) -> Result<CableQuote, SimError> {
         let minimum_cm = self.minimum_routed_cable_length(a, b, route)?;
-        if let Some(length) = length_cm && length < minimum_cm {
+        if let Some(length) = length_cm
+            && length < minimum_cm
+        {
             return Err(SimError::CableTooShort { minimum_cm });
         }
         self.quote_colored_cable(a, b, Some(length_cm.unwrap_or(minimum_cm)), color)

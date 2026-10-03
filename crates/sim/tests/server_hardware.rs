@@ -1,7 +1,64 @@
 use cloud_provider_sim::{
     CableSupply, Command, DeviceKind, DeviceTemplate, NetworkSim, OutletId, PowerEndpoint, RackId,
-    ServerPartKind, SimError, SimEvent, SourceId, server_catalog,
+    ServerFullPack, ServerPartKind, SimError, SimEvent, SourceId, server_catalog,
 };
+
+#[test]
+fn full_pack_order_installs_every_component_and_charges_once() {
+    let mut sim = NetworkSim::new();
+    let before = sim.money;
+    let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerFullPack).unwrap()[0] else {
+        panic!("full pack did not create a server");
+    };
+    assert_eq!(sim.money, before - ServerFullPack::price());
+    let DeviceKind::Server(server) = &sim.device(id).unwrap().kind else {
+        panic!("full pack did not create a server");
+    };
+    let hardware = server.hardware.as_ref().unwrap();
+    assert!(hardware.ready());
+    assert_eq!(hardware.cpus, [ServerFullPack::CPU]);
+    assert_eq!(hardware.ram, [ServerFullPack::RAM]);
+    assert_eq!(
+        hardware.pcie.iter().flatten().next().unwrap(),
+        ServerFullPack::NIC
+    );
+    assert_eq!(
+        hardware.drives.iter().flatten().next().unwrap(),
+        ServerFullPack::DRIVE
+    );
+    assert!(hardware.power_supplies.is_empty());
+    assert_eq!(server.ports.len(), 7);
+}
+
+#[test]
+fn unaffordable_full_pack_does_not_change_inventory_or_money() {
+    let mut sim = NetworkSim::new();
+    sim.money = ServerFullPack::price() - 1;
+    assert!(matches!(
+        sim.execute(Command::BuyServerFullPack),
+        Err(SimError::InsufficientFunds { .. })
+    ));
+    assert_eq!(sim.money, ServerFullPack::price() - 1);
+    assert_eq!(sim.devices().count(), 0);
+    assert!(sim.server_parts.is_empty());
+}
+
+#[test]
+fn power_supply_is_included_and_not_sold_separately() {
+    let mut sim = NetworkSim::new();
+    assert!(
+        server_catalog()
+            .parts
+            .iter()
+            .all(|part| !matches!(part.kind, ServerPartKind::PowerSupply { .. }))
+    );
+    assert!(matches!(
+        sim.execute(Command::BuyServerPart {
+            part_id: "r360_psu_600w".into()
+        }),
+        Err(SimError::UnknownServerPart(_))
+    ));
+}
 
 fn chassis(sim: &mut NetworkSim) -> cloud_provider_sim::DeviceId {
     let SimEvent::DeviceAdded(id) = sim.execute(Command::BuyServerChassis).unwrap()[0] else {
@@ -34,7 +91,6 @@ fn unplugged_pcie_interfaces_report_no_carrier_in_linux_commands() {
     let id = chassis(&mut sim);
     install(&mut sim, id, "xeon_e_2434", None);
     install(&mut sim, id, "ddr5_ecc_16gb", None);
-    install(&mut sim, id, "r360_psu_600w", None);
     install(&mut sim, id, "intel_i350_t4", Some(1));
     sim.execute(Command::PlaceDevice {
         device: id,
@@ -114,7 +170,6 @@ fn bare_chassis_requires_parts_and_installed_nic_adds_real_ports() {
     let onboard = sim.device(id).unwrap().ports().len();
     install(&mut sim, id, "xeon_e_2434", None);
     install(&mut sim, id, "ddr5_ecc_16gb", None);
-    install(&mut sim, id, "r360_psu_600w", None);
     let DeviceKind::Server(server) = &sim.device(id).unwrap().kind else {
         panic!()
     };
@@ -268,4 +323,25 @@ fn loading_old_fans_refunds_owned_and_installed_stock_once() {
     assert!(!serde_json::to_string(&loaded).unwrap().contains("cooling"));
     loaded.rebuild_indexes();
     assert_eq!(loaded.money, before + 3 * 45);
+}
+
+#[test]
+fn loading_old_power_supplies_refunds_them_once() {
+    let mut sim = NetworkSim::new();
+    let id = chassis(&mut sim);
+    let before = sim.money;
+    let mut saved = serde_json::to_value(&sim).unwrap();
+    saved["server_parts"]["r360_psu_600w"] = serde_json::json!(2);
+    saved["devices"][id.0.to_string()]["kind"]["Server"]["hardware"]["power_supplies"] =
+        serde_json::json!(["r360_psu_600w"]);
+    let mut loaded: NetworkSim = serde_json::from_value(saved).unwrap();
+    loaded.rebuild_indexes();
+    assert_eq!(loaded.money, before + 3 * 180);
+    assert!(!loaded.server_parts.contains_key("r360_psu_600w"));
+    let DeviceKind::Server(server) = &loaded.device(id).unwrap().kind else {
+        panic!("server missing");
+    };
+    assert!(server.hardware.as_ref().unwrap().power_supplies.is_empty());
+    loaded.rebuild_indexes();
+    assert_eq!(loaded.money, before + 3 * 180);
 }

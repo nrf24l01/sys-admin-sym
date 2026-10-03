@@ -32,6 +32,17 @@ pub enum Command {
         kind: DeviceTemplate,
     },
     BuyServerChassis,
+    BuyServerFullPack,
+    BuyPublicIpv4Block {
+        uplink: PortId,
+    },
+    AssignPublicIpv4 {
+        port: PortId,
+        network: Ipv4Addr,
+    },
+    AssignLanIpv4 {
+        port: PortId,
+    },
     BuyServerPart {
         part_id: String,
     },

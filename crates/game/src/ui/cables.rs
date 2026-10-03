@@ -206,6 +206,13 @@ impl CableView {
 }
 
 pub(super) fn port_location(sim: &NetworkSim, id: PortId) -> Option<CableRoutePoint> {
+    if let Some(outlet) = sim.network_outlet(id) {
+        let units = match outlet.kind {
+            cloud_provider_sim::NetworkOutletKind::Lan { rack } => sim.rack(rack)?.units,
+            cloud_provider_sim::NetworkOutletKind::Uplink { .. } => 0,
+        };
+        return Some(outlet.cable_route_point(units));
+    }
     let port = sim.port(id)?;
     let device = sim.device(port.device)?;
     let placement = device.rack?;
@@ -595,41 +602,41 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
             self.grab = None;
         }
         let mut clicked = None;
-        if view.interaction_enabled {
-            if let Some(pointer) = pointer.filter(|p| {
+        if view.interaction_enabled
+            && let Some(pointer) = pointer.filter(|p| {
                 ui.clip_rect().contains(*p)
                     && !view
                         .socket_rects
                         .iter()
                         .any(|rect| rect.expand(3.0).contains(*p))
-            }) {
-                let nearest = spans
-                    .iter()
-                    .filter_map(|(key, cable, _, _)| {
-                        let rope = &self.ropes[key];
-                        rope.points
-                            .windows(2)
-                            .enumerate()
-                            .map(|(index, pair)| {
-                                (
-                                    *key,
-                                    *cable,
-                                    (index + 1).clamp(1, SEGMENTS - 1),
-                                    distance_to_segment(pointer, screen(pair[0]), screen(pair[1])),
-                                )
-                            })
-                            .min_by(|a, b| a.3.total_cmp(&b.3))
-                    })
-                    .filter(|(_, _, _, distance)| *distance < 9.0)
-                    .min_by(|a, b| a.3.total_cmp(&b.3));
-                if let Some((key, cable, index, _)) = nearest {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                    if pressed {
-                        if !cable.routed {
-                            self.grab = Some((key, index));
-                        }
-                        clicked = Some(key.0);
+            })
+        {
+            let nearest = spans
+                .iter()
+                .filter_map(|(key, cable, _, _)| {
+                    let rope = &self.ropes[key];
+                    rope.points
+                        .windows(2)
+                        .enumerate()
+                        .map(|(index, pair)| {
+                            (
+                                *key,
+                                *cable,
+                                (index + 1).clamp(1, SEGMENTS - 1),
+                                distance_to_segment(pointer, screen(pair[0]), screen(pair[1])),
+                            )
+                        })
+                        .min_by(|a, b| a.3.total_cmp(&b.3))
+                })
+                .filter(|(_, _, _, distance)| *distance < 9.0)
+                .min_by(|a, b| a.3.total_cmp(&b.3));
+            if let Some((key, cable, index, _)) = nearest {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                if pressed {
+                    if !cable.routed {
+                        self.grab = Some((key, index));
                     }
+                    clicked = Some(key.0);
                 }
             }
         }
@@ -922,8 +929,73 @@ fn paint_jacket(painter: &egui::Painter, path: &[Pos2], width: f32, texture: egu
 mod tests {
     use super::*;
     use cloud_provider_sim::{
-        CableSupply, Command, DeviceTemplate, RackId, RackSide, SimEvent, SourceId,
+        CableSupply, Command, DeviceTemplate, NetworkOutletKind, RackId, RackSide, SimEvent,
+        SourceId,
     };
+
+    #[test]
+    fn switch_to_room_uplink_has_a_visible_rack_cable_segment() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(switch) = sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Switch,
+            })
+            .unwrap()[0]
+        else {
+            panic!("switch purchase did not add a device");
+        };
+        sim.execute(Command::PlaceDevice {
+            device: switch,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        for supply in [CableSupply::CableBox305m, CableSupply::Rj45Pack20] {
+            sim.execute(Command::BuyCableSupply { supply }).unwrap();
+        }
+        let switch_port = sim.device(switch).unwrap().ports()[0];
+        let uplink = sim
+            .network_outlets()
+            .find(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
+            .unwrap()
+            .port;
+        sim.execute(Command::Connect {
+            a: switch_port,
+            b: uplink,
+        })
+        .unwrap();
+        assert!(sim.link_for_port(switch_port).is_some());
+
+        let source = port_location(&sim, switch_port).unwrap();
+        let destination = port_location(&sim, uplink).unwrap();
+        let socket = egui::pos2(100.0, 100.0);
+        let rail = egui::pos2(80.0, 100.0);
+        let anchor = CableRoutePoint {
+            offset_cm: 0,
+            ..source
+        };
+        assert_eq!(
+            visible_spans(
+                (source, Some(socket)),
+                (destination, None),
+                &[],
+                &[(anchor, rail)]
+            ),
+            vec![vec![socket, rail]]
+        );
+    }
+
+    #[test]
+    fn rack_lan_outlet_has_a_cable_endpoint() {
+        let sim = NetworkSim::new();
+        let outlet = sim
+            .network_outlets()
+            .find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: RackId(1) })
+            .unwrap();
+        let location = port_location(&sim, outlet.port).unwrap();
+        assert_eq!(location.rack, RackId(1));
+        assert_eq!(location.unit, sim.rack(RackId(1)).unwrap().units);
+    }
 
     #[test]
     fn power_plugs_use_distinct_artwork_without_stretching() {

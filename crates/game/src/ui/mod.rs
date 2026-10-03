@@ -9,9 +9,11 @@ mod inventory;
 mod rack;
 mod room;
 mod shop;
+mod terminal_renderer;
 use cables::{CableScene, CableView, PowerCableView};
 use equipment::equipment_power_port_position;
 use rack::RackLayout;
+use terminal_renderer::TerminalRenderer;
 
 fn selected_link_id(state: &UiState, sim: &NetworkSim) -> Option<LinkId> {
     match state.selected {
@@ -68,18 +70,6 @@ struct PendingCable {
     start: (CableRoutePoint, Option<egui::Pos2>),
     route: Vec<CableRoutePoint>,
     color: egui::Color32,
-}
-
-fn console_scroll_height(available_height: f32, controls_height: f32) -> f32 {
-    (available_height - controls_height).max(0.0)
-}
-
-fn console_output_scroll(ui: &egui::Ui, controls_height: f32) -> egui::ScrollArea {
-    let height = console_scroll_height(ui.available_height(), controls_height);
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .min_scrolled_height(height)
-        .max_height(height)
 }
 
 fn inventory_model_name(device: &Device) -> String {
@@ -259,7 +249,7 @@ pub fn main_ui(
         &mut drafts,
         &mut actions,
     );
-    terminal_panel(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
+    TerminalRenderer::panel(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     let textures = images.textures.expect("equipment textures registered");
     workspace(
         &mut viewport_ui,
@@ -287,18 +277,21 @@ fn top_bar(
     sim: &NetworkSim,
     state: &mut UiState,
     actions: &mut MessageWriter<UiAction>,
-) {
+) -> egui::Rect {
     egui::Panel::top("top_bar")
-        .default_size(48.0)
+        .default_size(64.0)
+        .max_size(80.0)
+        .resizable(false)
         .show(viewport, |ui| {
-            ui.horizontal_centered(|ui| {
+            ui.horizontal(|ui| {
                 ui.heading("CLOUD PROVIDER // ROOM 01");
                 ui.separator();
                 ui.strong(format!("${}", sim.money));
-                ui.separator();
-                for (workspace, label) in
-                    [(Workspace::Room, "ROOM"), (Workspace::Rack, "RACK"), (Workspace::Topology, "TOPOLOGY")]
-                {
+                for (workspace, label) in [
+                    (Workspace::Room, "ROOM"),
+                    (Workspace::Rack, "RACK"),
+                    (Workspace::Topology, "TOPOLOGY"),
+                ] {
                     if ui
                         .selectable_label(state.workspace == workspace, label)
                         .clicked()
@@ -371,7 +364,25 @@ fn top_bar(
                     );
                 }
             });
-        });
+            let resources = sim.datacenter_resources();
+            ui.horizontal(|ui| {
+                ui.weak(format!(
+                    "ROOM LAN  {} core MHz · {} weighted GB · {} Mb/s",
+                    resources.lan.compute_mhz,
+                    resources.lan.memory_score_gb,
+                    resources.lan.network_mbps
+                ));
+                ui.separator();
+                ui.weak(format!(
+                    "GLOBAL UPLINK  {} core MHz · {} weighted GB · {} Mb/s",
+                    resources.global.compute_mhz,
+                    resources.global.memory_score_gb,
+                    resources.global.network_mbps
+                ));
+            });
+        })
+        .response
+        .rect
 }
 
 fn inspector_panel(
@@ -472,10 +483,10 @@ fn device_inspector(
     };
     ui.heading(&device.name);
     power_controls(ui, sim, device, actions);
-    if let DeviceKind::Server(server) = &device.kind {
-        if let Some(hardware) = &server.hardware {
-            server_hardware_inspector(ui, sim, id, hardware, actions);
-        }
+    if let DeviceKind::Server(server) = &device.kind
+        && let Some(hardware) = &server.hardware
+    {
+        server_hardware_inspector(ui, sim, id, hardware, actions);
     }
     let actual_powered = device.powered
         || match device.kind {
@@ -599,13 +610,12 @@ fn server_hardware_inspector(
     ui.separator();
     ui.strong("Server hardware");
     ui.label(format!(
-        "CPU {}/{} · RAM {}/{} · PSU {}/{}",
+        "CPU {}/{} · RAM {}/{} · Integrated PSU {} W",
         hardware.cpus.len(),
         chassis.cpu_sockets,
         hardware.ram.len(),
         chassis.dimm_slots,
-        hardware.power_supplies.len(),
-        chassis.psu_bays
+        chassis.integrated_psu_watts,
     ));
     let cpu_lanes: u16 = hardware
         .cpus
@@ -629,10 +639,19 @@ fn server_hardware_inspector(
         })
         .sum();
     ui.label(format!("PCIe lanes: {used_lanes}/{cpu_lanes}"));
+    let active = sim.server_resources(device);
+    ui.label(format!(
+        "Compute: {} core MHz · Memory: {} weighted GB · Live network: {} Mb/s",
+        hardware.compute_mhz(),
+        hardware.memory_score_gb(),
+        active.network_mbps
+    ));
     if hardware.ready() {
         ui.colored_label(egui::Color32::GREEN, "Required hardware installed");
     } else {
-        ui.weak("Install a CPU, RAM and power supply to complete the server.");
+        ui.weak(
+            "Install a CPU and RAM to complete the server; check the PSU wattage if overloaded.",
+        );
     }
     for (index, slot) in chassis.pcie_slots.iter().enumerate() {
         let installed = hardware.pcie.get(index).and_then(Option::as_deref);
@@ -941,6 +960,47 @@ fn port_inspector(
         ui.label("Port no longer exists");
         return;
     };
+    if let Some(outlet) = sim.network_outlet(id) {
+        ui.heading(outlet.name());
+        ui.label(format!("RJ45 port {}", id.0));
+        match outlet.kind {
+            NetworkOutletKind::Lan { .. } => {
+                ui.label("Room LAN · private IPv4 pool 10.0.0.0/16");
+            }
+            NetworkOutletKind::Uplink { .. } => {
+                ui.label("Global uplink · simulated provider gateway");
+                let mut probe = sim.clone();
+                for block in sim
+                    .public_ipv4_blocks()
+                    .iter()
+                    .filter(|block| block.uplink == id)
+                {
+                    ui.label(format!(
+                        "{}/29 · gateway {} · five server addresses",
+                        block.network,
+                        block.gateway()
+                    ));
+                    for (address, target) in sim.public_assignments(*block) {
+                        let status = if probe.ping_from_internet(address).reachable {
+                            "reachable"
+                        } else {
+                            "offline"
+                        };
+                        ui.label(format!("{address} → port {} · {status}", target.0));
+                    }
+                }
+            }
+        }
+        if let Some(link) = sim.link_for_port(id) {
+            ui.label(format!("Connected: cable {}", link.id.0));
+            if ui.button("Disconnect cable").clicked() {
+                actions.write(UiAction::Disconnect(link.id));
+            }
+        } else if ui.button("Connect RJ45 cable").clicked() {
+            actions.write(UiAction::CablePort(id));
+        }
+        return;
+    }
     let owner = sim.device(port.device).expect("port owner exists");
     ui.heading(format!("{} / {}", owner.name, port.name));
     ui.label(format!("Connector: {}", connector_label(port.connector)));
@@ -975,9 +1035,41 @@ fn port_inspector(
     ui.separator();
     match &port.config {
         PortConfig::Server(config) => {
+            ui.label(format!(
+                "Current IPv4: {}",
+                config.ipv4.as_ref().map_or_else(
+                    || "unassigned".into(),
+                    |ip| format!("{}/{}", ip.address, ip.prefix)
+                )
+            ));
+            if ui.button("Assign next room LAN IPv4").clicked() {
+                actions.write(UiAction::AssignLanIpv4 { port: id });
+            }
+            for block in sim
+                .public_ipv4_blocks()
+                .iter()
+                .filter(|_| port.name != "mgmt0")
+            {
+                let uplink = sim
+                    .port(block.uplink)
+                    .map_or("UPLINK", |port| port.name.as_str());
+                ui.horizontal(|ui| {
+                    ui.label(format!("{}/29 via {uplink}", block.network));
+                    if ui
+                        .button(format!("Assign public IP##{}", block.network))
+                        .clicked()
+                    {
+                        actions.write(UiAction::AssignPublicIpv4 {
+                            port: id,
+                            network: block.network,
+                        });
+                    }
+                });
+            }
             let draft = drafts.servers.entry(id).or_insert_with(|| {
                 let ip = config.ipv4.as_ref();
                 ServerDraft {
+                    synced_ipv4: config.ipv4.clone(),
                     address: ip.map(|v| v.address.to_string()).unwrap_or_default(),
                     prefix: ip
                         .map(|v| v.prefix.to_string())
@@ -996,6 +1088,28 @@ fn port_inspector(
                     },
                 }
             });
+            if draft.synced_ipv4 != config.ipv4 {
+                draft.address = config
+                    .ipv4
+                    .as_ref()
+                    .map(|ip| ip.address.to_string())
+                    .unwrap_or_default();
+                draft.prefix = config
+                    .ipv4
+                    .as_ref()
+                    .map_or_else(|| "24".into(), |ip| ip.prefix.to_string());
+                draft.gateway = config
+                    .ipv4
+                    .as_ref()
+                    .and_then(|ip| ip.gateway)
+                    .map_or_else(String::new, |ip| ip.to_string());
+                draft.vlan = config
+                    .ipv4
+                    .as_ref()
+                    .and_then(|ip| ip.vlan)
+                    .map_or_else(String::new, |vlan| vlan.0.to_string());
+                draft.synced_ipv4 = config.ipv4.clone();
+            }
             ui.label("Hostname");
             ui.text_edit_singleline(&mut draft.hostname);
             ui.label("IPv4 address");
@@ -1078,7 +1192,7 @@ fn port_inspector(
                 actions.write(UiAction::ApplyRouter(id));
             }
         }
-        PortConfig::PatchPanel | PortConfig::CableManager => {
+        PortConfig::PatchPanel | PortConfig::CableManager | PortConfig::Infrastructure => {
             ui.label("Passive physical interface; paired ports follow the rack side.");
         }
     }
@@ -1182,206 +1296,6 @@ fn link_inspector(
     }
     if ui.button("Disconnect").clicked() {
         actions.write(UiAction::Disconnect(id));
-    }
-}
-
-fn terminal_panel(
-    viewport: &mut egui::Ui,
-    sim: &NetworkSim,
-    state: &mut UiState,
-    actions: &mut MessageWriter<UiAction>,
-) {
-    // Existing terminal windows remain visible even when the rack selection is
-    // a passive device. Passive hardware itself has no console dock or action.
-    let windows = state.terminal_windows.iter().copied().collect::<Vec<_>>();
-    for window_device in windows.iter().copied() {
-        terminal_window(viewport, sim, state, window_device, actions);
-    }
-    let device = match state.selected {
-        Selection::Device(id) => sim.device(id).map(|d| d.id),
-        Selection::Port(id) => sim.port(id).map(|p| p.device),
-        _ => None,
-    };
-    let Some(device) = device.filter(|id| sim.device(*id).is_some_and(is_console_device)) else {
-        return;
-    };
-    let dev = sim.device(device).unwrap();
-    let server = matches!(dev.kind, DeviceKind::Server(_));
-    if state.terminal_windows.contains(&device) {
-        return;
-    }
-    let console = state.terminals.entry(device).or_default();
-    egui::Panel::bottom("terminal")
-        .resizable(true)
-        .default_size(240.0)
-        .show(viewport, |ui| {
-            ui.horizontal(|ui| {
-                ui.strong(format!("{} — Console", dev.name));
-                if ui.small_button("Open terminal window").clicked() {
-                    actions.write(UiAction::LaunchExternalTerminal(device));
-                }
-                if ui.small_button("Clear output").clicked() { console.lines.clear(); }
-                if !server { ui.checkbox(&mut console.script_mode, "Paste configuration"); }
-            });
-            if !server { ui.weak("? help · Up/Down history · Tab completion · Ctrl-Z end · Scripts stop at the first error"); }
-            if !dev.powered { ui.colored_label(egui::Color32::YELLOW, "Power on this device in the Inspector to use its console."); }
-            console_output_scroll(ui, if console.script_mode { 120.0 } else { 70.0 })
-                .id_salt(("console-output", device.0))
-                .max_height(console_scroll_height(
-                    ui.available_height(),
-                    if console.script_mode { 120.0 } else { 70.0 },
-                ).max(60.0))
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    if console.lines.is_empty() {
-                        ui.monospace(if server { "Type help for server commands." } else { "IOS-style simulator console. Type enable, then configure terminal. Type ? to see supported commands." });
-                    }
-                    for line in &console.lines { ui.monospace(line); }
-                });
-            ui.horizontal(|ui| {
-                ui.monospace(sim.terminal_prompt(device));
-                let input_id = egui::Id::new(("console-input", device.0));
-                let focused = ui.memory(|m| m.has_focus(input_id));
-                if focused && !console.script_mode {
-                    let (up, down, tab, end) = ui.input_mut(|i| (
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
-                        i.consume_key(egui::Modifiers::CTRL, egui::Key::Z),
-                    ));
-                    if up && !console.history.is_empty() {
-                        let pos = console.history_position.unwrap_or(console.history.len()).saturating_sub(1);
-                        console.history_position = Some(pos);
-                        console.input = console.history[pos].clone();
-                    }
-                    if down && let Some(pos) = console.history_position {
-                        let next = pos + 1;
-                        console.history_position = (next < console.history.len()).then_some(next);
-                        console.input = console.history.get(next).cloned().unwrap_or_default();
-                    }
-                    if tab && !server {
-                        let completions = sim.console_help(device, &console.input);
-                        if completions.len() == 1 && !completions[0].contains('<') { console.input = completions[0].clone(); }
-                        else { console.lines.extend(completions); }
-                    }
-                    if end && !server { actions.write(UiAction::RunTerminal(device, "end".into())); }
-                }
-                let editor = if console.script_mode {
-                    egui::TextEdit::multiline(&mut console.input).desired_rows(3)
-                } else { egui::TextEdit::singleline(&mut console.input) };
-                let response = ui.add_enabled(dev.powered, editor
-                    .id(input_id).font(egui::TextStyle::Monospace)
-                    .desired_width((ui.available_width() - 65.0).max(80.0))
-                    .hint_text(if server { "help" } else { "Enter command" }));
-                let enter = !console.script_mode && response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.add_enabled(dev.powered, egui::Button::new("Run")).clicked() || (dev.powered && enter) {
-                    let input = std::mem::take(&mut console.input);
-                    if !input.trim().is_empty() {
-                        console.history.push(input.clone());
-                        if console.history.len() > 100 { console.history.remove(0); }
-                    }
-                    console.history_position = None;
-                    actions.write(UiAction::RunTerminal(device, input));
-                    response.request_focus();
-                }
-            });
-        });
-}
-
-fn is_console_device(device: &Device) -> bool {
-    matches!(
-        device.kind,
-        DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)
-    )
-}
-
-fn terminal_window(
-    viewport: &mut egui::Ui,
-    sim: &NetworkSim,
-    state: &mut UiState,
-    device: DeviceId,
-    actions: &mut MessageWriter<UiAction>,
-) {
-    let Some(dev) = sim.device(device) else {
-        state.terminal_windows.remove(&device);
-        state.terminal_window_focus.remove(&device);
-        return;
-    };
-    if !is_console_device(dev) {
-        state.terminal_windows.remove(&device);
-        state.terminal_window_focus.remove(&device);
-        return;
-    }
-    let powered = dev.powered;
-    let name = dev.name.clone();
-    let server = matches!(dev.kind, DeviceKind::Server(_));
-    let console = state.terminals.entry(device).or_default();
-    let mut open = true;
-    egui::Window::new(format!("Terminal — {name}"))
-        .open(&mut open)
-        .resizable(true)
-        .default_size(egui::vec2(760.0, 480.0))
-        .min_size(egui::vec2(420.0, 260.0))
-        .frame(egui::Frame::window(viewport.style()).fill(egui::Color32::from_rgb(8, 10, 12)))
-        .show(viewport, |ui| {
-            ui.colored_label(
-                egui::Color32::from_rgb(125, 190, 145),
-                if server {
-                    "LINUX CONSOLE • LIVE"
-                } else {
-                    "IOS CONSOLE • LIVE"
-                },
-            );
-            console_output_scroll(ui, 58.0)
-                .max_height((ui.available_height() - 58.0).max(0.0))
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    if console.lines.is_empty() {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(145, 180, 150),
-                            if server {
-                                "Linux terminal · type help to begin"
-                            } else {
-                                "IOS-style simulator console · type ? for help"
-                            },
-                        );
-                    }
-                    for line in &console.lines {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 205, 195),
-                            egui::RichText::new(line).monospace(),
-                        );
-                    }
-                });
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.monospace(sim.terminal_prompt(device));
-                let response = ui.add_enabled(
-                    powered,
-                    egui::TextEdit::singleline(&mut console.input)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(ui.available_width() - 55.0),
-                );
-                if state.terminal_window_focus.contains(&device) {
-                    response.request_focus();
-                }
-                if (ui.button("Run").clicked()
-                    || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && powered
-                {
-                    let input = std::mem::take(&mut console.input);
-                    if !input.trim().is_empty() {
-                        console.history.push(input.clone());
-                    }
-                    actions.write(UiAction::RunTerminal(device, input));
-                    state.terminal_window_focus.insert(device);
-                    response.request_focus();
-                }
-            });
-        });
-    state.terminal_window_focus.remove(&device);
-    if !open {
-        state.terminal_windows.remove(&device);
     }
 }
 
@@ -1511,6 +1425,18 @@ fn rack_view(
                                 response.context_menu(|menu| { if occupied && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(outlet)); menu.close(); } });
                             }
                         });
+                        if let Some(outlet) = sim.network_outlets().find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: rack.id }) {
+                            ui.horizontal(|ui| {
+                                ui.label("ROOM LAN:");
+                                let connected = sim.link_for_port(outlet.port).is_some();
+                                let response = ui.allocate_response(egui::vec2(86.0, 27.0), egui::Sense::click()).on_hover_text(format!("Rack LAN port {} · click to connect", outlet.port.0));
+                                ui.painter().rect_filled(response.rect.shrink(1.0), 2.0, egui::Color32::from_rgb(37, 49, 55));
+                                let socket = egui::Rect::from_center_size(egui::pos2(response.rect.left() + 17.0, response.rect.center().y), egui::vec2(25.0, 18.0));
+                                room::NetworkSocketRenderer::paint(ui.painter(), socket, connected, state.selected == Selection::Port(outlet.port));
+                                ui.painter().text(egui::pos2(response.rect.left() + 33.0, response.rect.center().y), egui::Align2::LEFT_CENTER, "LAN", egui::FontId::monospace(10.0), egui::Color32::WHITE);
+                                port_visuals.push((outlet.port, response.rect));
+                            });
+                        }
                         for unit in (1..=rack.units).rev() {
                             let (row_rect, row_response) = ui.allocate_exact_size(
                                 egui::vec2(rack_width, row_height),
@@ -2537,31 +2463,29 @@ fn paint_server_backplane(
             egui::Stroke::new(1.0, egui::Color32::from_gray(125)),
             egui::StrokeKind::Inside,
         );
-        match &part.kind {
-            ServerPartKind::PciCard {
-                card: PciCard::Ethernet { .. },
-            } => {
-                for port_id in hardware.card_ports.get(slot_index).into_iter().flatten() {
-                    let Some(index) = server.ports.iter().position(|id| id == port_id) else {
-                        continue;
-                    };
-                    let socket =
-                        rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
-                    painter.rect_filled(socket, 1.0, egui::Color32::from_rgb(8, 12, 14));
-                    painter.rect_stroke(
-                        socket,
-                        1.0,
-                        egui::Stroke::new(1.0, egui::Color32::from_gray(162)),
-                        egui::StrokeKind::Inside,
-                    );
-                    painter.rect_filled(
-                        socket.shrink2(egui::vec2(socket.width() * 0.20, socket.height() * 0.24)),
-                        0.0,
-                        egui::Color32::from_rgb(24, 31, 33),
-                    );
-                }
+        if let ServerPartKind::PciCard {
+            card: PciCard::Ethernet { .. },
+        } = &part.kind
+        {
+            for port_id in hardware.card_ports.get(slot_index).into_iter().flatten() {
+                let Some(index) = server.ports.iter().position(|id| id == port_id) else {
+                    continue;
+                };
+                let socket =
+                    rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
+                painter.rect_filled(socket, 1.0, egui::Color32::from_rgb(8, 12, 14));
+                painter.rect_stroke(
+                    socket,
+                    1.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(162)),
+                    egui::StrokeKind::Inside,
+                );
+                painter.rect_filled(
+                    socket.shrink2(egui::vec2(socket.width() * 0.20, socket.height() * 0.24)),
+                    0.0,
+                    egui::Color32::from_rgb(24, 31, 33),
+                );
             }
-            _ => {}
         }
     }
 }
@@ -2884,6 +2808,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn navigation_bar_does_not_cover_the_room() {
+        use bevy::ecs::system::SystemState;
+        let sim = NetworkSim::new();
+        let ctx = egui::Context::default();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut writer = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut state = UiState::default();
+        let mut height = 0.0;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    height = top_bar(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut writer.get_mut(&mut world).unwrap(),
+                    )
+                    .height();
+                },
+            );
+            output.textures_delta.clear();
+        }
+        assert!(
+            height > 0.0 && height <= 80.0,
+            "navigation bar height: {height}"
+        );
+    }
+
+    #[test]
     fn server_rear_backplane_gains_card_face_and_jacks_when_installed() {
         use cloud_provider_sim::{Command, SimEvent};
         let mut sim = NetworkSim::new();
@@ -3032,7 +2993,7 @@ mod tests {
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         parent = ui.max_rect();
-                        output = console_output_scroll(ui, 58.0)
+                        output = TerminalRenderer::output_scroll(ui, 58.0)
                             .show(ui, |ui| {
                                 for _ in 0..line_count {
                                     ui.label("long console output");

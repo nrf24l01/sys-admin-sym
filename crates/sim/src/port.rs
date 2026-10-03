@@ -72,6 +72,7 @@ pub enum PortConfig {
     Router(RouterPortConfig),
     PatchPanel,
     CableManager,
+    Infrastructure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

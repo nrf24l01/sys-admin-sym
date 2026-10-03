@@ -43,6 +43,62 @@ pub const DATACENTER_RACK_COUNT: u64 = DATACENTER_RACK_ROWS * DATACENTER_RACKS_P
 /// Column order keeps IDs 1–10 at the original B/C tray for saved routes.
 pub const DATACENTER_CABLE_COLUMNS_CM: [u16; 4] = [630, 330, 930, 1230];
 
+pub struct RoomCableLayout;
+
+impl RoomCableLayout {
+    pub const ANCHOR_COUNT: usize = 220;
+    pub const RACK_ACCESS_OFFSET_CM: u16 = 100;
+
+    pub fn rack_access_positions(rack: RackId) -> [RoomPosition; 2] {
+        let center = predefined_rack_position(rack);
+        [
+            RoomPosition {
+                y_cm: center.y_cm - Self::RACK_ACCESS_OFFSET_CM,
+                ..center
+            },
+            RoomPosition {
+                y_cm: center.y_cm + Self::RACK_ACCESS_OFFSET_CM,
+                ..center
+            },
+        ]
+    }
+
+    pub fn horizontal_rows_cm() -> impl Iterator<Item = u16> {
+        (0..DATACENTER_RACK_ROWS).flat_map(|row| {
+            let center = 180 + row as u16 * 270;
+            [
+                center - Self::RACK_ACCESS_OFFSET_CM,
+                center + Self::RACK_ACCESS_OFFSET_CM,
+            ]
+        })
+    }
+
+    pub fn anchors() -> Vec<RoomCableAnchor> {
+        // Preserve the original vertical-tray IDs so saved routes keep their positions.
+        let mut anchors: Vec<_> = (1..=40)
+            .map(|id| RoomCableAnchor {
+                id,
+                position: predefined_cable_anchor_position(id),
+            })
+            .collect();
+        let mut append = |position| {
+            let id = (anchors.len() + 1) as u8;
+            anchors.push(RoomCableAnchor { id, position });
+        };
+        for rack in 1..=DATACENTER_RACK_COUNT {
+            for position in Self::rack_access_positions(RackId(rack)) {
+                append(position);
+            }
+        }
+        for y_cm in Self::horizontal_rows_cm() {
+            for x_cm in DATACENTER_CABLE_COLUMNS_CM {
+                append(RoomPosition { x_cm, y_cm });
+            }
+        }
+        anchors
+    }
+}
+
 pub fn predefined_cable_anchor_position(id: u8) -> RoomPosition {
     let index = usize::from(id.saturating_sub(1));
     RoomPosition {

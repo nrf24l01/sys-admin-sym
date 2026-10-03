@@ -2,147 +2,139 @@ use crate::app::{Selection, UiAction, UiState, Workspace};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use cloud_provider_sim::{
-    CableRoutePoint, DATACENTER_CABLE_COLUMNS_CM, NetworkSim, RackId, RoomPosition,
+    CableRoutePoint, DATACENTER_CABLE_COLUMNS_CM, NetworkOutletKind, NetworkSim, RackId,
+    RoomCableLayout, RoomPosition,
 };
 
 const ROOM_CANVAS_WIDTH: f32 = 1040.0;
 const ROOM_CANVAS_HEIGHT: f32 = 1820.0;
 
-fn paint_floor(ui: &egui::Ui, rect: Rect, room: &cloud_provider_sim::DataCenterRoom) {
-    let painter = ui.painter_at(rect);
-    let tile = 65.0;
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(50, 56, 60));
-    for column in 0..16 {
-        for row in 0..28 {
-            let square = Rect::from_min_size(
-                rect.min + Vec2::new(column as f32 * tile, row as f32 * tile),
-                Vec2::splat(tile - 1.0),
-            );
-            let shade = if (column + row) % 2 == 0 { 58 } else { 63 };
-            painter.rect_filled(square, 0.0, Color32::from_rgb(shade, shade + 5, shade + 7));
-            painter.circle_filled(
-                square.left_top() + Vec2::splat(5.0),
-                1.0,
-                Color32::from_gray(91),
-            );
-            painter.circle_filled(
-                square.right_bottom() - Vec2::splat(5.0),
-                1.0,
-                Color32::from_gray(91),
+pub(super) struct NetworkSocketRenderer;
+
+impl NetworkSocketRenderer {
+    pub(super) fn paint(painter: &egui::Painter, rect: Rect, connected: bool, selected: bool) {
+        let border = if selected {
+            Color32::LIGHT_BLUE
+        } else if connected {
+            Color32::from_rgb(70, 185, 130)
+        } else {
+            Color32::from_gray(145)
+        };
+        painter.rect_filled(rect, 2.0, border);
+        let opening = rect.shrink2(Vec2::new(2.0, 2.0));
+        painter.rect_filled(opening, 1.0, Color32::from_rgb(14, 22, 27));
+        let pitch = opening.width() / 9.0;
+        for contact in 0..8 {
+            let x = opening.left() + pitch * (contact as f32 + 1.0);
+            painter.line_segment(
+                [
+                    Pos2::new(x, opening.top() + 2.0),
+                    Pos2::new(x, opening.top() + 6.0),
+                ],
+                Stroke::new(1.3, Color32::from_rgb(220, 175, 80)),
             );
         }
-    }
-    for row in 0..9 {
-        let y = screen(
-            RoomPosition {
-                x_cm: 0,
-                y_cm: 315 + row * 270,
-            },
-            rect,
-            room,
-        )
-        .y;
-        let aisle = Rect::from_min_max(
-            egui::pos2(rect.left() + 16.0, y - 29.0),
-            egui::pos2(rect.right() - 16.0, y + 29.0),
-        );
-        painter.rect_filled(aisle, 0.0, Color32::from_rgb(68, 74, 76));
-        painter.line_segment(
-            [aisle.left_top(), aisle.right_top()],
-            Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
-        );
-        painter.line_segment(
-            [aisle.left_bottom(), aisle.right_bottom()],
-            Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
-        );
-        painter.text(
-            egui::pos2(aisle.left() + 24.0, aisle.center().y),
-            egui::Align2::LEFT_CENTER,
-            if row % 2 == 0 {
-                "COLD AISLE"
-            } else {
-                "SERVICE AISLE"
-            },
-            egui::FontId::monospace(10.0),
-            Color32::from_gray(155),
-        );
-    }
-    let mut columns = DATACENTER_CABLE_COLUMNS_CM;
-    columns.sort();
-    for (gap, x_cm) in columns.into_iter().enumerate() {
-        let tray_x = screen(RoomPosition { x_cm, y_cm: 0 }, rect, room).x;
-        let path = [
-            egui::pos2(tray_x, rect.top() + 38.0),
-            egui::pos2(tray_x, rect.bottom() - 25.0),
-        ];
-        painter.line_segment(path, Stroke::new(14.0, Color32::from_rgb(35, 57, 62)));
-        painter.line_segment(path, Stroke::new(2.0, Color32::from_rgb(95, 142, 150)));
-        painter.text(
-            egui::pos2(tray_x, rect.top() + 18.0),
-            egui::Align2::CENTER_CENTER,
-            format!(
-                "{}/{}",
-                (b'A' + gap as u8) as char,
-                (b'B' + gap as u8) as char
+        painter.rect_filled(
+            Rect::from_center_size(
+                opening.center_bottom() - Vec2::new(0.0, 2.0),
+                Vec2::new(opening.width() * 0.34, 3.0),
             ),
-            egui::FontId::monospace(11.0),
-            Color32::from_rgb(150, 205, 210),
+            0.0,
+            Color32::from_gray(72),
         );
     }
-    for row in 0..10 {
-        let y = screen(
-            RoomPosition {
-                x_cm: 0,
-                y_cm: 180 + row * 270,
-            },
-            rect,
-            room,
-        )
-        .y;
-        painter.text(
-            egui::pos2(rect.left() + 18.0, y),
-            egui::Align2::LEFT_CENTER,
-            format!("ROW {:02}", row + 1),
-            egui::FontId::monospace(12.0),
-            Color32::from_gray(185),
+}
+
+struct RoomFloorRenderer;
+
+impl RoomFloorRenderer {
+    fn paint(ui: &egui::Ui, rect: Rect, room: &cloud_provider_sim::DataCenterRoom) {
+        let painter = ui.painter_at(rect);
+        let tile = 65.0;
+        painter.rect_filled(rect, 0.0, Color32::from_rgb(50, 56, 60));
+        for column in 0..16 {
+            for row in 0..28 {
+                let square = Rect::from_min_size(
+                    rect.min + Vec2::new(column as f32 * tile, row as f32 * tile),
+                    Vec2::splat(tile - 1.0),
+                );
+                let shade = if (column + row) % 2 == 0 { 58 } else { 63 };
+                painter.rect_filled(square, 0.0, Color32::from_rgb(shade, shade + 5, shade + 7));
+                painter.circle_filled(
+                    square.left_top() + Vec2::splat(5.0),
+                    1.0,
+                    Color32::from_gray(91),
+                );
+                painter.circle_filled(
+                    square.right_bottom() - Vec2::splat(5.0),
+                    1.0,
+                    Color32::from_gray(91),
+                );
+            }
+        }
+        for row in 0..9 {
+            let y = screen(
+                RoomPosition {
+                    x_cm: 0,
+                    y_cm: 315 + row * 270,
+                },
+                rect,
+                room,
+            )
+            .y;
+            let aisle = Rect::from_min_max(
+                egui::pos2(rect.left() + 16.0, y - 29.0),
+                egui::pos2(rect.right() - 16.0, y + 29.0),
+            );
+            painter.rect_filled(aisle, 0.0, Color32::from_rgb(68, 74, 76));
+            painter.line_segment(
+                [aisle.left_top(), aisle.right_top()],
+                Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
+            );
+            painter.line_segment(
+                [aisle.left_bottom(), aisle.right_bottom()],
+                Stroke::new(1.0, Color32::from_rgb(130, 133, 112)),
+            );
+        }
+        let mut columns = DATACENTER_CABLE_COLUMNS_CM;
+        columns.sort();
+        for x_cm in columns {
+            let tray_x = screen(RoomPosition { x_cm, y_cm: 0 }, rect, room).x;
+            let path = [
+                egui::pos2(tray_x, rect.top() + 38.0),
+                egui::pos2(tray_x, rect.bottom() - 25.0),
+            ];
+            painter.line_segment(path, Stroke::new(14.0, Color32::from_rgb(35, 57, 62)));
+            painter.line_segment(path, Stroke::new(2.0, Color32::from_rgb(95, 142, 150)));
+        }
+        for y_cm in RoomCableLayout::horizontal_rows_cm() {
+            let y = screen(RoomPosition { x_cm: 0, y_cm }, rect, room).y;
+            let path = [
+                egui::pos2(rect.left() + 16.0, y),
+                egui::pos2(rect.right() - 16.0, y),
+            ];
+            painter.line_segment(path, Stroke::new(14.0, Color32::from_rgb(35, 57, 62)));
+            painter.line_segment(path, Stroke::new(2.0, Color32::from_rgb(95, 142, 150)));
+        }
+        painter.rect_stroke(
+            rect.shrink(4.0),
+            2.0,
+            Stroke::new(8.0, Color32::from_rgb(108, 113, 116)),
+            egui::StrokeKind::Inside,
         );
-    }
-    for column in 0..5 {
-        let x = screen(
-            RoomPosition {
-                x_cm: 180 + column * 300,
-                y_cm: 0,
-            },
-            rect,
-            room,
-        )
-        .x;
+        let door = Rect::from_center_size(
+            egui::pos2(rect.center().x, rect.bottom() - 5.0),
+            Vec2::new(110.0, 12.0),
+        );
+        painter.rect_filled(door, 0.0, Color32::from_rgb(56, 62, 66));
         painter.text(
-            egui::pos2(x, rect.top() + 18.0),
+            door.center() - Vec2::new(0.0, 24.0),
             egui::Align2::CENTER_CENTER,
-            format!("BAY {}", (b'A' + column as u8) as char),
-            egui::FontId::monospace(12.0),
-            Color32::from_gray(185),
+            "ENTRANCE",
+            egui::FontId::monospace(11.0),
+            Color32::from_gray(170),
         );
     }
-    painter.rect_stroke(
-        rect.shrink(4.0),
-        2.0,
-        Stroke::new(8.0, Color32::from_rgb(108, 113, 116)),
-        egui::StrokeKind::Inside,
-    );
-    let door = Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.bottom() - 5.0),
-        Vec2::new(110.0, 12.0),
-    );
-    painter.rect_filled(door, 0.0, Color32::from_rgb(56, 62, 66));
-    painter.text(
-        door.center() - Vec2::new(0.0, 24.0),
-        egui::Align2::CENTER_CENTER,
-        "ENTRANCE",
-        egui::FontId::monospace(11.0),
-        Color32::from_gray(170),
-    );
 }
 
 fn screen(position: RoomPosition, rect: Rect, room: &cloud_provider_sim::DataCenterRoom) -> Pos2 {
@@ -169,9 +161,10 @@ pub(super) fn show(
         let size = Vec2::new(ROOM_CANVAS_WIDTH, ROOM_CANVAS_HEIGHT);
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
-        paint_floor(ui, rect, &sim.room);
+        RoomFloorRenderer::paint(ui, rect, &sim.room);
 
         let rack_center = |rack: RackId| screen(sim.rack_room_position(rack), rect, &sim.room);
+        let rack_lan_center = |rack: RackId| rack_center(rack) + Vec2::new(53.0, -31.0);
         let route_position = |point: &CableRoutePoint| -> Option<Pos2> {
             if let Some(id) = point.room_anchor_id() {
                 sim.room.cable_anchors.iter().find(|anchor| anchor.id == id)
@@ -191,12 +184,15 @@ pub(super) fn show(
             }
         };
         for link in sim.links() {
-            let Some(a) = sim.port(link.a).and_then(|p| sim.device(p.device)).and_then(|d| d.rack) else { continue };
-            let Some(b) = sim.port(link.b).and_then(|p| sim.device(p.device)).and_then(|d| d.rack) else { continue };
-            if a.rack == b.rack { continue; }
-            let mut points = vec![rack_center(a.rack)];
+            let endpoint = |port| sim.network_outlet(port).map(|outlet| match outlet.kind {
+                NetworkOutletKind::Uplink { position } => screen(position, rect, &sim.room),
+                NetworkOutletKind::Lan { rack } => rack_lan_center(rack),
+            }).or_else(|| sim.port(port).and_then(|p| sim.device(p.device)).and_then(|d| d.rack).map(|p| rack_center(p.rack)));
+            let (Some(a), Some(b)) = (endpoint(link.a), endpoint(link.b)) else { continue };
+            if a == b { continue; }
+            let mut points = vec![a];
             points.extend(link.route.iter().filter_map(&route_position));
-            points.push(rack_center(b.rack));
+            points.push(b);
             let selected = state.selected == Selection::Link(link.id);
             let stroke = Stroke::new(if selected { 4.0 } else { 2.0 }, if selected { Color32::LIGHT_BLUE } else { Color32::from_rgb(75, 170, 150) });
             for (index, pair) in points.windows(2).enumerate() {
@@ -223,14 +219,16 @@ pub(super) fn show(
             }
         }
         let pending_start = state.pending_cable
+            .and_then(|port| sim.network_outlet(port).map(|outlet| match outlet.kind { NetworkOutletKind::Lan { rack } => rack_lan_center(rack), NetworkOutletKind::Uplink { position } => screen(position, rect, &sim.room) }))
+            .or_else(|| state.pending_cable
             .and_then(|port| sim.port(port))
             .and_then(|port| sim.device(port.device))
             .and_then(|device| device.rack)
-            .map(|placement| placement.rack)
-            .or_else(|| state.pending_power_outlet.and_then(|outlet| source_rack_for(outlet.source)));
+            .map(|placement| rack_center(placement.rack)))
+            .or_else(|| state.pending_power_outlet.and_then(|outlet| source_rack_for(outlet.source).map(rack_center)));
         if let Some(start) = pending_start {
             let route = if state.pending_cable.is_some() { &state.pending_cable_route } else { &state.pending_power_route };
-            let mut points = vec![rack_center(start)];
+            let mut points = vec![start];
             points.extend(route.iter().filter_map(&route_position));
             for pair in points.windows(2) {
                 painter.line_segment([pair[0], pair[1]], Stroke::new(3.0, Color32::from_rgb(245, 190, 75)));
@@ -256,12 +254,34 @@ pub(super) fn show(
             painter.text(body.center_top() + Vec2::new(0.0, 17.0), egui::Align2::CENTER_CENTER, format!("R{:02}", rack.id.0), egui::FontId::monospace(12.0), Color32::WHITE);
             painter.text(body.center_bottom() - Vec2::new(0.0, 12.0), egui::Align2::CENTER_CENTER, format!("{} / {}U", rack.placements.len(), rack.units), egui::FontId::monospace(10.0), Color32::WHITE);
             if hit.clicked() { state.active_rack = Some(rack.id); state.workspace = Workspace::Rack; }
+            if let Some(outlet) = sim.network_outlets().find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: rack.id }) {
+                let socket = Rect::from_center_size(rack_lan_center(rack.id), Vec2::new(23.0, 17.0));
+                let response = ui.interact(socket, egui::Id::new(("room-lan", outlet.port.0)), Sense::click()).on_hover_text(format!("Rack {} room LAN · port {}", rack.id.0, outlet.port.0));
+                NetworkSocketRenderer::paint(&painter, socket, sim.link_for_port(outlet.port).is_some(), state.selected == Selection::Port(outlet.port));
+                if response.clicked() {
+                    actions.write(UiAction::SelectPort(outlet.port));
+                    if sim.link_for_port(outlet.port).is_none() { actions.write(UiAction::CablePort(outlet.port)); }
+                }
+            }
+        }
+        for outlet in sim.network_outlets() {
+            let NetworkOutletKind::Uplink { position } = outlet.kind else { continue };
+            let center = screen(position, rect, &sim.room);
+            let plate = Rect::from_center_size(center, Vec2::new(36.0, 29.0));
+            let hit = ui.interact(plate, egui::Id::new(("room-uplink", outlet.port.0)), Sense::click()).on_hover_text(format!("{} · port {} · click to select or connect", sim.port(outlet.port).map_or("Global uplink", |port| port.name.as_str()), outlet.port.0));
+            painter.rect_filled(plate, 3.0, Color32::from_rgb(37, 49, 55));
+            painter.rect_stroke(plate, 3.0, Stroke::new(2.0, Color32::from_rgb(70, 185, 130)), egui::StrokeKind::Inside);
+            let socket = Rect::from_center_size(center, Vec2::new(26.0, 19.0));
+            NetworkSocketRenderer::paint(&painter, socket, sim.link_for_port(outlet.port).is_some(), state.selected == Selection::Port(outlet.port));
+            if hit.clicked() {
+                actions.write(UiAction::SelectPort(outlet.port));
+                if sim.link_for_port(outlet.port).is_none() { actions.write(UiAction::CablePort(outlet.port)); }
+            }
         }
         for anchor in &sim.room.cable_anchors {
             let center = screen(anchor.position, rect, &sim.room);
             let hit = ui.interact(Rect::from_center_size(center, Vec2::splat(28.0)), egui::Id::new(("room-anchor", anchor.id)), Sense::click());
             painter.circle_filled(center, 10.0, Color32::from_rgb(120, 170, 190));
-            painter.text(center + Vec2::new(0.0, 17.0), egui::Align2::CENTER_TOP, format!("CM {}", anchor.id), egui::FontId::proportional(11.0), Color32::LIGHT_GRAY);
             if hit.clicked() {
                 let point = CableRoutePoint::room_anchor(anchor.id);
                 if state.pending_cable.is_some() { actions.write(UiAction::AddPendingCableRoutePoint(point)); }
@@ -283,4 +303,52 @@ pub(super) fn show(
         }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::{
+        ecs::system::SystemState,
+        prelude::{Messages, World},
+    };
+
+    #[test]
+    fn room_uses_unlabeled_managers_and_green_uplink_borders() {
+        let ctx = egui::Context::default();
+        let sim = NetworkSim::new();
+        let mut state = UiState::default();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 2100.0))),
+                ..Default::default()
+            },
+            |ui| {
+                show(
+                    ui,
+                    &sim,
+                    &mut state,
+                    &mut system.get_mut(&mut world).unwrap(),
+                )
+            },
+        );
+        for shape in &output.shapes {
+            if let egui::Shape::Text(text) = &shape.shape {
+                let label = text.galley.text();
+                assert!(
+                    !label.starts_with("ROW ")
+                        && !label.starts_with("CM ")
+                        && !label.starts_with("UPLINK ")
+                        && !label.starts_with("BAY ")
+                        && !label.contains("AISLE")
+                );
+            }
+        }
+        let green_borders = output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.color == Color32::from_rgb(70, 185, 130) && rect.stroke.width == 2.0)).count();
+        assert_eq!(green_borders, 2);
+        output.textures_delta.clear();
+    }
 }

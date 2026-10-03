@@ -12,6 +12,10 @@ pub struct NetworkSim {
     #[serde(default)]
     pub room: DataCenterRoom,
     #[serde(default)]
+    pub(crate) network_outlets: Vec<NetworkOutlet>,
+    #[serde(default)]
+    pub(crate) public_ipv4_blocks: Vec<PublicIpv4Block>,
+    #[serde(default)]
     pub power: PowerSystem,
     pub money: i64,
     #[serde(default)]
@@ -28,6 +32,8 @@ pub struct NetworkSim {
     pub(crate) startup_configs: HashMap<DeviceId, IosStartupConfig>,
     #[serde(skip)]
     pub(crate) console_modes: HashMap<DeviceId, IosMode>,
+    #[serde(skip)]
+    pub(crate) ssh_sessions: HashMap<DeviceId, DeviceId>,
     next_device_id: u64,
     next_port_id: u64,
     next_link_id: u64,
@@ -52,6 +58,8 @@ impl NetworkSim {
             links: HashMap::new(),
             racks: HashMap::new(),
             room: DataCenterRoom::default(),
+            network_outlets: Vec::new(),
+            public_ipv4_blocks: Vec::new(),
             power: PowerSystem::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
@@ -62,6 +70,7 @@ impl NetworkSim {
             ios_configs: HashMap::new(),
             startup_configs: HashMap::new(),
             console_modes: HashMap::new(),
+            ssh_sessions: HashMap::new(),
             next_device_id: 1,
             next_port_id: 1,
             next_link_id: 1,
@@ -70,6 +79,7 @@ impl NetworkSim {
             runtime: NetworkRuntime::default(),
         };
         sim.ensure_predefined_room();
+        sim.ensure_network_outlets();
         sim
     }
 
@@ -170,16 +180,20 @@ impl NetworkSim {
         self.power.recompute_now();
         self.sync_effective_power();
         // Migrate legacy servers that predate the dedicated management NIC.
-        let legacy_servers: Vec<_> = self
-            .devices
-            .iter()
-            .filter_map(|(id, device)| match &device.kind {
-                DeviceKind::Server(server) if server.ports.len() < 3 => {
-                    Some((*id, server.ports.len()))
-                }
-                _ => None,
-            })
-            .collect();
+        let legacy_servers: Vec<_> =
+            self.devices
+                .iter()
+                .filter_map(|(id, device)| match &device.kind {
+                    DeviceKind::Server(server)
+                        if !server.ports.iter().any(|id| {
+                            self.ports.get(id).is_some_and(|port| port.name == "mgmt0")
+                        }) =>
+                    {
+                        Some((*id, server.ports.len()))
+                    }
+                    _ => None,
+                })
+                .collect();
         for (device, count) in legacy_servers {
             let mut existing: std::collections::HashSet<_> = self.devices[&device]
                 .ports()
@@ -187,13 +201,11 @@ impl NetworkSim {
                 .filter_map(|port| self.ports.get(port).map(|port| port.name.clone()))
                 .collect();
             let mut current = count;
-            while current < 3 {
+            while current < 2 {
                 let name = if !existing.contains("eth1") {
                     "eth1"
-                } else if !existing.contains("mgmt0") {
-                    "mgmt0"
                 } else {
-                    "mgmt1"
+                    "eth0"
                 };
                 let port = self.alloc_port(
                     device,
@@ -208,24 +220,33 @@ impl NetworkSim {
                 existing.insert(name.to_string());
                 current += 1;
             }
+            let port = self.alloc_port(
+                device,
+                "mgmt0".into(),
+                PortConnector::Rj45,
+                PortConfig::Server(ServerPortConfig::default()),
+            );
+            if let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind {
+                server.ports.push(port);
+            }
         }
         for device in self.devices.values_mut() {
-            if let DeviceKind::Server(server) = &mut device.kind {
-                if let Some(hardware) = &mut server.hardware {
-                    let slots = server_catalog().chassis.pcie_slots.len();
-                    if hardware.pcie.len() < slots {
-                        hardware.pcie.resize(slots, None);
-                    }
-                    if hardware.card_ports.len() < hardware.pcie.len() {
-                        hardware
-                            .card_ports
-                            .resize_with(hardware.pcie.len(), Vec::new);
-                    }
-                    if hardware.drives.len() < server_catalog().chassis.drive_bays.len() {
-                        hardware
-                            .drives
-                            .resize(server_catalog().chassis.drive_bays.len(), None);
-                    }
+            if let DeviceKind::Server(server) = &mut device.kind
+                && let Some(hardware) = &mut server.hardware
+            {
+                let slots = server_catalog().chassis.pcie_slots.len();
+                if hardware.pcie.len() < slots {
+                    hardware.pcie.resize(slots, None);
+                }
+                if hardware.card_ports.len() < hardware.pcie.len() {
+                    hardware
+                        .card_ports
+                        .resize_with(hardware.pcie.len(), Vec::new);
+                }
+                if hardware.drives.len() < server_catalog().chassis.drive_bays.len() {
+                    hardware
+                        .drives
+                        .resize(server_catalog().chassis.drive_bays.len(), None);
                 }
             }
         }
@@ -233,14 +254,25 @@ impl NetworkSim {
         // price once; the chassis now includes cooling by default.
         let mut retired_fans = self.server_parts.remove("r360_fan").unwrap_or(0) as usize;
         for device in self.devices.values_mut() {
-            if let DeviceKind::Server(server) = &mut device.kind {
-                if let Some(hardware) = &mut server.hardware {
-                    retired_fans += hardware.legacy_fans.len();
-                    hardware.legacy_fans.clear();
-                }
+            if let DeviceKind::Server(server) = &mut device.kind
+                && let Some(hardware) = &mut server.hardware
+            {
+                retired_fans += hardware.legacy_fans.len();
+                hardware.legacy_fans.clear();
             }
         }
         self.money += retired_fans as i64 * 45;
+        // The chassis now includes its PSU. Refund stand-alone PSUs from old saves once.
+        let mut retired_psus = self.server_parts.remove("r360_psu_600w").unwrap_or(0) as usize;
+        for device in self.devices.values_mut() {
+            if let DeviceKind::Server(server) = &mut device.kind
+                && let Some(hardware) = &mut server.hardware
+            {
+                retired_psus += hardware.power_supplies.len();
+                hardware.power_supplies.clear();
+            }
+        }
+        self.money += retired_psus as i64 * 180;
         // Runtime state is deliberately not persisted across a loaded or
         // replaced topology: learned MAC/ARP entries and port LEDs refer to
         // the old physical graph.
@@ -320,8 +352,69 @@ impl NetworkSim {
         self.next_link_id = self.links.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.next_rack_id = self.racks.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.ensure_predefined_room();
+        self.ensure_network_outlets();
     }
 
+    fn ensure_network_outlets(&mut self) {
+        self.network_outlets.retain(|outlet| {
+            self.ports
+                .get(&outlet.port)
+                .is_some_and(|port| matches!(port.config, PortConfig::Infrastructure))
+        });
+        for (number, position) in [
+            RoomPosition { x_cm: 75, y_cm: 90 },
+            RoomPosition {
+                x_cm: 145,
+                y_cm: 90,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if !self.network_outlets.iter().any(|outlet| {
+                matches!(outlet.kind, NetworkOutletKind::Uplink { .. })
+                    && self.port(outlet.port).is_some()
+                    && self
+                        .port(outlet.port)
+                        .is_some_and(|p| p.name == format!("UPLINK {}", number + 1))
+            }) {
+                self.add_network_outlet(
+                    NetworkOutletKind::Uplink { position },
+                    format!("UPLINK {}", number + 1),
+                );
+            }
+        }
+        let racks: Vec<_> = self.racks.keys().copied().collect();
+        for rack in racks {
+            if !self.network_outlets.iter().any(|outlet| {
+                outlet.kind == NetworkOutletKind::Lan { rack } && self.port(outlet.port).is_some()
+            }) {
+                self.add_network_outlet(
+                    NetworkOutletKind::Lan { rack },
+                    format!("R{} LAN", rack.0),
+                );
+            }
+        }
+    }
+
+    fn add_network_outlet(&mut self, kind: NetworkOutletKind, name: String) {
+        let port = self.alloc_port(
+            NetworkOutlet::OWNER,
+            name,
+            PortConnector::Rj45,
+            PortConfig::Infrastructure,
+        );
+        self.network_outlets.push(NetworkOutlet { port, kind });
+    }
+
+    pub fn network_outlet(&self, port: PortId) -> Option<&NetworkOutlet> {
+        self.network_outlets
+            .iter()
+            .find(|outlet| outlet.port == port)
+    }
+    pub fn network_outlets(&self) -> impl Iterator<Item = &NetworkOutlet> {
+        self.network_outlets.iter()
+    }
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
         self.devices.values()
     }
@@ -368,9 +461,10 @@ impl NetworkSim {
                     self.port(*endpoint).is_some_and(|port| {
                         port.connector.supports_cabling()
                             && port.enabled
-                            && self
-                                .device(port.device)
-                                .is_some_and(|device| device.powered && device.rack.is_some())
+                            && (self.network_outlet(port.id).is_some()
+                                || self
+                                    .device(port.device)
+                                    .is_some_and(|device| device.powered && device.rack.is_some()))
                     })
                 })
         })
@@ -449,7 +543,9 @@ impl NetworkSim {
             },
         );
         self.power.add_rack(id);
-        self.room.rack_positions.insert(id, predefined_rack_position(id));
+        self.room
+            .rack_positions
+            .insert(id, predefined_rack_position(id));
         id
     }
 
@@ -459,37 +555,44 @@ impl NetworkSim {
         for number in 1..=DATACENTER_RACK_COUNT {
             let id = RackId(number);
             let rack = self.racks.entry(id).or_insert_with(|| Rack {
-                id, name: format!("Rack {number:02}"), units: 42, placements: Vec::new(),
+                id,
+                name: format!("Rack {number:02}"),
+                units: 42,
+                placements: Vec::new(),
             });
             rack.units = 42;
-            self.room.rack_positions.insert(id, predefined_rack_position(id));
-            if !self.power.racks.contains_key(&id) { self.power.add_rack(id); }
-        }
-        for id in 1..=40u8 {
-            let position = predefined_cable_anchor_position(id);
-            if let Some(anchor) = self.room.cable_anchors.iter_mut().find(|anchor| anchor.id == id) {
-                anchor.position = position;
-            } else {
-                self.room.cable_anchors.push(RoomCableAnchor {
-                    id,
-                    position,
-                });
+            self.room
+                .rack_positions
+                .insert(id, predefined_rack_position(id));
+            if !self.power.racks.contains_key(&id) {
+                self.power.add_rack(id);
             }
         }
-        for anchor in &mut self.room.cable_anchors {
-            if anchor.id > 40 {
-                let row = ((anchor.position.y_cm.saturating_sub(180) + 135) / 270).min(9);
-                let x_cm = *DATACENTER_CABLE_COLUMNS_CM.iter()
-                    .min_by_key(|column| column.abs_diff(anchor.position.x_cm)).unwrap();
-                anchor.position = RoomPosition { x_cm, y_cm: 180 + row * 270 };
+        for fixed_anchor in RoomCableLayout::anchors() {
+            if let Some(anchor) = self
+                .room
+                .cable_anchors
+                .iter_mut()
+                .find(|anchor| anchor.id == fixed_anchor.id)
+            {
+                anchor.position = fixed_anchor.position;
+            } else {
+                self.room.cable_anchors.push(fixed_anchor);
             }
         }
         self.next_rack_id = self.next_rack_id.max(DATACENTER_RACK_COUNT + 1);
     }
 
     pub fn rack_room_position(&self, id: RackId) -> RoomPosition {
-        if id.0 <= DATACENTER_RACK_COUNT { predefined_rack_position(id) }
-        else { self.room.rack_positions.get(&id).copied().unwrap_or(predefined_rack_position(id)) }
+        if id.0 <= DATACENTER_RACK_COUNT {
+            predefined_rack_position(id)
+        } else {
+            self.room
+                .rack_positions
+                .get(&id)
+                .copied()
+                .unwrap_or(predefined_rack_position(id))
+        }
     }
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
@@ -543,19 +646,24 @@ impl NetworkSim {
                 vec![SimEvent::DeviceAdded(id)]
             }
             Command::BuyServerChassis => {
-                let id = self.buy_device(DeviceTemplate::Server)?;
-                let DeviceKind::Server(server) = &mut self.devices.get_mut(&id).unwrap().kind
-                else {
-                    unreachable!()
-                };
-                server.hardware = Some(ServerHardware {
-                    pcie: vec![None; server_catalog().chassis.pcie_slots.len()],
-                    card_ports: vec![Vec::new(); server_catalog().chassis.pcie_slots.len()],
-                    drives: vec![None; server_catalog().chassis.drive_bays.len()],
-                    ..Default::default()
-                });
-                self.update_server_load(id);
+                let id = self.buy_server_chassis()?;
                 vec![SimEvent::DeviceAdded(id)]
+            }
+            Command::BuyServerFullPack => {
+                let id = self.buy_server_full_pack()?;
+                vec![SimEvent::DeviceAdded(id)]
+            }
+            Command::BuyPublicIpv4Block { uplink } => {
+                self.buy_public_ipv4_block(uplink)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::AssignPublicIpv4 { port, network } => {
+                self.assign_public_ipv4(port, network)?;
+                vec![SimEvent::PortConfigChanged(port)]
+            }
+            Command::AssignLanIpv4 { port } => {
+                self.assign_lan_ipv4(port)?;
+                vec![SimEvent::PortConfigChanged(port)]
             }
             Command::BuyServerPart { part_id } => {
                 self.buy_server_part(&part_id)?;
@@ -824,11 +932,12 @@ impl NetworkSim {
             + 1;
         let (name, kind) = match template {
             DeviceTemplate::Server => {
-                let ports = (0..3)
-                    .map(|n| {
+                let ports = ["eth0", "eth1", "mgmt0"]
+                    .into_iter()
+                    .map(|name| {
                         self.alloc_port(
                             id,
-                            format!("eth{n}"),
+                            name.into(),
                             PortConnector::Rj45,
                             PortConfig::Server(ServerPortConfig::default()),
                         )
@@ -993,6 +1102,45 @@ impl NetworkSim {
                 self.power.add_device(id, watts, 90);
             }
         }
+        Ok(id)
+    }
+
+    fn buy_server_chassis(&mut self) -> Result<DeviceId, SimError> {
+        let id = self.buy_device(DeviceTemplate::Server)?;
+        let DeviceKind::Server(server) = &mut self.devices.get_mut(&id).unwrap().kind else {
+            unreachable!()
+        };
+        server.hardware = Some(ServerHardware {
+            pcie: vec![None; server_catalog().chassis.pcie_slots.len()],
+            card_ports: vec![Vec::new(); server_catalog().chassis.pcie_slots.len()],
+            drives: vec![None; server_catalog().chassis.drive_bays.len()],
+            ..Default::default()
+        });
+        self.update_server_load(id);
+        Ok(id)
+    }
+
+    fn buy_server_full_pack(&mut self) -> Result<DeviceId, SimError> {
+        let price = ServerFullPack::price();
+        if self.money < price {
+            return Err(SimError::InsufficientFunds {
+                needed: price,
+                available: self.money,
+            });
+        }
+        let mut purchase = self.clone();
+        let id = purchase.buy_server_chassis()?;
+        for part in [
+            ServerFullPack::CPU,
+            ServerFullPack::RAM,
+            ServerFullPack::NIC,
+        ] {
+            purchase.buy_server_part(part)?;
+            purchase.install_server_part(id, part, None)?;
+        }
+        purchase.buy_drive(ServerFullPack::DRIVE)?;
+        purchase.install_drive(id, ServerFullPack::DRIVE, None)?;
+        *self = purchase;
         Ok(id)
     }
 
@@ -1406,20 +1554,20 @@ impl NetworkSim {
             }
         }
         let device = self.devices.remove(&id).expect("checked");
-        if let DeviceKind::Server(server) = &device.kind {
-            if let Some(hardware) = &server.hardware {
-                for part in hardware
-                    .cpus
-                    .iter()
-                    .chain(&hardware.ram)
-                    .chain(&hardware.power_supplies)
-                    .chain(hardware.pcie.iter().flatten())
-                {
-                    *self.server_parts.entry(part.clone()).or_default() += 1;
-                }
-                for drive in hardware.drives.iter().flatten() {
-                    *self.drive_inventory.entry(drive.clone()).or_default() += 1;
-                }
+        if let DeviceKind::Server(server) = &device.kind
+            && let Some(hardware) = &server.hardware
+        {
+            for part in hardware
+                .cpus
+                .iter()
+                .chain(&hardware.ram)
+                .chain(&hardware.power_supplies)
+                .chain(hardware.pcie.iter().flatten())
+            {
+                *self.server_parts.entry(part.clone()).or_default() += 1;
+            }
+            for drive in hardware.drives.iter().flatten() {
+                *self.drive_inventory.entry(drive.clone()).or_default() += 1;
             }
         }
         self.power.devices.remove(&id);
@@ -1719,7 +1867,7 @@ impl NetworkSim {
             && matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()))
         {
             return Err(SimError::ServerHardware(
-                "install a CPU, RAM and power supply before powering on".into(),
+                "install a CPU and RAM before powering on".into(),
             ));
         }
         let source = match &self.devices[&id].kind {
@@ -1789,7 +1937,7 @@ impl NetworkSim {
                     vec![]
                 };
             }
-            PortConfig::PatchPanel | PortConfig::CableManager => {}
+            PortConfig::PatchPanel | PortConfig::CableManager | PortConfig::Infrastructure => {}
         }
         if let DeviceKind::Router(router) =
             &mut self.devices.get_mut(&device).expect("checked").kind
@@ -1907,7 +2055,11 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn set_ipv4(&mut self, id: PortId, config: Ipv4InterfaceConfig) -> Result<(), SimError> {
+    pub(crate) fn set_ipv4(
+        &mut self,
+        id: PortId,
+        config: Ipv4InterfaceConfig,
+    ) -> Result<(), SimError> {
         if config.prefix > 32 {
             return Err(SimError::InvalidIpv4Prefix);
         }
@@ -2050,7 +2202,9 @@ impl NetworkSim {
         if let Some(id) = point.room_anchor_id() {
             return if self.room.cable_anchors.iter().any(|anchor| anchor.id == id) {
                 Ok(())
-            } else { Err(SimError::RoomAnchorNotFound(id)) };
+            } else {
+                Err(SimError::RoomAnchorNotFound(id))
+            };
         }
         let rack = self
             .racks
@@ -2133,17 +2287,32 @@ mod route_tests {
         sim.racks.get_mut(&RackId(1)).unwrap().units = 12;
         sim.room.rack_positions.retain(|id, _| *id == RackId(1));
         sim.room.cable_anchors.retain(|anchor| anchor.id == 1);
-        sim.room.cable_anchors[0].position = RoomPosition { x_cm: 240, y_cm: 160 };
+        sim.room.cable_anchors[0].position = RoomPosition {
+            x_cm: 240,
+            y_cm: 160,
+        };
         sim.power.racks.retain(|id, _| *id == RackId(1));
         sim.next_rack_id = 2;
         let mut loaded: NetworkSim = ron::from_str(&ron::to_string(&sim).unwrap()).unwrap();
         loaded.rebuild_indexes();
         assert_eq!(loaded.racks().count(), 50);
         assert_eq!(loaded.rack(RackId(1)).unwrap().units, 42);
-        assert_eq!(loaded.rack_room_position(RackId(50)), predefined_rack_position(RackId(50)));
+        assert_eq!(
+            loaded.rack_room_position(RackId(50)),
+            predefined_rack_position(RackId(50))
+        );
         assert!(loaded.power.racks.contains_key(&RackId(50)));
-        assert_eq!(loaded.room.cable_anchors.len(), 40);
-        assert_eq!(loaded.room.cable_anchors[0].position, RoomPosition { x_cm: 630, y_cm: 180 });
+        assert_eq!(
+            loaded.room.cable_anchors.len(),
+            RoomCableLayout::ANCHOR_COUNT
+        );
+        assert_eq!(
+            loaded.room.cable_anchors[0].position,
+            RoomPosition {
+                x_cm: 630,
+                y_cm: 180
+            }
+        );
     }
     #[test]
     fn route_commands_preserve_link_endpoints() {

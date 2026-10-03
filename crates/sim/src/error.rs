@@ -50,6 +50,14 @@ pub enum SimError {
     InvalidIpv4Vlan,
     #[error("IPv4 gateway must be in the interface subnet")]
     InvalidIpv4Gateway,
+    #[error("select a room uplink port for this public IPv4 range")]
+    InvalidPublicUplink,
+    #[error("public IPv4 range is not owned")]
+    PublicIpv4BlockNotOwned,
+    #[error("all simulated public IPv4 ranges have been sold")]
+    PublicIpv4Exhausted,
+    #[error("the room LAN address pool is full")]
+    LanIpv4Exhausted,
     #[error("static route next hop is not a valid unicast IPv4 address")]
     InvalidRouteNextHop,
     #[error("port has the wrong device type for this command")]

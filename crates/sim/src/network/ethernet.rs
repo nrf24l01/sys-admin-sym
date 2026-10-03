@@ -114,11 +114,16 @@ impl NetworkSim {
         let active = |p: &crate::Port| {
             p.enabled
                 && p.connector.supports_cabling()
-                && self.device(p.device).is_some_and(|d| {
-                    d.rack.is_some()
-                        && (matches!(p.config, PortConfig::PatchPanel | PortConfig::CableManager)
-                            || d.powered)
-                })
+                && (self.network_outlet(p.id).is_some()
+                    || self.device(p.device).is_some_and(|d| {
+                        d.rack.is_some()
+                            && (matches!(
+                                p.config,
+                                PortConfig::PatchPanel
+                                    | PortConfig::CableManager
+                                    | PortConfig::Infrastructure
+                            ) || d.powered)
+                    }))
         };
         let cable = self.links.values().any(|l| {
             l.enabled && l.length_cm <= 10_000 && ((l.a == a && l.b == b) || (l.a == b && l.b == a))
@@ -166,6 +171,29 @@ impl NetworkSim {
                     continue;
                 }
                 queue.push_back((pair, frame, hops + 1));
+                continue;
+            }
+            if let Some(outlet) = self.network_outlet(in_port) {
+                if matches!(outlet.kind, crate::NetworkOutletKind::Lan { .. }) {
+                    for remote in self.network_outlets.iter().filter(|remote| {
+                        matches!(remote.kind, crate::NetworkOutletKind::Lan { .. })
+                            && remote.port != in_port
+                            && self.port_link_up(remote.port)
+                    }) {
+                        let key = (remote.port, frame.source, frame.destination, VlanId(1));
+                        if seen.insert(key) {
+                            queue.push_back((remote.port, frame, hops + 1));
+                        }
+                    }
+                } else if frame.destination == MacAddress::for_port(in_port)
+                    || is_broadcast(frame.destination)
+                {
+                    deliveries.push(FrameDelivery {
+                        port: in_port,
+                        vlan: VlanId(1),
+                        frame,
+                    });
+                }
                 continue;
             }
             let wire_vlan = frame.vlan;
@@ -267,6 +295,7 @@ impl NetworkSim {
                     (vlans.all(|other| other == vlan)).then_some(vlan)
                 }
             }
+            PortConfig::Infrastructure => frame.vlan.is_none().then_some(VlanId(1)),
             PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
@@ -292,7 +321,7 @@ impl NetworkSim {
                     .collect::<std::collections::BTreeSet<_>>();
                 (distinct.len() > 1 && distinct.contains(&vlan)).then_some(vlan)
             }
-            PortConfig::PatchPanel | PortConfig::CableManager => None,
+            PortConfig::PatchPanel | PortConfig::CableManager | PortConfig::Infrastructure => None,
         }
     }
 
@@ -355,7 +384,9 @@ impl NetworkSim {
                     })
             }),
             None => false,
-            Some(PortConfig::PatchPanel) | Some(PortConfig::CableManager) => false,
+            Some(PortConfig::PatchPanel)
+            | Some(PortConfig::CableManager)
+            | Some(PortConfig::Infrastructure) => false,
         }
     }
 
