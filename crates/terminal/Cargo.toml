@@ -1,0 +1,11 @@
+[package]
+name = "game-ssh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cloud-provider-sim = { path = "../sim" }
+serde_json.workspace = true
+rpassword = "7.5"
+rustyline = "18"

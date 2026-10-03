@@ -77,8 +77,8 @@ jobs:
           if ! command -v cross >/dev/null; then
             cargo install cross --locked --version 0.2.5
           fi
-      - name: Build release game
-        run: cross build --release --locked --target ${{ matrix.target }} -p cloud-provider-game --bin cloud-provider-sim
+      - name: Build release game and terminal client
+        run: cross build --release --locked --target ${{ matrix.target }} -p cloud-provider-game -p game-ssh --bins
       - name: Smoke test Linux game under X11
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
@@ -94,10 +94,28 @@ jobs:
           set +e
           timeout 30s xvfb-run -a env WGPU_BACKEND=vulkan \
             VK_DRIVER_FILES="$lvp_icd" \
-            target/${{ matrix.target }}/release/cloud-provider-sim > linux-smoke.log 2>&1
+            target/${{ matrix.target }}/release/cloud-provider-sim > linux-smoke.log 2>&1 &
+          smoke_pid=$!
+          connected=0
+          for attempt in {1..20}; do
+            if GAME_SSH_PASSWORD=game target/${{ matrix.target }}/release/game-ssh --list > console-smoke.log 2>&1; then
+              connected=1
+              break
+            fi
+            if ! kill -0 "$smoke_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          wait "$smoke_pid"
           status=$?
           set -e
           cat linux-smoke.log
+          cat console-smoke.log
+          if [ "$connected" -ne 1 ]; then
+            echo 'Terminal client could not connect to the Linux game' >&2
+            exit 1
+          fi
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
             echo "Linux game exited with status $status during launch" >&2
             exit 1
@@ -110,7 +128,7 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-gnu'
         shell: bash
         run: |
-          imports="$(objdump -p target/${{ matrix.target }}/release/cloud-provider-sim.exe | grep 'DLL Name:' || true)"
+          imports="$(objdump -p target/${{ matrix.target }}/release/cloud-provider-sim.exe target/${{ matrix.target }}/release/game-ssh.exe | grep 'DLL Name:' || true)"
           if printf '%s\n' "$imports" | grep -Eiq 'libgcc|libstdc\+\+|libwinpthread|vcruntime|msvcp'; then
             printf 'Unexpected runtime DLL dependency:\n%s\n' "$imports" >&2
             exit 1
@@ -119,6 +137,7 @@ jobs:
         run: >-
           python tools/package_game.py
           --executable target/${{ matrix.target }}/release/cloud-provider-sim${{ matrix.extension }}
+          --terminal target/${{ matrix.target }}/release/game-ssh${{ matrix.extension }}
           --assets assets
           --readme README.md
           --output dist/cloud-provider-sim-${{ matrix.target }}.zip

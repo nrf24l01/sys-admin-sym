@@ -3,3 +3,5 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+/cloud-provider-settings.json
+/cloud-provider-settings.json.*.tmp

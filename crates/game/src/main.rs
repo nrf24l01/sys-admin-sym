@@ -3,8 +3,10 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
 mod app;
+mod console;
 mod persistence;
 mod plugins;
+mod settings;
 mod ui;
 
 fn asset_root_for(

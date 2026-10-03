@@ -85,6 +85,7 @@ pub enum UiAction {
     },
     RunTerminal(DeviceId, String),
     LaunchExternalTerminal(DeviceId),
+    ApplyConsoleSettings(crate::settings::ConsoleSettings),
     Save,
     Load,
     NewGame,
@@ -108,8 +109,15 @@ pub enum PersistenceRequest {
 #[derive(Debug)]
 pub enum WorkerRequest {
     Execute(Command),
-    Terminal { device: DeviceId, input: String },
+    Terminal {
+        device: DeviceId,
+        input: String,
+    },
     Replace(Box<NetworkSim>),
+    Remote {
+        request: cloud_provider_sim::RemoteRequest,
+        reply: crossbeam_channel::Sender<cloud_provider_sim::RemoteResponse>,
+    },
     Stop,
 }
 

@@ -8,6 +8,7 @@ mod equipment;
 mod inventory;
 mod rack;
 mod room;
+mod settings;
 mod shop;
 mod terminal_renderer;
 use cables::{CableScene, CableView, PowerCableView};
@@ -184,6 +185,7 @@ pub fn main_ui(
     mut drafts: ResMut<EditorDrafts>,
     mut images: ResMut<EquipmentImages>,
     mut actions: MessageWriter<UiAction>,
+    game_settings: Res<crate::settings::GameSettings>,
 ) -> Result {
     if images.textures.is_none() {
         images.textures = Some(EquipmentTextures {
@@ -221,7 +223,7 @@ pub fn main_ui(
             .layer_id(egui::LayerId::background())
             .max_rect(ctx.viewport_rect()),
     );
-    top_bar(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
+    top_bar(&mut viewport_ui, &snapshot.0, &mut state);
     if let Some(error) = state.error_dialog.clone() {
         let mut open = true;
         egui::Window::new("Error")
@@ -260,6 +262,12 @@ pub fn main_ui(
         &mut actions,
     );
     shop::show(&mut viewport_ui, &snapshot.0, &mut state.shop, &mut actions);
+    settings::show(
+        &mut viewport_ui,
+        &mut state.settings,
+        &game_settings,
+        &mut actions,
+    );
     Ok(())
 }
 
@@ -272,12 +280,7 @@ fn configure_style(ctx: &egui::Context) {
     ctx.set_visuals(visuals);
 }
 
-fn top_bar(
-    viewport: &mut egui::Ui,
-    sim: &NetworkSim,
-    state: &mut UiState,
-    actions: &mut MessageWriter<UiAction>,
-) -> egui::Rect {
+fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> egui::Rect {
     egui::Panel::top("top_bar")
         .default_size(64.0)
         .max_size(80.0)
@@ -302,6 +305,12 @@ fn top_bar(
                 ui.separator();
                 if ui.selectable_label(state.shop.open, "SHOP").clicked() {
                     state.shop.open = !state.shop.open;
+                }
+                if ui
+                    .selectable_label(state.settings.open, "SETTINGS")
+                    .clicked()
+                {
+                    state.settings.open = !state.settings.open;
                 }
                 ui.separator();
                 if state.pending_cable.is_some() {
@@ -342,15 +351,6 @@ fn top_bar(
                         state.pending_power_route.clear();
                     }
                     ui.separator();
-                }
-                if ui.button("Save").clicked() {
-                    actions.write(UiAction::Save);
-                }
-                if ui.button("Load").clicked() {
-                    actions.write(UiAction::Load);
-                }
-                if ui.button("New").clicked() {
-                    actions.write(UiAction::NewGame);
                 }
                 if let Some((notice, ok)) = &state.notice {
                     ui.separator();
@@ -2809,12 +2809,8 @@ mod tests {
 
     #[test]
     fn navigation_bar_does_not_cover_the_room() {
-        use bevy::ecs::system::SystemState;
         let sim = NetworkSim::new();
         let ctx = egui::Context::default();
-        let mut world = World::new();
-        world.init_resource::<Messages<UiAction>>();
-        let mut writer = SystemState::<MessageWriter<UiAction>>::new(&mut world);
         let mut state = UiState::default();
         let mut height = 0.0;
         for _ in 0..2 {
@@ -2827,13 +2823,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    height = top_bar(
-                        ui,
-                        &sim,
-                        &mut state,
-                        &mut writer.get_mut(&mut world).unwrap(),
-                    )
-                    .height();
+                    height = top_bar(ui, &sim, &mut state).height();
                 },
             );
             output.textures_delta.clear();

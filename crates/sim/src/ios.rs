@@ -201,6 +201,24 @@ fn resolve<'a>(input: &str, grammar: &'a [&str]) -> Result<(&'a str, Vec<String>
 }
 
 impl NetworkSim {
+    pub fn console_hostname(&self, device: DeviceId) -> Option<&str> {
+        let dev = self.device(device)?;
+        match &dev.kind {
+            DeviceKind::Server(server) => Some(&server.hostname),
+            DeviceKind::Switch(_) | DeviceKind::Router(_) => Some(
+                self.ios_configs
+                    .get(&device)
+                    .and_then(|config| config.hostname.as_deref())
+                    .unwrap_or(if matches!(dev.kind, DeviceKind::Switch(_)) {
+                        "Switch"
+                    } else {
+                        "Router"
+                    }),
+            ),
+            _ => None,
+        }
+    }
+
     pub fn terminal_prompt(&self, device: DeviceId) -> String {
         if let Some(target) = self.ssh_sessions.get(&device) {
             return format!("ssh:{} {}", target, self.local_terminal_prompt(*target));
@@ -219,14 +237,8 @@ impl NetworkSim {
             return "no-console".into();
         }
         let name = self
-            .ios_configs
-            .get(&device)
-            .and_then(|c| c.hostname.as_deref())
-            .unwrap_or(if matches!(dev.kind, DeviceKind::Switch(_)) {
-                "Switch"
-            } else {
-                "Router"
-            });
+            .console_hostname(device)
+            .expect("console device has hostname");
         let suffix = match self.console_modes.get(&device).unwrap_or(&IosMode::User) {
             IosMode::User => ">",
             IosMode::Privileged => "#",
