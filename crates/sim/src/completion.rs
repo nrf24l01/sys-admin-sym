@@ -7,57 +7,6 @@ pub struct ConsoleCompletion {
     pub candidates: Vec<String>,
 }
 
-const LINUX_COMMANDS: &[&str] = &[
-    "help",
-    "ip",
-    "route",
-    "arp",
-    "net",
-    "hostname",
-    "uname",
-    "uname -a",
-    "lscpu",
-    "free",
-    "free -h",
-    "lsblk",
-    "lsblk -d",
-    "netstat -i",
-    "ethtool <interface>",
-    "ethtool -i <interface>",
-    "smartctl -a <drive>",
-    "smartctl -i <drive>",
-    "ping <address>",
-    "traceroute <address>",
-    "ssh <address>",
-    "ip -s link",
-    "ip addr",
-    "ip address",
-    "ip a",
-    "ip addr show",
-    "ip address show",
-    "ip addr show dev <interface>",
-    "ip address show dev <interface>",
-    "ip addr add <cidr> dev <interface>",
-    "ip address add <cidr> dev <interface>",
-    "ip addr del <cidr> dev <interface>",
-    "ip address del <cidr> dev <interface>",
-    "ip addr flush dev <interface>",
-    "ip address flush dev <interface>",
-    "ip link",
-    "ip link show",
-    "ip link show dev <interface>",
-    "ip link set dev <interface> up",
-    "ip link set dev <interface> down",
-    "ip route",
-    "ip route show",
-    "ip r",
-    "ip route add default via <address> dev <interface>",
-    "ip route replace default via <address> dev <interface>",
-    "ip route del default",
-    "ip route del default dev <interface>",
-    "ip route del default via <address> dev <interface>",
-];
-
 impl NetworkSim {
     /// Complete the token before the cursor without executing a command or changing mode.
     pub fn console_completions(&self, device: DeviceId, input: &str) -> ConsoleCompletion {
@@ -81,19 +30,10 @@ impl NetworkSim {
             return result;
         };
         let server = matches!(dev.kind, DeviceKind::Server(_));
-        let mut templates = if server {
-            LINUX_COMMANDS
-                .iter()
-                .map(|value| value.to_string())
-                .chain(
-                    crate::LinuxShell::commands()
-                        .split_whitespace()
-                        .map(str::to_owned),
-                )
-                .collect::<Vec<_>>()
-        } else {
-            self.console_help(device, "")
-        };
+        if server {
+            return crate::CommandRegistry::standard().complete(self, device, input);
+        }
+        let mut templates = self.console_help(device, "");
         let previous: Vec<_> = input[..start].split_whitespace().collect();
         let partial = &input[start..];
         if previous.first() == Some(&"do")

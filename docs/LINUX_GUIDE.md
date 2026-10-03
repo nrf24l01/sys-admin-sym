@@ -141,3 +141,8 @@ Hardware commands include `lscpu`, `free -h`, `lsblk`, `smartctl -a /dev/sda`,
 `ethtool [-i] IFACE`, `netstat -i`, `uname -a`, `hostname`, and `hostnamectl`.
 Use Up/Down for history, Tab for command completion, Clear output or `clear`,
 and Paste commands for a sequence of console lines.
+
+Tab suggestions come from the active command object and its current arguments.
+For example, `ping -I` suggests interfaces, `systemctl restart` suggests units,
+`cat` suggests guest files, and `ip route ... dev` suggests NIC names. Suggestions
+also work after pipes and conditionals and inside unfinished quoted paths.

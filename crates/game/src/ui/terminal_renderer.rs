@@ -133,11 +133,13 @@ impl TerminalRenderer {
             console.input = console.history.get(next).cloned().unwrap_or_default();
         }
         if tab {
-            let completions = sim.console_help(device, &console.input);
-            if completions.len() == 1 && !completions[0].contains('<') {
-                console.input = completions[0].clone();
+            let completions = sim.console_completions(device, &console.input);
+            if completions.candidates.len() == 1 {
+                console
+                    .input
+                    .replace_range(completions.start.., &completions.candidates[0]);
             } else {
-                console.lines.extend(completions);
+                console.lines.extend(completions.candidates);
             }
         }
         if clear {

@@ -383,8 +383,9 @@ impl NetworkSim {
             .device(device)
             .is_some_and(|dev| matches!(dev.kind, DeviceKind::Server(_)))
         {
-            return LinuxShell::commands()
-                .split_whitespace()
+            return CommandRegistry::standard()
+                .names()
+                .into_iter()
                 .filter(|command| command.starts_with(prefix))
                 .map(str::to_owned)
                 .collect();

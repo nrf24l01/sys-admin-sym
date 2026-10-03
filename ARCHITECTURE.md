@@ -144,12 +144,26 @@ on its first console command. Secondary NIC addresses also use a serde default.
 Selling a server removes its guest and associated SSH sessions.
 
 `LinuxShell` tokenizes quoting and shell operators, expands guest variables,
-and passes commands to objects for files, networking, and services. Pipes and
+and delegates execution to `CommandRegistry`. Every registered `LinuxCommand`
+object owns `execute` and `suggest` methods. Command names, help, execution, and
+argument completion use that registry. Command objects share domain services for
+files, networking, and service management. Pipes and
 redirection carry guest text, preserving exact bytes for `printf`, `echo`, and
 `cat`. All execution happens in the simulation; no subprocess, host filesystem,
 Linux image, or real network connection is involved. Script nesting is bounded.
 `TerminalRenderer` presents output and input, including command pasting and
 completion; it does not execute guest commands.
+
+To add a Linux command, implement `LinuxCommand` and register its object in
+`CommandRegistry::builtins`. No shell dispatch switch or separate list of command
+templates needs updating. `CompletionContext` exposes parsed arguments and
+read-only game state, plus helpers for interfaces, addresses, files, services,
+environment variables, and drives. The command's `suggest` method chooses the
+next argument candidates. `CompletionInput` recognizes the command at the cursor
+after pipes/conditionals, redirection, and incomplete quoted input. Filtering,
+deduplication, shell escaping, and replacement offsets belong to the registry.
+Both the in-game terminal and external terminal client use this same completion
+API. IOS completion retains its existing configuration-mode grammar.
 
 Server NICs retain a primary address for inspector compatibility and additional
 IPv4 addresses. ARP, conflicts, public allocation, and ICMP delivery inspect all

@@ -1,5 +1,6 @@
 //! Persistent Linux guest model. All commands operate on this guest and the
 //! simulated network; the host machine is never used as a command backend.
+mod command_registry;
 mod commands;
 mod filesystem;
 mod network;
@@ -7,6 +8,7 @@ mod services;
 mod shell;
 mod syntax;
 
+pub use command_registry::{CommandRegistry, CompletionContext, LinuxCommand};
 pub use filesystem::{GuestFile, GuestFilesystem};
 pub use network::{LinuxRoute, RouteSelection};
 use serde::{Deserialize, Serialize};
