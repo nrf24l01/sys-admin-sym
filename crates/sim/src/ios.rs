@@ -213,7 +213,10 @@ impl NetworkSim {
             return "?>".into();
         };
         if let DeviceKind::Server(server) = &dev.kind {
-            return format!("{}$", server.hostname);
+            return self.server_os(device).map_or_else(
+                || format!("root@{}:~#", server.hostname),
+                |os| os.prompt(&server.hostname),
+            );
         }
         if !matches!(dev.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)) {
             return "no-console".into();
@@ -262,7 +265,11 @@ impl NetworkSim {
             }
             return self.execute_console(target, input);
         }
-        if let Some(address) = input.strip_prefix("ssh ") {
+        if let Some(address) = input
+            .strip_prefix("ssh ")
+            .filter(|address| !address.chars().any(char::is_whitespace))
+        {
+            let address = address.strip_prefix("root@").unwrap_or(address);
             let Ok(address) = address.parse::<Ipv4Addr>() else {
                 return reply(false, "usage: ssh <management-ip>");
             };
@@ -298,6 +305,20 @@ impl NetworkSim {
             if !reachable {
                 return reply(false, "management IP is unreachable");
             }
+            if matches!(
+                self.device(target).map(|dev| &dev.kind),
+                Some(DeviceKind::Server(_))
+            ) && !self
+                .guest_mut(target)
+                .services
+                .get("ssh")
+                .is_some_and(|service| service.active)
+            {
+                return reply(
+                    false,
+                    "ssh: connect to host: Connection refused (ssh.service is stopped)",
+                );
+            }
             self.ssh_sessions.insert(device, target);
             return reply(
                 true,
@@ -323,10 +344,7 @@ impl NetworkSim {
             );
         }
         if matches!(dev.kind, DeviceKind::Server(_)) {
-            return match parse_terminal_command(input) {
-                Ok(command) => self.execute_terminal(device, command),
-                Err(error) => reply(false, error),
-            };
+            return LinuxShell::execute(self, device, input);
         }
         let mut candidate = self.clone();
         let mut mode = candidate.console_modes.remove(&device).unwrap_or_default();
@@ -344,6 +362,17 @@ impl NetworkSim {
     }
 
     pub fn console_help(&self, device: DeviceId, prefix: &str) -> Vec<String> {
+        let device = self.ssh_sessions.get(&device).copied().unwrap_or(device);
+        if self
+            .device(device)
+            .is_some_and(|dev| matches!(dev.kind, DeviceKind::Server(_)))
+        {
+            return LinuxShell::commands()
+                .split_whitespace()
+                .filter(|command| command.starts_with(prefix))
+                .map(str::to_owned)
+                .collect();
+        }
         if !self
             .device(device)
             .is_some_and(|d| matches!(d.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)))

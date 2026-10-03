@@ -132,12 +132,13 @@ impl NetworkSim {
         let mut assigned: Vec<_> = self
             .ports
             .values()
-            .filter_map(|port| {
-                let PortConfig::Server(config) = &port.config else {
-                    return None;
-                };
-                let address = config.ipv4.as_ref()?.address;
-                block.contains_host(address).then_some((address, port.id))
+            .flat_map(|port| match &port.config {
+                PortConfig::Server(config) => config
+                    .addresses()
+                    .filter(|ip| block.contains_host(ip.address))
+                    .map(|ip| (ip.address, port.id))
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
             })
             .collect();
         assigned.sort_by_key(|(address, _)| *address);
@@ -146,9 +147,7 @@ impl NetworkSim {
 
     fn ipv4_in_use(&self, address: Ipv4Addr) -> bool {
         self.ports.values().any(|port| match &port.config {
-            PortConfig::Server(config) => {
-                config.ipv4.as_ref().is_some_and(|ip| ip.address == address)
-            }
+            PortConfig::Server(config) => config.addresses().any(|ip| ip.address == address),
             PortConfig::Router(config) => config
                 .interfaces
                 .iter()
@@ -183,13 +182,9 @@ impl NetworkSim {
             .ports
             .values()
             .filter(|port| match &port.config {
-                PortConfig::Server(config) if port.name != "mgmt0" => {
-                    config.ipv4.as_ref().is_some_and(|ip| {
-                        ip.address == address
-                            && ip.prefix == PublicIpv4Block::PREFIX
-                            && ip.gateway == Some(block.gateway())
-                    })
-                }
+                PortConfig::Server(config) if port.name != "mgmt0" => config
+                    .addresses()
+                    .any(|ip| ip.address == address && ip.prefix == PublicIpv4Block::PREFIX),
                 _ => false,
             })
             .map(|port| port.id)
@@ -202,6 +197,15 @@ impl NetworkSim {
             });
         }
         let target = targets[0];
+        if !self
+            .port(target)
+            .and_then(|port| {
+                self.server_route_selection(port.device, Ipv4Addr::new(198, 51, 100, 1), None)
+            })
+            .is_some_and(|route| route.port == target && route.next_hop == block.gateway())
+        {
+            return failed(ReachabilityFailure::NoRoute);
+        }
         if !self.port_up(target) {
             return failed(ReachabilityFailure::DestinationDown);
         }

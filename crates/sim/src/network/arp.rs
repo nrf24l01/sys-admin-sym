@@ -23,6 +23,15 @@ impl NetworkSim {
         }
     }
 
+    pub(crate) fn interface_has_ipv4(&self, port: PortId, vlan: VlanId, address: Ipv4Addr) -> bool {
+        match self.port(port).map(|port| &port.config) {
+            Some(PortConfig::Server(config)) => config
+                .addresses()
+                .any(|ip| ip.address == address && ip.vlan.unwrap_or(VlanId(1)) == vlan),
+            _ => self.interface_ipv4(port, vlan) == Some(address),
+        }
+    }
+
     pub fn wire_vlan_for(&self, port: PortId, vlan: VlanId) -> Option<VlanId> {
         let p = self.port(port)?;
         match &p.config {
@@ -68,9 +77,20 @@ impl NetworkSim {
         if let Some(mac) = self.runtime.arp.get(&(port, target, vlan)).copied() {
             return Ok(mac);
         }
-        let source_ip = self
-            .interface_ipv4(port, vlan)
-            .ok_or(ReachabilityFailure::NoAddress)?;
+        let source_ip = match &self
+            .port(port)
+            .ok_or(ReachabilityFailure::NoAddress)?
+            .config
+        {
+            PortConfig::Server(config) => config
+                .addresses()
+                .filter(|ip| ip.vlan.unwrap_or(VlanId(1)) == vlan)
+                .find(|ip| ip.contains(target))
+                .or(config.ipv4.as_ref())
+                .map(|ip| ip.address),
+            _ => self.interface_ipv4(port, vlan),
+        }
+        .ok_or(ReachabilityFailure::NoAddress)?;
         let request = EthernetFrame {
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
@@ -86,7 +106,8 @@ impl NetworkSim {
         let mut replies = HashSet::new();
         for delivery in requests {
             let Some(ip) = self
-                .interface_ipv4(delivery.port, delivery.vlan)
+                .interface_has_ipv4(delivery.port, delivery.vlan, target)
+                .then_some(target)
                 .or_else(|| {
                     self.public_ipv4_blocks()
                         .iter()
@@ -136,10 +157,19 @@ impl NetworkSim {
     }
 
     pub fn source_address_conflict(&mut self, port: PortId, vlan: VlanId) -> bool {
-        self.prepare_runtime();
         let Some(address) = self.interface_ipv4(port, vlan) else {
             return false;
         };
+        self.address_conflict(port, vlan, address)
+    }
+
+    pub(crate) fn address_conflict(
+        &mut self,
+        port: PortId,
+        vlan: VlanId,
+        address: Ipv4Addr,
+    ) -> bool {
+        self.prepare_runtime();
         let probe = EthernetFrame {
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
@@ -155,7 +185,7 @@ impl NetworkSim {
             .into_iter()
             .any(|delivery| {
                 delivery.port != port
-                    && self.interface_ipv4(delivery.port, delivery.vlan) == Some(address)
+                    && self.interface_has_ipv4(delivery.port, delivery.vlan, address)
             })
     }
 }

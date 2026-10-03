@@ -187,7 +187,7 @@ impl NetworkSim {
         totals
     }
 
-    fn network_reaches(&self, source: PortId, global: bool) -> bool {
+    pub(crate) fn network_reaches(&self, source: PortId, global: bool) -> bool {
         let mut queue = VecDeque::from([source]);
         let mut seen = HashSet::new();
         while let Some(port) = queue.pop_front() {

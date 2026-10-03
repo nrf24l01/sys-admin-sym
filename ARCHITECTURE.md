@@ -111,6 +111,36 @@ router, or switch. Switch management IPs are configured in IOS global mode with
 `management ip <address>`. `TerminalRenderer` owns the terminal UI separately
 from simulation command execution.
 
+## Simulated Linux guests
+
+Each server owns a serialized `ServerOs`: a `GuestFilesystem`, working directory,
+environment, bounded command history, `LinuxRoute` records, loopback state, and
+service state. Existing saves default to an empty OS map and initialize a guest
+on its first console command. Secondary NIC addresses also use a serde default.
+Selling a server removes its guest and associated SSH sessions.
+
+`LinuxShell` tokenizes quoting and shell operators, expands guest variables,
+and passes commands to objects for files, networking, and services. Pipes and
+redirection carry guest text, preserving exact bytes for `printf`, `echo`, and
+`cat`. All execution happens in the simulation; no subprocess, host filesystem,
+Linux image, or real network connection is involved. Script nesting is bounded.
+`TerminalRenderer` presents output and input, including command pasting and
+completion; it does not execute guest commands.
+
+Server NICs retain a primary address for inspector compatibility and additional
+IPv4 addresses. ARP, conflicts, public allocation, and ICMP delivery inspect all
+addresses. `server_route_selection` selects the longest prefix and then lowest
+metric, and supplies the source address and next hop to the packet engine.
+Connected routes derive from NIC addresses. Explicit default routes supersede
+legacy per-address gateways. Runtime address and route commands apply immediately.
+
+`LinuxServices` applies `/etc/network/interfaces` to a cloned simulation and
+commits it only after every selected stanza and post-up command succeeds.
+Static configuration, room LAN DHCP, netmasks, gateways, DNS file configuration,
+and post-up routes are supported. Reboot clears runtime addresses/routes and
+reapplies enabled networking configuration. SSH service state controls new
+management connections and the simulated listener shown by `ss`.
+
 ## Network backend and OSI scope
 
 `NetworkSim::transmit_frame` is the synchronous bounded Ethernet engine. It

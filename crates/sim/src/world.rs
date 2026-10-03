@@ -16,6 +16,8 @@ pub struct NetworkSim {
     #[serde(default)]
     pub(crate) public_ipv4_blocks: Vec<PublicIpv4Block>,
     #[serde(default)]
+    pub(crate) server_operating_systems: HashMap<DeviceId, ServerOs>,
+    #[serde(default)]
     pub power: PowerSystem,
     pub money: i64,
     #[serde(default)]
@@ -60,6 +62,7 @@ impl NetworkSim {
             room: DataCenterRoom::default(),
             network_outlets: Vec::new(),
             public_ipv4_blocks: Vec::new(),
+            server_operating_systems: HashMap::new(),
             power: PowerSystem::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
@@ -1595,6 +1598,9 @@ impl NetworkSim {
         self.power
             .cord_routes
             .retain(|outlet, _| self.power.connections.contains_key(outlet));
+        self.server_operating_systems.remove(&id);
+        self.ssh_sessions
+            .retain(|source, target| *source != id && *target != id);
         self.ios_configs.remove(&id);
         self.startup_configs.remove(&id);
         self.console_modes.remove(&id);

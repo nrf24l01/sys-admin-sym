@@ -98,9 +98,11 @@ The room layout and manager positions are predefined.
    and `configure terminal`; use `?` for supported commands. VLANs, switchports,
    router IP addresses/subinterfaces, shutdown, and startup configurations are
    backed by the simulator. Each device has its own console and history.
-7. Servers use a Linux-style terminal. Use `ip`, `ethtool eth0`, `netstat -i`,
-   `lsblk`, `smartctl -a /dev/sda`, `free -h`, `lscpu`, `ping <ip>`, or
-   `traceroute <ip>`. Cisco IOS commands apply only to switches and routers.
+7. Servers run a persistent simulated Linux guest. Use `ip a`, `ip route`,
+   `ip route get <ip>`, `ping`, and `ssh root@<management-ip>`. Guest files,
+   shell pipes, scripts, service management, and `/etc/network/interfaces`
+   are supported. See [the Linux guest guide](docs/LINUX_GUIDE.md) for commands
+   and configuration examples. Cisco IOS commands apply to switches and routers.
 
 See [the IOS-style console guide](docs/IOS_GUIDE.md) for Cisco reference manuals,
 a working switch/router configuration example, interface names, and the exact

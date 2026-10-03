@@ -124,18 +124,21 @@ fn unplugged_pcie_interfaces_report_no_carrier_in_linux_commands() {
         let line = addr
             .lines
             .iter()
-            .find(|line| line.starts_with(&format!("{name}:")))
+            .find(|line| line.contains(&format!(": {name}:")))
             .unwrap();
-        assert!(line.contains("<UP,NO-CARRIER> state DOWN"), "{line}");
-        let summary = sim.execute_console(id, "ip");
+        assert!(
+            line.contains("UP,NO-CARRIER>") && line.contains("state DOWN"),
+            "{line}"
+        );
+        let summary = sim.execute_console(id, "ip -br addr");
         assert!(
             summary
                 .lines
                 .iter()
-                .any(|line| line.starts_with(name) && line.ends_with("NO-CARRIER"))
+                .any(|line| line.starts_with(name) && line.contains("DOWN"))
         );
         let link = sim.execute_console(id, &format!("ip link show dev {name}"));
-        assert!(link.lines[0].contains("<UP,NO-CARRIER> state DOWN"));
+        assert!(link.lines[0].contains("UP,NO-CARRIER>") && link.lines[0].contains("state DOWN"));
         let ethtool = sim.execute_console(id, &format!("ethtool {name}"));
         assert!(
             ethtool
@@ -148,12 +151,9 @@ fn unplugged_pcie_interfaces_report_no_carrier_in_linux_commands() {
         sim.execute_console(id, &format!("ip link set dev {} down", card_names[0]))
             .success
     );
-    assert!(
-        sim.execute_console(id, "ip a")
-            .lines
-            .iter()
-            .any(|line| line.starts_with(&format!("{}: <DOWN> state DOWN", card_names[0])))
-    );
+    assert!(sim.execute_console(id, "ip a").lines.iter().any(|line| {
+        line.contains(&format!(": {}: <DOWN>", card_names[0])) && line.contains("state DOWN")
+    }));
 }
 
 #[test]

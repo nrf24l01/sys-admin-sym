@@ -55,7 +55,7 @@ impl TerminalRenderer {
                     actions.write(UiAction::LaunchExternalTerminal(device));
                 }
                 if ui.small_button("Clear output").clicked() { console.lines.clear(); }
-                if !server { ui.checkbox(&mut console.script_mode, "Paste configuration"); }
+                ui.checkbox(&mut console.script_mode, "Paste commands");
             });
             if !server { ui.weak("? help · Up/Down history · Tab completion · Ctrl-Z end · Scripts stop at the first error"); }
             if !dev.powered { ui.colored_label(egui::Color32::YELLOW, "Power on this device in the Inspector to use its console."); }
@@ -75,30 +75,8 @@ impl TerminalRenderer {
             ui.horizontal(|ui| {
                 ui.monospace(sim.terminal_prompt(device));
                 let input_id = egui::Id::new(("console-input", device.0));
-                let focused = ui.memory(|m| m.has_focus(input_id));
-                if focused && !console.script_mode {
-                    let (up, down, tab, end) = ui.input_mut(|i| (
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
-                        i.consume_key(egui::Modifiers::CTRL, egui::Key::Z),
-                    ));
-                    if up && !console.history.is_empty() {
-                        let pos = console.history_position.unwrap_or(console.history.len()).saturating_sub(1);
-                        console.history_position = Some(pos);
-                        console.input = console.history[pos].clone();
-                    }
-                    if down && let Some(pos) = console.history_position {
-                        let next = pos + 1;
-                        console.history_position = (next < console.history.len()).then_some(next);
-                        console.input = console.history.get(next).cloned().unwrap_or_default();
-                    }
-                    if tab && !server {
-                        let completions = sim.console_help(device, &console.input);
-                        if completions.len() == 1 && !completions[0].contains('<') { console.input = completions[0].clone(); }
-                        else { console.lines.extend(completions); }
-                    }
-                    if end && !server { actions.write(UiAction::RunTerminal(device, "end".into())); }
+                if Self::keyboard(ui, sim, device, console, input_id) && !server {
+                    actions.write(UiAction::RunTerminal(device, "end".into()));
                 }
                 let editor = if console.script_mode {
                     egui::TextEdit::multiline(&mut console.input).desired_rows(3)
@@ -120,6 +98,52 @@ impl TerminalRenderer {
                 }
             });
         });
+    }
+
+    fn keyboard(
+        ui: &mut egui::Ui,
+        sim: &NetworkSim,
+        device: DeviceId,
+        console: &mut ConsoleState,
+        input_id: egui::Id,
+    ) -> bool {
+        if console.script_mode || !ui.memory(|memory| memory.has_focus(input_id)) {
+            return false;
+        }
+        let (up, down, tab, end, clear) = ui.input_mut(|input| {
+            (
+                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+                input.consume_key(egui::Modifiers::CTRL, egui::Key::Z),
+                input.consume_key(egui::Modifiers::CTRL, egui::Key::L),
+            )
+        });
+        if up && !console.history.is_empty() {
+            let position = console
+                .history_position
+                .unwrap_or(console.history.len())
+                .saturating_sub(1);
+            console.history_position = Some(position);
+            console.input = console.history[position].clone();
+        }
+        if down && let Some(position) = console.history_position {
+            let next = position + 1;
+            console.history_position = (next < console.history.len()).then_some(next);
+            console.input = console.history.get(next).cloned().unwrap_or_default();
+        }
+        if tab {
+            let completions = sim.console_help(device, &console.input);
+            if completions.len() == 1 && !completions[0].contains('<') {
+                console.input = completions[0].clone();
+            } else {
+                console.lines.extend(completions);
+            }
+        }
+        if clear {
+            console.lines.clear();
+        }
+        end
     }
 
     fn is_console_device(device: &Device) -> bool {
@@ -166,8 +190,15 @@ impl TerminalRenderer {
                         "IOS CONSOLE • LIVE"
                     },
                 );
-                Self::output_scroll(ui, 58.0)
-                    .max_height((ui.available_height() - 58.0).max(0.0))
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut console.script_mode, "Paste commands");
+                    if ui.small_button("Clear output").clicked() {
+                        console.lines.clear();
+                    }
+                });
+                let controls_height = if console.script_mode { 120.0 } else { 58.0 };
+                Self::output_scroll(ui, controls_height)
+                    .max_height((ui.available_height() - controls_height).max(0.0))
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         if console.lines.is_empty() {
@@ -190,9 +221,19 @@ impl TerminalRenderer {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.monospace(sim.terminal_prompt(device));
+                    let input_id = egui::Id::new(("console-window-input", device.0));
+                    if Self::keyboard(ui, sim, device, console, input_id) && !server {
+                        actions.write(UiAction::RunTerminal(device, "end".into()));
+                    }
+                    let editor = if console.script_mode {
+                        egui::TextEdit::multiline(&mut console.input).desired_rows(3)
+                    } else {
+                        egui::TextEdit::singleline(&mut console.input)
+                    };
                     let response = ui.add_enabled(
                         powered,
-                        egui::TextEdit::singleline(&mut console.input)
+                        editor
+                            .id(input_id)
                             .font(egui::TextStyle::Monospace)
                             .desired_width(ui.available_width() - 55.0),
                     );
@@ -200,13 +241,19 @@ impl TerminalRenderer {
                         response.request_focus();
                     }
                     if (ui.button("Run").clicked()
-                        || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                        || (!console.script_mode
+                            && response.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter))))
                         && powered
                     {
                         let input = std::mem::take(&mut console.input);
                         if !input.trim().is_empty() {
                             console.history.push(input.clone());
+                            if console.history.len() > 100 {
+                                console.history.remove(0);
+                            }
                         }
+                        console.history_position = None;
                         actions.write(UiAction::RunTerminal(device, input));
                         state.terminal_window_focus.insert(device);
                         response.request_focus();

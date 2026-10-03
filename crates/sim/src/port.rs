@@ -78,6 +78,14 @@ pub enum PortConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ServerPortConfig {
     pub ipv4: Option<Ipv4InterfaceConfig>,
+    #[serde(default)]
+    pub additional_ipv4: Vec<Ipv4InterfaceConfig>,
+}
+
+impl ServerPortConfig {
+    pub fn addresses(&self) -> impl Iterator<Item = &Ipv4InterfaceConfig> {
+        self.ipv4.iter().chain(self.additional_ipv4.iter())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

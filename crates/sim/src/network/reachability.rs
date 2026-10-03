@@ -72,21 +72,25 @@ impl NetworkSim {
                 vec![],
             );
         }
-        let Some(src) = self.server_ipv4(source) else {
-            return bad(ReachabilityFailure::NoAddress, vec![]);
+        let Some(device) = self.port(source).map(|port| port.device) else {
+            return bad(ReachabilityFailure::SourceDown, vec![]);
         };
+        let Some(route) = self.server_route_selection(device, destination, Some(source)) else {
+            return bad(
+                if self.server_ipv4(source).is_none() {
+                    ReachabilityFailure::NoAddress
+                } else {
+                    ReachabilityFailure::NoGateway
+                },
+                vec![],
+            );
+        };
+        let src = route.source;
         let source_vlan = src.vlan.unwrap_or(VlanId(1));
-        if self.source_address_conflict(source, source_vlan) {
+        if self.address_conflict(source, source_vlan, src.address) {
             return bad(ReachabilityFailure::AddressConflict, vec![]);
         }
-        let next = if src.contains(destination) {
-            destination
-        } else {
-            match src.gateway {
-                Some(g) if src.contains(g) => g,
-                _ => return bad(ReachabilityFailure::NoGateway, vec![]),
-            }
-        };
+        let next = route.next_hop;
         let mut hops = vec![];
         let Some(mac) = self.resolve_arp(source, next, source_vlan, &mut hops) else {
             return bad(self.local_failure(source, next), hops);
@@ -217,25 +221,20 @@ impl NetworkSim {
             self.hop(h, port.device, Some(d.port), None, "IPv4 delivery");
             match port.config {
                 PortConfig::Server(_) => {
-                    if self.interface_ipv4(d.port, d.vlan) == Some(p.destination) {
+                    if self.interface_has_ipv4(d.port, d.vlan, p.destination) {
                         match icmp {
                             IcmpMessage::EchoRequest {
                                 identifier,
                                 sequence,
                             } => {
-                                let Some(i) = self.server_ipv4(d.port) else {
+                                let Some(route) =
+                                    self.server_route_selection(port.device, p.source, None)
+                                else {
                                     continue;
                                 };
-                                let next = if i.contains(p.source) {
-                                    p.source
-                                } else {
-                                    match i.gateway {
-                                        Some(g) if i.contains(g) => g,
-                                        _ => continue,
-                                    }
-                                };
-                                let interface_vlan = i.vlan.unwrap_or(VlanId(1));
-                                let Some(m) = self.resolve_arp(d.port, next, interface_vlan, h)
+                                let interface_vlan = route.source.vlan.unwrap_or(VlanId(1));
+                                let Some(m) =
+                                    self.resolve_arp(route.port, route.next_hop, interface_vlan, h)
                                 else {
                                     continue;
                                 };
@@ -246,7 +245,7 @@ impl NetworkSim {
                                     protocol: 1,
                                 };
                                 if self.deliver(
-                                    d.port,
+                                    route.port,
                                     interface_vlan,
                                     m,
                                     rp,
@@ -278,9 +277,13 @@ impl NetworkSim {
                 PortConfig::Infrastructure => {
                     if let Some(block) = self.public_block_for_address(p.source)
                         && block.uplink == d.port
-                        && self.server_ipv4(out).is_some_and(|ip| {
-                            ip.address == p.source && ip.gateway == Some(block.gateway())
-                        })
+                        && self.address_config(out, p.source).is_some()
+                        && self
+                            .port(out)
+                            .and_then(|port| {
+                                self.server_route_selection(port.device, p.destination, Some(out))
+                            })
+                            .is_some_and(|route| route.next_hop == block.gateway())
                         && !p.destination.is_private()
                         && let IcmpMessage::EchoRequest {
                             identifier,
@@ -568,18 +571,18 @@ impl NetworkSim {
     fn server_ports_with_ip(&self, ip: Ipv4Addr) -> Vec<PortId> {
         self.ports
             .values()
-            .filter_map(|p| {
-                self.server_ipv4(p.id)
-                    .filter(|i| i.address == ip)
-                    .map(|_| p.id)
-            })
+            .filter_map(|p| self.address_config(p.id, ip).map(|_| p.id))
             .filter(|p| self.port_up(*p))
             .collect()
     }
     pub fn duplicate_addresses(&self) -> Vec<(Ipv4Addr, Vec<PortId>)> {
         let mut m = HashMap::new();
         for p in self.ports.values() {
-            if let Some(ip) = self.port_ipv4(p.id) {
+            if let PortConfig::Server(config) = &p.config {
+                for ip in config.addresses() {
+                    m.entry(ip.address).or_insert_with(Vec::new).push(p.id);
+                }
+            } else if let Some(ip) = self.port_ipv4(p.id) {
                 m.entry(ip).or_insert_with(Vec::new).push(p.id)
             }
         }

@@ -994,11 +994,11 @@ mod tests {
             "{routes:?}"
         );
         assert!(
-            !sim.execute_console(id, "ip addr add 198.51.100.2/24 dev eth0")
+            sim.execute_console(id, "ip addr add 198.51.100.2/24 dev eth0")
                 .success
         );
         assert!(
-            !sim.execute_console(id, "ip addr del 198.51.100.2/24 dev eth0")
+            sim.execute_console(id, "ip addr del 198.51.100.2/24 dev eth0")
                 .success
         );
     }
@@ -1011,7 +1011,7 @@ mod tests {
         assert!(admin_down.contains("<DOWN>"));
         assert!(sim.execute_console(id, "ip link set dev eth0 up").success);
         let no_carrier = sim.execute_console(id, "ip link show dev eth0").lines[0].clone();
-        assert!(no_carrier.contains("<UP,NO-CARRIER>"));
+        assert!(no_carrier.contains("UP,NO-CARRIER>"));
         assert_ne!(admin_down, no_carrier);
     }
 
@@ -1112,7 +1112,12 @@ mod tests {
         assert!(sim.execute_console(id, "ip route del default").success);
         let missing = sim.execute_console(id, "ip route del default");
         assert!(!missing.success);
-        assert!(missing.lines[0].contains("default route not found"));
-        assert!(sim.execute_console(id, "ip addr show dev eth0").lines[0].contains("10.0.0.2/24"));
+        assert!(missing.lines[0].contains("No such process"));
+        assert!(
+            sim.execute_console(id, "ip addr show dev eth0")
+                .lines
+                .iter()
+                .any(|line| line.contains("10.0.0.2/24"))
+        );
     }
 }

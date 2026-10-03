@@ -673,7 +673,13 @@ fn poll_worker(
                 }
                 let console = state.terminals.entry(device).or_default();
                 console.lines.push(format!("{prompt} {input}"));
-                console.lines.extend(output.lines);
+                for line in output.lines {
+                    if line == "\u{1b}[2J\u{1b}[H" {
+                        console.lines.clear();
+                    } else {
+                        console.lines.push(line);
+                    }
+                }
                 if console.lines.len() > 1000 {
                     console.lines.drain(..console.lines.len() - 1000);
                 }
