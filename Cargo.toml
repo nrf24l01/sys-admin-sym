@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sim", "crates/game", "tools/texture-mapper"]
+members = ["crates/sim", "crates/game", "crates/terminal", "tools/texture-mapper"]
 default-members = ["crates/game"]
 
 [workspace.package]
