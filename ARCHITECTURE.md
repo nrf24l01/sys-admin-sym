@@ -19,6 +19,30 @@ egui → UiAction → Bevy application layer → Command
 - `crates/sim`: pure domain model. It depends only on `serde` and `thiserror`.
 - `crates/game`: Bevy application, egui rack/topology presentation, simulation
   worker, and SQLite adapter.
+- `crates/terminal`: standalone `game-ssh` CLI, with options, transport client,
+  console session, and editor modules. It has no dependency on Bevy.
+
+`ConsoleEditor` owns the Rustyline editor, `ConsoleHelper` handles completion and
+history hints, and `HistoryFile` persists history per endpoint and device.
+Completion requests use the authenticated console transport and read command
+grammar and device state through `sim::completion`; they do not execute commands
+or change console modes. Piped input uses the separate script session path.
+
+`game::console::LocalConsoleServer` owns the configured TCP listener and its thread.
+It sends typed console requests to the same simulation worker used by the GUI.
+`ConsoleService` resolves device IDs, names, hostnames, and in-game IP addresses,
+then executes commands against the worker's authoritative `NetworkSim`. Replies
+go to the client; console output and updated snapshots also go to Bevy. The
+protocol types live in `sim::remote`. Each request carries a password that the
+listener checks before forwarding it to the simulation. This bridge does not simulate SSH or TCP
+inside the game network.
+
+`SettingsPlugin` loads the console configuration independently of game saves.
+Its Settings window keeps editable drafts separate from the active settings.
+Applying host/port changes rebinds the listener; a failed bind restores the previous
+listener. Password changes take effect on the next request. `SettingsStore` writes
+the configuration through a temporary file and restricts Unix permissions to the
+owner. Save, Load, and New Game actions are presented in the Settings window.
 
 The backend exclusively owns mutable `NetworkSim` state. Bevy sends domain
 commands through the application boundary and renders snapshots/events. Rack

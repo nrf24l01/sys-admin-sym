@@ -11,6 +11,70 @@ bounded; this is not a full protocol stack.
 cargo run --release
 ```
 
+## Use your own terminal
+
+Open **SETTINGS** in the top bar to configure the console host, port, and
+password. **Apply settings** updates the listener immediately and remembers the
+configuration across restarts. The defaults are `127.0.0.1`, port `47655`, and
+password `game`. Save, Load, and New Game are also in this separate window.
+
+Keep the game running, then connect from a normal terminal with `game-ssh`:
+
+```bash
+./game-ssh --list
+./game-ssh 1
+./game-ssh 192.168.10.2
+./game-ssh 1 -c 'show version'
+./game-ssh --host localhost --port 51234 --list
+```
+
+The CLI prompts for the password with hidden input. For piped commands or scripts,
+provide it through `GAME_SSH_PASSWORD`.
+
+Choose a machine by its device ID, name, hostname, or configured in-game IPv4
+address. Duplicate names or addresses require a device ID. Servers provide the
+Linux-style commands, and switches and routers provide the IOS console. Devices
+must be powered on. Changes appear in the running game and can be saved with
+**SETTINGS → Save**. The CLI shares each device's console mode with the GUI.
+
+Interactive sessions support normal command editing:
+
+- Left/Right move the cursor; Home/End (or Ctrl-A/Ctrl-E) jump within the line.
+- Up/Down browse history; Ctrl-R searches it. Previous commands also appear as hints.
+- Tab completes commands and arguments; another Tab lists ambiguous matches.
+  Suggestions follow the current IOS mode and include actual interfaces, drives,
+  and known IP addresses. Completion also works in the middle of a command.
+- Backspace/Delete, word movement, Ctrl-W, Ctrl-U, and Ctrl-K edit the line.
+  Ctrl-C cancels the current input. Pasting several lines executes them in order.
+
+History keeps up to 2,000 commands per host, port, and device across sessions.
+It is stored under `$XDG_STATE_HOME/game-ssh` (or `~/.local/state/game-ssh`) on
+Linux and `%LOCALAPPDATA%/game-ssh` on Windows. Set `GAME_SSH_HISTORY_DIR` to
+choose another directory. Commands starting with a space are excluded from history.
+
+Type `~.` or `logout`, or press Ctrl-D on an empty line, to disconnect. `exit` disconnects from a
+server or IOS user mode; in IOS privileged/configuration modes it keeps its normal
+IOS meaning. Commands can also be piped into the client; a failed command stops
+the script and returns a nonzero exit code.
+
+The downloadable ZIP includes `game-ssh` (`game-ssh.exe` on Windows). You can
+place it on your `PATH` to call it from any directory. For a source checkout:
+
+```bash
+cargo build --release -p game-ssh
+./target/release/game-ssh --list
+# Or install the command into your Cargo bin directory:
+cargo install --path crates/terminal
+```
+
+The game host accepts an IPv4/IPv6 bind address or `localhost`; the CLI accepts
+hostnames too. Each running game needs its own host/port combination. The bridge
+connects directly to simulated consoles, so an in-game IP selects a machine
+without requiring an in-game network path. It is an SSH-like game command.
+Simple password authentication uses unencrypted TCP. Settings, including the
+password, are stored in `cloud-provider-settings.json` beside the save database
+in the game's working directory; the file is excluded from Git and build ZIPs.
+
 ## Download a build
 
 Open [Build game on GitHub Actions](https://github.com/nrf24l01/sys-admin-sym/actions/workflows/build-game.yml),
@@ -37,7 +101,8 @@ The [build workflow](.github/workflows/build-game.yml) runs on pushes to
 `main` that change Rust code, assets, packaging code, or the workflow itself,
 and can also be started manually with **Run workflow**. It runs workspace
 tests and a ZIP packaging test before either release build. CI also launches the
-Linux build under Xvfb to catch startup failures. Both x86-64 builds
+Linux build under Xvfb and connects the terminal client to catch startup failures.
+Both x86-64 builds
 use `cross` in Docker with GitHub Actions caches and upload ZIP artifacts retained
 for 30 days. It needs only a GitHub-hosted Linux runner with Docker and
 `contents: read` permission; no secrets or

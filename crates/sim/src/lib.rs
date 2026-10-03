@@ -4,6 +4,7 @@
 
 pub mod cabling;
 pub mod command;
+pub mod completion;
 pub mod device;
 pub mod error;
 pub mod event;
@@ -16,6 +17,7 @@ pub mod network_outlet;
 pub mod port;
 pub mod power;
 pub mod rack;
+pub mod remote;
 pub mod resources;
 pub mod server_hardware;
 pub mod server_os;
@@ -25,6 +27,7 @@ pub mod world;
 
 pub use cabling::*;
 pub use command::*;
+pub use completion::*;
 pub use device::*;
 pub use error::*;
 pub use event::*;
@@ -37,6 +40,7 @@ pub use network_outlet::*;
 pub use port::*;
 pub use power::*;
 pub use rack::*;
+pub use remote::*;
 pub use resources::*;
 pub use server_hardware::*;
 pub use server_os::*;

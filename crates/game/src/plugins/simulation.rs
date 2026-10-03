@@ -1,7 +1,10 @@
 use crate::app::*;
+use crate::console::{ConsoleService, LocalConsoleServer};
+use crate::settings::{ConsoleSettings, GameSettings};
 use bevy::prelude::*;
 use cloud_provider_sim::{
-    Command, DeviceKind, Ipv4InterfaceConfig, NetworkSim, SwitchPortMode, Vlan, VlanId,
+    Command, DeviceKind, Ipv4InterfaceConfig, NetworkSim, RemoteRequest, RemoteResponse,
+    SwitchPortMode, TerminalOutput, Vlan, VlanId,
 };
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::net::Ipv4Addr;
@@ -13,10 +16,22 @@ pub struct SimulationWorker {
     pub tx: Sender<WorkerRequest>,
     pub rx: Receiver<WorkerResponse>,
     handle: Option<JoinHandle<()>>,
+    remote: LocalConsoleServer,
+}
+
+impl SimulationWorker {
+    pub fn configure_console(&mut self, config: ConsoleSettings) -> Result<(), String> {
+        self.remote.reconfigure(config, self.tx.clone())
+    }
+
+    pub fn console_error(&self) -> Option<&str> {
+        self.remote.error()
+    }
 }
 
 impl Drop for SimulationWorker {
     fn drop(&mut self) {
+        self.remote.stop();
         let _ = self.tx.send(WorkerRequest::Stop);
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
@@ -34,10 +49,15 @@ impl Plugin for SimulationPlugin {
             .name("network-simulation".into())
             .spawn(move || worker_loop(request_rx, response_tx))
             .expect("spawn network simulation thread");
+        let console = app.world().resource::<GameSettings>().console.clone();
+        let remote = LocalConsoleServer::start(console, request_tx.clone());
+        app.world_mut().resource_mut::<GameSettings>().console_error =
+            remote.error().map(str::to_owned);
         app.insert_resource(SimulationWorker {
             tx: request_tx,
             rx: response_rx,
             handle: Some(handle),
+            remote,
         })
         .init_resource::<SimSnapshot>()
         .init_resource::<UiState>()
@@ -124,6 +144,34 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
                 sim = *replacement;
                 let _ = responses.send(WorkerResponse::ConsolesReset);
                 let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+            }
+            WorkerRequest::Remote { request, reply } => {
+                let console = match &request {
+                    RemoteRequest::Run { device, input } => {
+                        Some((*device, input.clone(), sim.terminal_prompt(*device)))
+                    }
+                    _ => None,
+                };
+                let response = ConsoleService::new(&mut sim).handle(request);
+                if let (
+                    Some((device, input, prompt)),
+                    RemoteResponse::Output { lines, success, .. },
+                ) = (&console, &response)
+                {
+                    let _ = responses.send(WorkerResponse::Terminal {
+                        device: *device,
+                        input: input.clone(),
+                        prompt: prompt.clone(),
+                        output: TerminalOutput {
+                            lines: lines.clone(),
+                            success: *success,
+                        },
+                    });
+                }
+                let _ = reply.send(response);
+                if console.is_some() {
+                    let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+                }
             }
             WorkerRequest::Stop => break,
         }
@@ -419,6 +467,7 @@ fn translate_ui_actions(
                 persistence.write(PersistenceRequest::Save);
                 None
             }
+            UiAction::ApplyConsoleSettings(_) => None,
             UiAction::Load => {
                 persistence.write(PersistenceRequest::Load);
                 None
@@ -865,8 +914,7 @@ mod tests {
         assert!(state.pending_power_route.is_empty());
     }
 
-    #[test]
-    fn console_worker_keeps_device_identity_and_stops_scripts_on_error() {
+    fn console_fixture() -> (NetworkSim, Vec<cloud_provider_sim::DeviceId>) {
         let mut sim = NetworkSim::new();
         let mut devices = vec![];
         for kind in [DeviceTemplate::Switch, DeviceTemplate::Router] {
@@ -895,6 +943,12 @@ mod tests {
             .unwrap();
             devices.push(device);
         }
+        (sim, devices)
+    }
+
+    #[test]
+    fn console_worker_keeps_device_identity_and_stops_scripts_on_error() {
+        let (sim, devices) = console_fixture();
         let (requests_tx, requests_rx) = unbounded();
         let (responses_tx, responses_rx) = unbounded();
         requests_tx
@@ -936,5 +990,165 @@ mod tests {
         let snapshot = snapshot.unwrap();
         assert_eq!(snapshot.terminal_prompt(devices[0]), "Core(config)#");
         assert_eq!(snapshot.terminal_prompt(devices[1]), "Router>");
+    }
+
+    #[test]
+    fn local_console_changes_live_state_and_updates_gui_history() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::{TcpListener, TcpStream};
+
+        fn exchange(address: std::net::SocketAddr, json: &str) -> RemoteResponse {
+            let mut stream = TcpStream::connect(address).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let line = match serde_json::from_str::<RemoteRequest>(json) {
+                Ok(request) => serde_json::to_string(&cloud_provider_sim::RemoteEnvelope {
+                    password: "test-password".into(),
+                    request,
+                })
+                .unwrap(),
+                Err(_) => json.into(),
+            };
+            writeln!(stream, "{line}").unwrap();
+            let mut line = String::new();
+            BufReader::new(stream).read_line(&mut line).unwrap();
+            serde_json::from_str(&line).unwrap()
+        }
+
+        let (sim, devices) = console_fixture();
+        let (tx, requests) = unbounded();
+        let (responses, rx) = unbounded();
+        tx.send(WorkerRequest::Replace(Box::new(sim))).unwrap();
+        let worker = thread::spawn(move || worker_loop(requests, responses));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let config =
+            ConsoleSettings::new("127.0.0.1".into(), address.port(), "test-password".into())
+                .unwrap();
+        let mut server = LocalConsoleServer::from_listener(listener, tx.clone(), config).unwrap();
+
+        assert!(matches!(
+            exchange(address, "invalid json"),
+            RemoteResponse::Error(_)
+        ));
+        let denied = cloud_provider_sim::RemoteEnvelope {
+            password: "wrong-password".into(),
+            request: RemoteRequest::Run {
+                device: devices[0],
+                input: "enable".into(),
+            },
+        };
+        assert!(
+            matches!(exchange(address, &serde_json::to_string(&denied).unwrap()),
+            RemoteResponse::Error(error) if error == "Authentication failed")
+        );
+        let connect = RemoteRequest::Connect {
+            target: devices[0].to_string(),
+        };
+        assert!(
+            matches!(exchange(address, &serde_json::to_string(&connect).unwrap()),
+            RemoteResponse::Connected { device, .. } if device == devices[0])
+        );
+        for input in ["enable", "configure terminal", "hostname External", "exit"] {
+            let request = RemoteRequest::Run {
+                device: devices[0],
+                input: input.into(),
+            };
+            assert!(matches!(
+                exchange(address, &serde_json::to_string(&request).unwrap()),
+                RemoteResponse::Output { success: true, .. }
+            ));
+        }
+        let complete = RemoteRequest::Complete {
+            device: devices[0],
+            input: "conf".into(),
+        };
+        assert!(matches!(
+            exchange(address, &serde_json::to_string(&complete).unwrap()),
+            RemoteResponse::Completions(result) if result.candidates == ["configure"]
+        ));
+        let connect = RemoteRequest::Connect {
+            target: "External".into(),
+        };
+        assert!(
+            matches!(exchange(address, &serde_json::to_string(&connect).unwrap()),
+            RemoteResponse::Connected { prompt, .. } if prompt == "External#")
+        );
+        let list = exchange(
+            address,
+            &serde_json::to_string(&RemoteRequest::List).unwrap(),
+        );
+        assert!(
+            matches!(list, RemoteResponse::Devices(devices) if devices[0].hostname == "External")
+        );
+
+        let rotated = ConsoleSettings::new(
+            "127.0.0.1".into(),
+            address.port(),
+            "rotated-password".into(),
+        )
+        .unwrap();
+        server.reconfigure(rotated.clone(), tx.clone()).unwrap();
+        assert!(
+            matches!(exchange(address, &serde_json::to_string(&RemoteRequest::List).unwrap()),
+            RemoteResponse::Error(error) if error == "Authentication failed")
+        );
+        let authenticated = serde_json::to_string(&cloud_provider_sim::RemoteEnvelope {
+            password: "rotated-password".into(),
+            request: RemoteRequest::List,
+        })
+        .unwrap();
+        assert!(matches!(
+            exchange(address, &authenticated),
+            RemoteResponse::Devices(_)
+        ));
+
+        let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
+        let blocked = ConsoleSettings::new(
+            "127.0.0.1".into(),
+            occupied.local_addr().unwrap().port(),
+            "another-password".into(),
+        )
+        .unwrap();
+        assert!(server.reconfigure(blocked, tx.clone()).is_err());
+        assert!(matches!(
+            exchange(address, &authenticated),
+            RemoteResponse::Devices(_)
+        ));
+
+        let next_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let next_address = next_listener.local_addr().unwrap();
+        drop(next_listener);
+        let next = ConsoleSettings::new(
+            "127.0.0.1".into(),
+            next_address.port(),
+            "rotated-password".into(),
+        )
+        .unwrap();
+        server.reconfigure(next, tx.clone()).unwrap();
+        assert!(matches!(
+            exchange(next_address, &authenticated),
+            RemoteResponse::Devices(_)
+        ));
+        assert!(TcpStream::connect(address).is_err());
+
+        server.stop();
+        tx.send(WorkerRequest::Stop).unwrap();
+        worker.join().unwrap();
+        let mut console_lines = Vec::new();
+        let mut latest = None;
+        for response in rx.try_iter() {
+            match response {
+                WorkerResponse::Terminal { input, .. } => console_lines.push(input),
+                WorkerResponse::Snapshot(sim) => latest = Some(sim),
+                _ => {}
+            }
+        }
+        assert_eq!(
+            console_lines,
+            ["enable", "configure terminal", "hostname External", "exit"]
+        );
+        assert_eq!(latest.unwrap().terminal_prompt(devices[0]), "External#");
     }
 }
