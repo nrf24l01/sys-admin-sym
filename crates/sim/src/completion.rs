@@ -85,6 +85,11 @@ impl NetworkSim {
             LINUX_COMMANDS
                 .iter()
                 .map(|value| value.to_string())
+                .chain(
+                    crate::LinuxShell::commands()
+                        .split_whitespace()
+                        .map(str::to_owned),
+                )
                 .collect::<Vec<_>>()
         } else {
             self.console_help(device, "")
@@ -183,8 +188,7 @@ impl NetworkSim {
                 .ports()
                 .flat_map(|port| match &port.config {
                     PortConfig::Server(config) => config
-                        .ipv4
-                        .iter()
+                        .addresses()
                         .flat_map(|ip| {
                             std::iter::once(ip.address.to_string())
                                 .chain(ip.gateway.map(|gateway| gateway.to_string()))
@@ -207,12 +211,12 @@ impl NetworkSim {
                 .ports()
                 .iter()
                 .filter_map(|id| self.port(*id))
-                .filter_map(|port| match &port.config {
+                .flat_map(|port| match &port.config {
                     PortConfig::Server(config) => config
-                        .ipv4
-                        .as_ref()
-                        .map(|ip| format!("{}/{}", ip.address, ip.prefix)),
-                    _ => None,
+                        .addresses()
+                        .map(|ip| format!("{}/{}", ip.address, ip.prefix))
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
                 })
                 .collect(),
             "<id>" | "<list>" => {
@@ -341,6 +345,10 @@ mod tests {
         .unwrap();
         assert_eq!(sim.console_completions(device, "lsc").candidates, ["lscpu"]);
         assert_eq!(
+            sim.console_completions(device, "syste").candidates,
+            ["systemctl"]
+        );
+        assert_eq!(
             sim.console_completions(device, "ip addr show d").candidates,
             ["dev"]
         );
@@ -379,6 +387,23 @@ mod tests {
             sim.console_completions(device, "unknown ")
                 .candidates
                 .is_empty()
+        );
+        if let PortConfig::Server(config) = &mut sim.ports.get_mut(&port).unwrap().config {
+            config.additional_ipv4.push(crate::Ipv4InterfaceConfig {
+                address: "198.51.100.2".parse().unwrap(),
+                prefix: 24,
+                gateway: None,
+                vlan: None,
+            });
+        }
+        assert_eq!(
+            sim.console_completions(device, "ping 198.").candidates,
+            ["198.51.100.2"]
+        );
+        assert!(
+            sim.console_completions(device, "ip addr del ")
+                .candidates
+                .contains(&"198.51.100.2/24".into())
         );
     }
 }

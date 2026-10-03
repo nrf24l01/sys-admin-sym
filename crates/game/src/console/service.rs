@@ -72,8 +72,7 @@ impl<'a> ConsoleService<'a> {
             .filter_map(|id| self.sim.port(*id))
             .flat_map(|port| match &port.config {
                 PortConfig::Server(config) => config
-                    .ipv4
-                    .iter()
+                    .addresses()
                     .map(|ip| ip.address.to_string())
                     .collect::<Vec<_>>(),
                 PortConfig::Router(config) => config

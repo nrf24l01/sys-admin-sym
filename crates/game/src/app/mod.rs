@@ -1,11 +1,11 @@
 mod messages;
-mod shop;
 mod settings;
+mod shop;
 mod state;
 
 pub use messages::*;
-pub use shop::*;
 pub use settings::*;
+pub use shop::*;
 pub use state::*;
 
 use crate::plugins::{PersistencePlugin, SettingsPlugin, SimulationPlugin, UiPlugin};
@@ -25,7 +25,12 @@ impl Plugin for GamePlugin {
             )
                 .chain(),
         )
-        .add_plugins((SettingsPlugin, SimulationPlugin, PersistencePlugin, UiPlugin));
+        .add_plugins((
+            SettingsPlugin,
+            SimulationPlugin,
+            PersistencePlugin,
+            UiPlugin,
+        ));
     }
 }
 
