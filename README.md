@@ -81,7 +81,7 @@ Open [Build game on GitHub Actions](https://github.com/nrf24l01/sys-admin-sym/ac
 choose the latest successful run, and download one of its **Artifacts**:
 
 - `game-x86_64-unknown-linux-gnu` for 64-bit Linux.
-- `game-x86_64-pc-windows-gnu` for 64-bit Windows.
+- `game-x86_64-pc-windows-msvc` for 64-bit Windows.
 
 GitHub downloads an outer artifact ZIP. Extract it, then extract the
 `cloud-provider-sim-*.zip` inside. Keep the executable and `assets` folder
@@ -91,8 +91,8 @@ The game saves `cloud-provider-save.db` in its current working directory.
 
 The Linux build includes Rust dependencies in the executable and uses the host's
 glibc and desktop libraries; winit needs to load X11 libraries at runtime.
-The Windows build statically links the MinGW runtime. A graphical desktop and
-working graphics driver are still required. The ZIPs contain the runtime assets
+The Windows build uses Microsoft's native toolchain and statically links its C
+runtime. A graphical desktop and working graphics driver are still required. The ZIPs contain the runtime assets
 and do not require Rust or the Visual C++ redistributable. GitHub sign-in with
 repository read access is required to download workflow artifacts; the inner ZIP
 can be shared directly.
@@ -102,10 +102,12 @@ The [build workflow](.github/workflows/build-game.yml) runs on pushes to
 and can also be started manually with **Run workflow**. It runs workspace
 tests and a ZIP packaging test before either release build. CI also launches the
 Linux build under Xvfb and connects the terminal client to catch startup failures.
-Both x86-64 builds
-use `cross` in Docker with GitHub Actions caches and upload ZIP artifacts retained
-for 30 days. It needs only a GitHub-hosted Linux runner with Docker and
-`contents: read` permission; no secrets or
+The Linux build uses `cross` in Docker on a GitHub-hosted Linux runner. Windows
+builds run natively on a GitHub-hosted Windows runner with the Visual Studio C++
+tools and Windows SDK. CI checks both Windows binaries for unwanted runtime DLL
+dependencies and launches the terminal client with `--help`. Both builds use
+GitHub Actions caches and upload ZIP artifacts retained for 30 days. The workflow
+needs `contents: read` permission; no secrets or
 external registry are required.
 
 The game starts with a predefined datacenter room containing 50 empty 42U

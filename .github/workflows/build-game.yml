@@ -51,12 +51,17 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             extension: ""
-          - target: x86_64-pc-windows-gnu
+            runner: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
             extension: .exe
-    runs-on: ubuntu-latest
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     env:
       CARGO_INCREMENTAL: "0"
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: -C target-feature=+crt-static -C link-arg=-static
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -73,12 +78,23 @@ jobs:
           restore-keys: |
             rust-build-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-
       - name: Install cross
+        if: runner.os == 'Linux'
         run: |
           if ! command -v cross >/dev/null; then
             cargo install cross --locked --version 0.2.5
           fi
-      - name: Build release game and terminal client
+      - name: Set up native Windows toolchain
+        if: runner.os == 'Windows'
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+      - name: Build Linux release game and terminal client
+        if: runner.os == 'Linux'
         run: cross build --release --locked --target ${{ matrix.target }} -p cloud-provider-game -p game-ssh --bins
+      - name: Build Windows release game and terminal client
+        if: runner.os == 'Windows'
+        run: cargo build --release --locked --target ${{ matrix.target }} -p cloud-provider-game -p game-ssh --bins
       - name: Smoke test Linux game under X11
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
@@ -125,14 +141,28 @@ jobs:
             exit 1
           fi
       - name: Verify Windows executable needs no bundled runtime DLLs
-        if: matrix.target == 'x86_64-pc-windows-gnu'
-        shell: bash
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          imports="$(objdump -p target/${{ matrix.target }}/release/cloud-provider-sim.exe target/${{ matrix.target }}/release/game-ssh.exe | grep 'DLL Name:' || true)"
-          if printf '%s\n' "$imports" | grep -Eiq 'libgcc|libstdc\+\+|libwinpthread|vcruntime|msvcp'; then
-            printf 'Unexpected runtime DLL dependency:\n%s\n' "$imports" >&2
-            exit 1
-          fi
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or !$installation) { throw 'Visual Studio C++ tools were not found' }
+          $tools = Get-ChildItem "$installation/VC/Tools/MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $dumpbin = "$($tools.FullName)/bin/Hostx64/x64/dumpbin.exe"
+          foreach ($binary in @('cloud-provider-sim.exe', 'game-ssh.exe')) {
+            $imports = & $dumpbin /DEPENDENTS "target/${{ matrix.target }}/release/$binary"
+            if ($LASTEXITCODE -ne 0) { throw "Could not inspect $binary" }
+            $imports | Write-Output
+            if ($imports -match '(?i)(libgcc|libstdc\+\+|libwinpthread|vcruntime|msvcp|msvcr)[^\s]*\.dll') {
+              throw "Unexpected runtime DLL dependency in $binary"
+            }
+          }
+      - name: Smoke test Windows terminal client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "target/${{ matrix.target }}/release/game-ssh.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw 'Windows terminal client failed to start' }
       - name: Package executable, assets, and instructions
         run: >-
           python tools/package_game.py
