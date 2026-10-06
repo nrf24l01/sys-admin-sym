@@ -1,4 +1,5 @@
 use crate::app::CableVisibility;
+use crate::localization::tr;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
 use cloud_provider_sim::{CableRoutePoint, LinkId, NetworkSim, OutletId, PortId};
 use std::collections::HashMap;
@@ -429,7 +430,7 @@ pub(super) fn creation_anchor(
             )),
             egui::Sense::click(),
         )
-        .on_hover_text("Click to add or remove this cable route anchor");
+        .on_hover_text(tr("ui.click-to-add-or-remove-this-cable"));
     ui.painter().circle_filled(
         position,
         5.0,

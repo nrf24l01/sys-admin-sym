@@ -52,6 +52,10 @@ impl PcieSlot {
 pub struct ServerPart {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub display_name: crate::LocalizedText,
+    #[serde(default)]
+    pub desc: crate::LocalizedText,
     pub price: i64,
     #[serde(flatten)]
     pub kind: ServerPartKind,

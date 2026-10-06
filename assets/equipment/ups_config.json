@@ -1,4 +1,13 @@
 {
+  "id": "apc_smt1500",
+  "display_name": {
+    "en": "APC Smart-UPS SMT1500RMI2U",
+    "ru": "APC Smart-UPS SMT1500RMI2U"
+  },
+  "desc": {
+    "en": "1000 W / 1500 VA · battery backup · 4 C13 outlets",
+    "ru": "1000 Вт / 1500 ВА · резервное питание · 4 розетки C13"
+  },
   "type": "ups",
   "texture": "equipment/ups_faces.png",
   "textures": {},

@@ -1,4 +1,13 @@
 {
+  "id": "rack_pdu",
+  "display_name": {
+    "en": "Rack PDU 8×C13",
+    "ru": "Стоечный PDU 8×C13"
+  },
+  "desc": {
+    "en": "2300 W / 10 A · 8 C13 outlets · feed from UPS or mains",
+    "ru": "2300 Вт / 10 А · 8 розеток C13 · питание от ИБП или сети"
+  },
   "type": "pdu",
   "texture": "equipment/pdu_faces.png",
   "ports": {

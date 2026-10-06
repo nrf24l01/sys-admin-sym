@@ -1,4 +1,13 @@
 {
+  "id": "patch_panel",
+  "display_name": {
+    "en": "24-port RJ45 patch panel",
+    "ru": "Патч-панель RJ45 на 24 порта"
+  },
+  "desc": {
+    "en": "24 passive ports · front/rear paired",
+    "ru": "24 пассивных порта · попарно спереди и сзади"
+  },
   "type": "patch_panel",
   "texture": "",
   "ports": {

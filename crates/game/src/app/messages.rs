@@ -6,6 +6,7 @@ use cloud_provider_sim::{
 
 #[derive(Message, Debug, Clone)]
 pub enum UiAction {
+    SelectLanguage(String),
     SelectDevice(DeviceId),
     SelectPort(PortId),
     SelectLink(LinkId),
@@ -133,5 +134,5 @@ pub enum WorkerResponse {
         output: TerminalOutput,
     },
     ConsolesReset,
-    Error(String),
+    Error(cloud_provider_sim::SimError),
 }

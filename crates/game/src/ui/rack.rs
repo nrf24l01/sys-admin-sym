@@ -105,7 +105,7 @@ impl RackRow {
             painter.text(
                 label,
                 egui::Align2::CENTER_CENTER,
-                format!("{unit:02}"),
+                crate::localization::tr_args("format.number", &[format!("{:02}", unit)]),
                 egui::FontId::monospace(10.0),
                 Color32::from_gray(135),
             );

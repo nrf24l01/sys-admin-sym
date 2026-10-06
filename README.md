@@ -217,3 +217,8 @@ other active devices use an IEC C13/C14 cord.
 
 See the [network feature audit](docs/NETWORK_FEATURE_AUDIT.md) for remaining
 player controls and protocol limits.
+
+UI language is selectable in **Settings → Language** (English and Russian).
+UI text uses semantic IDs in `assets/locales/*.json`; item names and descriptions
+use language maps in their equipment JSON configs. See
+[the translation guide](docs/LOCALIZATION.md). Terminal text stays unchanged.

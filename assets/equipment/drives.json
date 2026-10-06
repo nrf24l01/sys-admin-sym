@@ -1,6 +1,46 @@
 {
   "drives": [
-    { "id": "enterprise_hdd_2tb", "name": "2 TB Enterprise SATA HDD", "kind": "hdd", "interface": "SATA", "capacity_gb": 2000, "read_mb_s": 220, "write_mb_s": 210, "read_iops": 180, "write_iops": 170, "power_w": 9, "price": 130 },
-    { "id": "enterprise_ssd_960gb", "name": "960 GB Enterprise SATA SSD", "kind": "ssd", "interface": "SATA", "capacity_gb": 960, "read_mb_s": 550, "write_mb_s": 520, "read_iops": 98000, "write_iops": 30000, "power_w": 4, "price": 230 }
+    {
+      "id": "enterprise_hdd_2tb",
+      "name": "2 TB Enterprise SATA HDD",
+      "kind": "hdd",
+      "interface": "SATA",
+      "capacity_gb": 2000,
+      "read_mb_s": 220,
+      "write_mb_s": 210,
+      "read_iops": 180,
+      "write_iops": 170,
+      "power_w": 9,
+      "price": 130,
+      "display_name": {
+        "en": "2 TB Enterprise SATA HDD",
+        "ru": "Серверный SATA HDD 2 ТБ"
+      },
+      "desc": {
+        "en": "Enterprise hard drive for bulk storage.",
+        "ru": "Серверный жёсткий диск для хранения больших объёмов данных."
+      }
+    },
+    {
+      "id": "enterprise_ssd_960gb",
+      "name": "960 GB Enterprise SATA SSD",
+      "kind": "ssd",
+      "interface": "SATA",
+      "capacity_gb": 960,
+      "read_mb_s": 550,
+      "write_mb_s": 520,
+      "read_iops": 98000,
+      "write_iops": 30000,
+      "power_w": 4,
+      "price": 230,
+      "display_name": {
+        "en": "960 GB Enterprise SATA SSD",
+        "ru": "Серверный SATA SSD 960 ГБ"
+      },
+      "desc": {
+        "en": "Enterprise solid-state drive for fast storage.",
+        "ru": "Серверный твердотельный накопитель для быстрого хранения данных."
+      }
+    }
   ]
 }

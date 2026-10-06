@@ -1,4 +1,13 @@
 {
+  "id": "cisco_catalyst_c1000",
+  "display_name": {
+    "en": "Cisco Catalyst C1000-24T-4G-L",
+    "ru": "Cisco Catalyst C1000-24T-4G-L"
+  },
+  "desc": {
+    "en": "24 RJ45 ports · 4 SFP cages (not yet active)",
+    "ru": "24 порта RJ45 · 4 слота SFP (пока недоступны)"
+  },
   "type": "switch",
   "texture": "equipment/switch_front_clean.png",
   "textures": {

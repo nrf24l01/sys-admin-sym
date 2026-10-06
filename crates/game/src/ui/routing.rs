@@ -1,4 +1,5 @@
 use crate::app::{EditorDrafts, RouteDraft, UiAction, UiState};
+use crate::localization::tr;
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::*;
@@ -23,115 +24,207 @@ pub(super) fn show(
     };
     let draft = drafts.routes.entry(id).or_default();
     let mut open = true;
-    egui::Window::new(format!("{} · Routing table", device.name))
-        .id(egui::Id::new(("router-routes", id)))
-        .open(&mut open)
-        .default_width(760.0)
-        .show(viewport, |ui| {
-            ui.label("This router forwards packets through its configured interfaces and connected cables.");
-            ui.weak("Longest prefix wins; lower preference wins for equal prefixes.");
-            egui::ScrollArea::both().max_height(260.0).show(ui, |ui| {
-                egui::Grid::new(("route-table", id)).striped(true).show(ui, |ui| {
-                    for heading in ["Destination", "Next hop", "Outgoing interface", "Domain", "Preference", "Type", ""] {
-                        ui.strong(heading);
+    egui::Window::new(crate::localization::tr_args(
+        "ui.routing-table.2",
+        &[crate::localization::device_name(device)],
+    ))
+    .id(egui::Id::new(("router-routes", id)))
+    .open(&mut open)
+    .default_width(760.0)
+    .show(viewport, |ui| {
+        ui.label(tr("ui.this-router-forwards-packets-through-its-configured"));
+        ui.weak(tr("ui.longest-prefix-wins-lower-preference-wins-for"));
+        egui::ScrollArea::both().max_height(260.0).show(ui, |ui| {
+            egui::Grid::new(("route-table", id))
+                .striped(true)
+                .show(ui, |ui| {
+                    for heading in [
+                        "ui.destination",
+                        "ui.next-hop",
+                        "ui.outgoing-interface",
+                        "ui.domain",
+                        "ui.preference",
+                        "ui.type",
+                        "",
+                    ] {
+                        ui.strong(if heading.is_empty() {
+                            String::new()
+                        } else {
+                            tr(heading)
+                        });
                     }
                     ui.end_row();
                     for interface in &router.interfaces {
-                        let Some(address) = interface.address else { continue };
-                        let Ok(prefix) = Ipv4Prefix::new(address, interface.prefix) else { continue };
+                        let Some(address) = interface.address else {
+                            continue;
+                        };
+                        let Ok(prefix) = Ipv4Prefix::new(address, interface.prefix) else {
+                            continue;
+                        };
                         let vlan = interface.vlan.unwrap_or(VlanId(1));
                         ui.label(prefix.to_string());
-                        ui.label("On-link");
+                        ui.label(tr("ui.on-link"));
                         interface_link(ui, sim, interface.port, vlan, actions);
                         ui.label(sim.provider().domain(interface.port, vlan).0.to_string());
                         ui.label("0");
-                        ui.label("Connected");
-                        ui.weak("Automatic");
+                        ui.label(tr("ui.connected"));
+                        ui.weak(tr("ui.automatic"));
                         ui.end_row();
                     }
                     for route in &router.domain_routes {
                         ui.label(route.prefix.to_string());
-                        ui.label(route.next_hop.map_or_else(|| "On-link".into(), |ip| ip.to_string()));
+                        ui.label(
+                            route
+                                .next_hop
+                                .map_or_else(|| tr("ui.on-link"), |ip| ip.to_string()),
+                        );
                         interface_link(ui, sim, route.port, route.vlan, actions);
                         ui.label(route.domain.0.to_string());
                         ui.label(route.preference.to_string());
-                        ui.label(if route.track_neighbor { "Static · tracked" } else { "Static" });
+                        ui.label(tr(if route.track_neighbor {
+                            "ui.static-tracked"
+                        } else {
+                            "ui.static"
+                        }));
                         ui.horizontal(|ui| {
-                            if ui.small_button("Edit").clicked() { *draft = RouteDraft::edit(*route); }
-                            if ui.small_button("Remove").clicked() {
-                                actions.write(UiAction::NetworkCommand(Command::Provider(ProviderCommand::RemoveDomainRoute(*route))));
+                            if ui.small_button(tr("ui.edit")).clicked() {
+                                *draft = RouteDraft::edit(*route);
+                            }
+                            if ui.small_button(tr("ui.remove")).clicked() {
+                                actions.write(UiAction::NetworkCommand(Command::Provider(
+                                    ProviderCommand::RemoveDomainRoute(*route),
+                                )));
                             }
                         });
                         ui.end_row();
                     }
                     for route in &router.routes {
-                        ui.label(format!("{}/{}", route.network, route.prefix));
-                        ui.label(route.via.map_or_else(|| "On-link".into(), |ip| ip.to_string()));
-                        let vlan = router.interfaces.iter().find(|i| i.port == route.egress).and_then(|i| i.vlan).unwrap_or(VlanId(1));
+                        ui.label(crate::localization::tr_args(
+                            "network.prefix",
+                            &[(route.network).to_string(), (route.prefix).to_string()],
+                        ));
+                        ui.label(
+                            route
+                                .via
+                                .map_or_else(|| tr("ui.on-link"), |ip| ip.to_string()),
+                        );
+                        let vlan = router
+                            .interfaces
+                            .iter()
+                            .find(|i| i.port == route.egress)
+                            .and_then(|i| i.vlan)
+                            .unwrap_or(VlanId(1));
                         interface_link(ui, sim, route.egress, vlan, actions);
                         ui.label("0");
                         ui.label("—");
-                        ui.label("Static · IOS");
-                        if ui.small_button("Remove").clicked() {
-                            actions.write(UiAction::NetworkCommand(Command::RemoveStaticRoute { router: id, route: route.clone() }));
+                        ui.label(tr("ui.static-ios"));
+                        if ui.small_button(tr("ui.remove")).clicked() {
+                            actions.write(UiAction::NetworkCommand(Command::RemoveStaticRoute {
+                                router: id,
+                                route: route.clone(),
+                            }));
                         }
                         ui.end_row();
                     }
                 });
-            });
-            ui.separator();
-            ui.strong(if draft.editing.is_some() { "Edit static route" } else { "Add static route" });
-            let interfaces: Vec<_> = router.interfaces.iter().filter(|i| i.address.is_some()).collect();
-            if interfaces.is_empty() {
-                ui.label("Configure an IPv4 address on a router port first.");
-                return;
-            }
-            if draft.interface.is_none() {
-                draft.interface = Some((interfaces[0].port, interfaces[0].vlan.unwrap_or(VlanId(1))));
-            }
-            egui::Grid::new(("route-editor", id)).num_columns(2).show(ui, |ui| {
-                ui.label("Destination prefix"); ui.text_edit_singleline(&mut draft.destination); ui.end_row();
-                ui.label("Outgoing interface");
+        });
+        ui.separator();
+        ui.strong(tr(if draft.editing.is_some() {
+            "ui.edit-static-route"
+        } else {
+            "ui.add-static-route"
+        }));
+        let interfaces: Vec<_> = router
+            .interfaces
+            .iter()
+            .filter(|i| i.address.is_some())
+            .collect();
+        if interfaces.is_empty() {
+            ui.label(tr("ui.configure-an-ipv4-address-on-a-router"));
+            return;
+        }
+        if draft.interface.is_none() {
+            draft.interface = Some((interfaces[0].port, interfaces[0].vlan.unwrap_or(VlanId(1))));
+        }
+        egui::Grid::new(("route-editor", id))
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label(tr("ui.destination-prefix"));
+                ui.text_edit_singleline(&mut draft.destination);
+                ui.end_row();
+                ui.label(tr("ui.outgoing-interface"));
                 egui::ComboBox::from_id_salt(("route-egress", id))
-                    .selected_text(draft.interface.map_or_else(|| "Select interface".into(), |(p, v)| interface_name(sim, p, v)))
+                    .selected_text(draft.interface.map_or_else(
+                        || tr("ui.select-interface"),
+                        |(p, v)| interface_name(sim, p, v),
+                    ))
                     .show_ui(ui, |ui| {
                         for interface in &interfaces {
                             let vlan = interface.vlan.unwrap_or(VlanId(1));
-                            ui.selectable_value(&mut draft.interface, Some((interface.port, vlan)), interface_name(sim, interface.port, vlan));
+                            ui.selectable_value(
+                                &mut draft.interface,
+                                Some((interface.port, vlan)),
+                                interface_name(sim, interface.port, vlan),
+                            );
                         }
                     });
                 ui.end_row();
-                ui.label("Delivery");
-                ui.horizontal(|ui| { ui.radio_value(&mut draft.direct, false, "Via gateway"); ui.radio_value(&mut draft.direct, true, "On-link"); });
+                ui.label(tr("ui.delivery"));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut draft.direct, false, tr("ui.via-gateway"));
+                    ui.radio_value(&mut draft.direct, true, tr("ui.on-link"));
+                });
                 ui.end_row();
                 if !draft.direct {
-                    ui.label("Next-hop IPv4"); ui.text_edit_singleline(&mut draft.next_hop); ui.end_row();
+                    ui.label(tr("ui.next-hop-ipv4"));
+                    ui.text_edit_singleline(&mut draft.next_hop);
+                    ui.end_row();
                 }
-                ui.label("Preference"); ui.add(egui::DragValue::new(&mut draft.preference).range(1..=u32::MAX)); ui.end_row();
+                ui.label(tr("ui.preference"));
+                ui.add(egui::DragValue::new(&mut draft.preference).range(1..=u32::MAX));
+                ui.end_row();
             });
-            if let Some((port, vlan)) = draft.interface {
-                ui.weak(format!("Routing domain {} (from the selected interface)", sim.provider().domain(port, vlan).0));
-            }
-            ui.add_enabled(!draft.direct, egui::Checkbox::new(&mut draft.track_neighbor, "Withdraw this route if the next hop cannot be resolved"));
-            if let Some(error) = &draft.error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
-            ui.horizontal(|ui| {
-                if ui.button("Apply route").clicked() {
-                    match draft.command(sim, id) {
-                        Ok(command) => { draft.error = None; actions.write(UiAction::NetworkCommand(command)); }
-                        Err(error) => draft.error = Some(error),
+        if let Some((port, vlan)) = draft.interface {
+            ui.weak(crate::localization::tr_args(
+                "ui.routing-domain-from-the-selected-interface",
+                &[(sim.provider().domain(port, vlan).0).to_string()],
+            ));
+        }
+        ui.add_enabled(
+            !draft.direct,
+            egui::Checkbox::new(
+                &mut draft.track_neighbor,
+                tr("ui.withdraw-this-route-if-the-next-hop"),
+            ),
+        );
+        if let Some(error) = &draft.error {
+            ui.colored_label(egui::Color32::LIGHT_RED, error.render());
+        }
+        ui.horizontal(|ui| {
+            if ui.button(tr("ui.apply-route")).clicked() {
+                match draft.command(sim, id) {
+                    Ok(command) => {
+                        draft.error = None;
+                        actions.write(UiAction::NetworkCommand(command));
                     }
+                    Err(error) => draft.error = Some(error),
                 }
-                if ui.button("New route / cancel edit").clicked() { *draft = RouteDraft::default(); }
-            });
+            }
+            if ui.button(tr("ui.new-route-cancel-edit")).clicked() {
+                *draft = RouteDraft::default();
+            }
         });
+    });
     if !open {
         state.routing_device = None;
     }
 }
 
 fn interface_name(sim: &NetworkSim, port: PortId, vlan: VlanId) -> String {
-    let name = sim.port(port).map_or("Missing port", |p| p.name.as_str());
-    format!("{name} · VLAN {}", vlan.0)
+    let name = sim
+        .port(port)
+        .map_or_else(|| tr("ui.missing-port"), |p| p.name.clone());
+    crate::localization::tr_args("ui.vlan.2", &[(name).to_string(), (vlan.0).to_string()])
 }
 
 fn interface_link(
@@ -143,11 +236,11 @@ fn interface_link(
 ) {
     if ui
         .link(interface_name(sim, port, vlan))
-        .on_hover_text(if sim.port_link_up(port) {
-            "Link up · open port settings"
+        .on_hover_text(tr(if sim.port_link_up(port) {
+            "ui.link-up-open-port-settings"
         } else {
-            "Link down · open port settings"
-        })
+            "ui.link-down-open-port-settings"
+        }))
         .clicked()
     {
         actions.write(UiAction::SelectPort(port));

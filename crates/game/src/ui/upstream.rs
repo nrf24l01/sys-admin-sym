@@ -1,4 +1,5 @@
 use crate::app::UiAction;
+use crate::localization::tr;
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::*;
@@ -9,20 +10,23 @@ pub(super) fn show(
     port: PortId,
     actions: &mut MessageWriter<UiAction>,
 ) {
-    ui.strong("Range delivery uplink");
-    ui.label("Select the IPv4 ranges delivered through this socket in IP RANGES.");
-    if ui.button("Open IP ranges…").clicked() {
+    ui.strong(tr("ui.range-delivery-uplink"));
+    ui.label(tr("ui.select-the-ipv4-ranges-delivered-through-this"));
+    if ui.button(tr("ui.open-ip-ranges")).clicked() {
         actions.write(UiAction::OpenIpRanges);
     }
     if let Some(circuit) = sim.provider().circuit(port) {
-        ui.label(format!(
-            "Higher network gateway: {}/{}",
-            circuit.address, circuit.prefix
+        ui.label(crate::localization::tr_args(
+            "ui.higher-network-gateway.2",
+            &[(circuit.address).to_string(), (circuit.prefix).to_string()],
         ));
         for route in &circuit.routes {
-            ui.label(format!("{} → router WAN {}", route.prefix, route.next_hop));
+            ui.label(crate::localization::tr_args(
+                "ui.router-wan",
+                &[(route.prefix).to_string(), (route.next_hop).to_string()],
+            ));
         }
     } else {
-        ui.weak("No ranges assigned yet.");
+        ui.weak(tr("ui.no-ranges-assigned-yet"));
     }
 }

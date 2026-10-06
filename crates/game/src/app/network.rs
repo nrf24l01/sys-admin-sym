@@ -8,7 +8,7 @@ pub struct RouteDraft {
     pub direct: bool,
     pub track_neighbor: bool,
     pub editing: Option<DomainRoute>,
-    pub error: Option<String>,
+    pub error: Option<crate::localization::UiMessage>,
 }
 
 impl Default for RouteDraft {
@@ -40,13 +40,17 @@ impl RouteDraft {
         }
     }
 
-    pub fn command(&self, sim: &NetworkSim, router: DeviceId) -> Result<Command, String> {
-        let (port, vlan) = self.interface.ok_or("Select an outgoing interface")?;
+    pub fn command(
+        &self,
+        sim: &NetworkSim,
+        router: DeviceId,
+    ) -> Result<Command, crate::localization::UiMessage> {
+        let (port, vlan) = self.interface.ok_or("ui.select-an-outgoing-interface")?;
         if !sim
             .port(port)
             .is_some_and(|p| p.device == router && matches!(p.config, PortConfig::Router(_)))
         {
-            return Err("Select an interface on this router".into());
+            return Err("ui.select-an-interface-on-this-router".into());
         }
         let route = DomainRoute {
             router,
@@ -57,7 +61,7 @@ impl RouteDraft {
                 .destination
                 .trim()
                 .parse()
-                .map_err(|_| "Enter a destination such as 10.20.0.0/16 or 0.0.0.0/0")?,
+                .map_err(|_| "ui.enter-a-destination-such-as-10-20")?,
             next_hop: if self.direct {
                 None
             } else {
@@ -65,7 +69,7 @@ impl RouteDraft {
                     self.next_hop
                         .trim()
                         .parse()
-                        .map_err(|_| "Enter the next-hop IPv4 address")?,
+                        .map_err(|_| "ui.enter-the-next-hop-ipv4-address")?,
                 )
             },
             preference: self.preference,

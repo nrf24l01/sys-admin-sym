@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::localization::tr;
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::{CableColor, NetworkSim};
@@ -16,33 +17,36 @@ pub(super) fn show(
             egui::ScrollArea::vertical()
                 .id_salt("inventory-scroll")
                 .show(ui, |ui| {
-                    ui.heading("Cable setup");
+                    ui.heading(tr("cable.setup"));
                     let stock = sim.cable_inventory();
-                    ui.label(format!(
-                        "Bulk cable: {:.2} m",
-                        stock.cable_cm as f32 / 100.0
+                    ui.label(crate::localization::tr_args(
+                        "ui.bulk-cable-m",
+                        &[format!("{:.2}", stock.cable_cm as f32 / 100.0)],
                     ));
-                    ui.label(format!("RJ45 connectors: {}", stock.connectors));
+                    ui.label(crate::localization::tr_args(
+                        "ui.rj45-connectors",
+                        &[(stock.connectors).to_string()],
+                    ));
                     let mut automatic = state.cable_length_cm.is_none();
                     if ui
-                        .checkbox(&mut automatic, "Auto: shortest path + 5%")
+                        .checkbox(&mut automatic, tr("ui.auto-shortest-path-5"))
                         .changed()
                     {
                         state.cable_length_cm = if automatic { None } else { Some(100) };
                     }
                     if let Some(cm) = &mut state.cable_length_cm {
                         ui.horizontal(|ui| {
-                            ui.label("Cut length");
+                            ui.label(tr("ui.cut-length"));
                             ui.add(
                                 egui::DragValue::new(cm)
                                     .range(1..=10000)
                                     .speed(1)
-                                    .suffix(" cm"),
+                                    .suffix(tr("ui.cm")),
                             );
                         });
                     }
                     ui.horizontal(|ui| {
-                        ui.label("Jacket color");
+                        ui.label(tr("ui.jacket-color"));
                         for color in [
                             CableColor::White,
                             CableColor::Gray,
@@ -54,16 +58,19 @@ pub(super) fn show(
                             let fill = super::cable_color_value(color);
                             if ui
                                 .add(egui::Button::new("   ").fill(fill).selected(selected))
-                                .on_hover_text(format!("{color:?}"))
+                                .on_hover_text(crate::localization::cable_color(color))
                                 .clicked()
                             {
                                 state.cable_color = color;
                             }
                         }
                     });
-                    ui.weak("A new lead uses its length + 2 plugs. Unplugged leads can be reused.");
+                    ui.weak(tr("ui.a-new-lead-uses-its-length-2"));
                     if !stock.patch_cables_cm.is_empty() {
-                        ui.label(format!("Reusable leads: {}", stock.patch_cables_cm.len()));
+                        ui.label(crate::localization::tr_args(
+                            "ui.reusable-leads",
+                            &[(stock.patch_cables_cm.len()).to_string()],
+                        ));
                         let mut leads: Vec<_> = stock
                             .patch_cables_cm
                             .iter()
@@ -97,10 +104,13 @@ pub(super) fn show(
                                 })
                                 .count();
                             if ui
-                                .small_button(format!(
-                                    "{:.2} m {:?} × {count} — use",
-                                    cm as f32 / 100.0,
-                                    color
+                                .small_button(crate::localization::tr_args(
+                                    "ui.m-use",
+                                    &[
+                                        format!("{:.2}", cm as f32 / 100.0),
+                                        crate::localization::cable_color(color),
+                                        (count).to_string(),
+                                    ],
                                 ))
                                 .clicked()
                             {
@@ -110,10 +120,10 @@ pub(super) fn show(
                         }
                     }
                     ui.separator();
-                    ui.heading("Inventory");
+                    ui.heading(tr("ui.inventory"));
                     let inventory: Vec<_> = sim.devices().filter(|d| d.rack.is_none()).collect();
                     if inventory.is_empty() {
-                        ui.weak("No uninstalled devices");
+                        ui.weak(tr("ui.no-uninstalled-devices"));
                     }
                     let mut groups: std::collections::BTreeMap<String, Vec<_>> =
                         std::collections::BTreeMap::new();
@@ -149,7 +159,14 @@ pub(super) fn show(
                         if ui
                             .selectable_label(
                                 state.selected == Selection::Device(device.id),
-                                format!("{}  {label} × {}", row + 1, matching.len()),
+                                crate::localization::tr_args(
+                                    "inventory.device-group",
+                                    &[
+                                        (row + 1).to_string(),
+                                        (label).to_string(),
+                                        (matching.len()).to_string(),
+                                    ],
+                                ),
                             )
                             .clicked()
                         {
@@ -157,21 +174,23 @@ pub(super) fn show(
                         }
                     }
                     ui.separator();
-                    ui.heading("Cables");
+                    ui.heading(tr("ui.cables"));
                     let mut links: Vec<_> = sim.links().collect();
                     links.sort_by_key(|link| link.id);
                     if links.is_empty() {
-                        ui.weak("No cables connected");
+                        ui.weak(tr("ui.no-cables-connected"));
                     }
                     for link in links {
                         if ui
                             .selectable_label(
                                 state.selected == Selection::Link(link.id),
-                                format!(
-                                    "Cable {:02} · {:?} · {:.2} m",
-                                    link.id.0,
-                                    link.color,
-                                    link.length_cm as f32 / 100.0
+                                crate::localization::tr_args(
+                                    "ui.cable-m",
+                                    &[
+                                        format!("{:02}", link.id.0),
+                                        crate::localization::cable_color(link.color),
+                                        format!("{:.2}", link.length_cm as f32 / 100.0),
+                                    ],
                                 ),
                             )
                             .clicked()
@@ -182,9 +201,12 @@ pub(super) fn show(
                     ui.separator();
                     let conflicts = sim.duplicate_addresses();
                     if !conflicts.is_empty() {
-                        ui.colored_label(egui::Color32::LIGHT_RED, "IP CONFLICT");
+                        ui.colored_label(egui::Color32::LIGHT_RED, tr("ui.ip-conflict"));
                         for (address, ports) in conflicts {
-                            ui.label(format!("{address} on {} interfaces", ports.len()));
+                            ui.label(crate::localization::tr_args(
+                                "ui.on-interfaces",
+                                &[(address).to_string(), (ports.len()).to_string()],
+                            ));
                         }
                     }
                 });

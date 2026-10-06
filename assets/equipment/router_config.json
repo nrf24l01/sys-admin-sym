@@ -1,4 +1,13 @@
 {
+  "id": "cisco_isr_c1111",
+  "display_name": {
+    "en": "Cisco ISR C1111-8P",
+    "ru": "Cisco ISR C1111-8P"
+  },
+  "desc": {
+    "en": "2 WAN + 8 LAN RJ45 ports · supplied 66 W adapter",
+    "ru": "2 WAN + 8 LAN RJ45 · адаптер 66 Вт в комплекте"
+  },
   "type": "router",
   "texture": "equipment/router_rear_clean.png",
   "textures": { "front": "equipment/router_rear_clean.png", "back": "equipment/router_front_clean.png" },

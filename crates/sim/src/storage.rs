@@ -17,6 +17,10 @@ pub enum DriveKind {
 pub struct DriveModel {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub display_name: crate::LocalizedText,
+    #[serde(default)]
+    pub desc: crate::LocalizedText,
     pub kind: DriveKind,
     pub interface: String,
     pub capacity_gb: u32,

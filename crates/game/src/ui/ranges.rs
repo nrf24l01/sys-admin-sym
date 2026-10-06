@@ -1,4 +1,5 @@
 use crate::app::{UiAction, UiState};
+use crate::localization::tr;
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::*;
@@ -23,82 +24,172 @@ pub(super) fn show(
         .collect();
     uplinks.sort_by_key(|o| o.port);
     let mut open = true;
-    egui::Window::new("IP ranges")
+    egui::Window::new(tr("ranges.title"))
         .id(egui::Id::new("ip-ranges-window"))
         .open(&mut open)
         .default_size(egui::vec2(820.0, 460.0))
         .show(viewport, |ui| {
-            ui.label("Choose where the carrier delivers each range, then configure your router using the addresses below.");
+            ui.label(tr("ui.choose-where-the-carrier-delivers-each-range"));
             ui.horizontal(|ui| {
-                if ui.add_enabled(sim.money >= PublicIpv4Block::PRICE && sim.public_ipv4_blocks().len() < 32, egui::Button::new(format!("Order /29 range · ${}", PublicIpv4Block::PRICE))).clicked() {
+                if ui
+                    .add_enabled(
+                        sim.money >= PublicIpv4Block::PRICE && sim.public_ipv4_blocks().len() < 32,
+                        egui::Button::new(crate::localization::tr_args(
+                            "ui.order-29-range",
+                            &[(PublicIpv4Block::PRICE).to_string()],
+                        )),
+                    )
+                    .clicked()
+                {
                     actions.write(UiAction::BuyPublicIpv4Pool);
                 }
-                ui.weak(format!("{} range(s) owned", pools.len()));
+                ui.weak(crate::localization::tr_args(
+                    "ui.range-s-owned",
+                    &[(pools.len()).to_string()],
+                ));
             });
             ui.separator();
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(180.0);
-                    ui.strong("IPv4 ranges");
-                    egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
-                        for pool in pools {
-                            if ui.selectable_label(state.selected_range == Some(pool.prefix), pool.prefix.to_string()).clicked() {
-                                state.selected_range = Some(pool.prefix);
+                    ui.strong(tr("ranges.heading"));
+                    egui::ScrollArea::vertical()
+                        .max_height(380.0)
+                        .show(ui, |ui| {
+                            for pool in pools {
+                                if ui
+                                    .selectable_label(
+                                        state.selected_range == Some(pool.prefix),
+                                        pool.prefix.to_string(),
+                                    )
+                                    .clicked()
+                                {
+                                    state.selected_range = Some(pool.prefix);
+                                }
                             }
-                        }
-                    });
+                        });
                 });
                 ui.separator();
                 ui.vertical(|ui| {
                     ui.set_min_width(480.0);
                     let Some(prefix) = state.selected_range else {
-                        ui.label("Order a range to see its addressing and uplink settings.");
+                        ui.label(tr("ui.order-a-range-to-see-its-addressing"));
                         return;
                     };
                     if state.range_loaded_for != Some(prefix) {
-                        state.range_uplink = sim.range_uplink(prefix).or_else(|| uplinks.first().map(|o| o.port));
+                        state.range_uplink = sim
+                            .range_uplink(prefix)
+                            .or_else(|| uplinks.first().map(|o| o.port));
                         state.range_loaded_for = Some(prefix);
                     }
                     ui.heading(prefix.to_string());
                     let assignment = sim.range_uplink(prefix);
-                    ui.label(assignment.and_then(|id| sim.network_outlet(id)).map_or_else(|| "Delivery: unassigned".into(), |o| format!("Delivery: {}", uplink_label(sim, o.port))));
-                    ui.label("Deliver this range through");
+                    ui.label(
+                        assignment
+                            .and_then(|id| sim.network_outlet(id))
+                            .map_or_else(
+                                || tr("ui.delivery-unassigned"),
+                                |o| {
+                                    crate::localization::tr_args(
+                                        "ui.delivery.2",
+                                        &[(uplink_label(sim, o.port)).to_string()],
+                                    )
+                                },
+                            ),
+                    );
+                    ui.label(tr("ui.deliver-this-range-through"));
                     egui::ComboBox::from_id_salt("range-uplink")
-                        .selected_text(state.range_uplink.and_then(|id| sim.network_outlet(id)).map_or_else(|| "Select uplink".into(), |o| uplink_label(sim, o.port)))
+                        .selected_text(
+                            state
+                                .range_uplink
+                                .and_then(|id| sim.network_outlet(id))
+                                .map_or_else(
+                                    || tr("ui.select-uplink"),
+                                    |o| uplink_label(sim, o.port),
+                                ),
+                        )
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut state.range_uplink, None, "Unassigned");
+                            ui.selectable_value(&mut state.range_uplink, None, tr("ui.unassigned"));
                             for outlet in &uplinks {
-                                ui.selectable_value(&mut state.range_uplink, Some(outlet.port), uplink_label(sim, outlet.port));
+                                ui.selectable_value(
+                                    &mut state.range_uplink,
+                                    Some(outlet.port),
+                                    uplink_label(sim, outlet.port),
+                                );
                             }
                         });
-                    if ui.button("Apply range delivery").clicked() {
-                        actions.write(UiAction::NetworkCommand(Command::Provider(ProviderCommand::RouteOwnedRange { prefix, uplink: state.range_uplink })));
+                    if ui.button(tr("ui.apply-range-delivery")).clicked() {
+                        actions.write(UiAction::NetworkCommand(Command::Provider(
+                            ProviderCommand::RouteOwnedRange {
+                                prefix,
+                                uplink: state.range_uplink,
+                            },
+                        )));
                     }
                     let Some(uplink) = state.range_uplink else {
-                        ui.weak("Select an uplink to view the addressing instructions.");
+                        ui.weak(tr("ui.select-an-uplink-to-view-the-addressing"));
                         return;
                     };
                     let handoff = match sim.range_handoff(prefix, uplink) {
                         Ok(handoff) => handoff,
-                        Err(error) => { ui.colored_label(egui::Color32::LIGHT_RED, error.to_string()); return; }
+                        Err(error) => {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                crate::localization::UiMessage::from(error).render(),
+                            );
+                            return;
+                        }
                     };
                     ui.separator();
-                    ui.strong("Higher network · router WAN interface");
-                    egui::Grid::new("range-wan-details").num_columns(2).show(ui, |ui| {
-                        detail(ui, "Higher network subnet", handoff.upstream_subnet);
-                        detail(ui, "Higher network gateway", handoff.upstream_gateway);
-                        detail(ui, "Your router WAN IPv4", format!("{}/{}", handoff.router_address, handoff.upstream_subnet.length()));
-                        detail(ui, "Router default route", format!("0.0.0.0/0 via {}", handoff.upstream_gateway));
-                    });
-                    ui.weak("Cable this uplink to your router. On that interface, configure the WAN IPv4 above and add a default route through the higher network gateway.");
+                    ui.strong(tr("ui.higher-network-router-wan-interface"));
+                    egui::Grid::new("range-wan-details")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            detail(ui, "ui.higher-network-subnet", handoff.upstream_subnet);
+                            detail(ui, "ui.higher-network-gateway", handoff.upstream_gateway);
+                            detail(
+                                ui,
+                                "ui.your-router-wan-ipv4",
+                                crate::localization::tr_args(
+                                    "network.prefix",
+                                    &[
+                                        (handoff.router_address).to_string(),
+                                        (handoff.upstream_subnet.length()).to_string(),
+                                    ],
+                                ),
+                            );
+                            detail(
+                                ui,
+                                "ui.router-default-route",
+                                crate::localization::tr_args(
+                                    "ui.0-0-0-0-0-via",
+                                    &[(handoff.upstream_gateway).to_string()],
+                                ),
+                            );
+                        });
+                    ui.weak(tr("ui.cable-this-uplink-to-your-router-on"));
                     ui.separator();
-                    ui.strong("Your range · router LAN interface");
-                    egui::Grid::new("range-lan-details").num_columns(2).show(ui, |ui| {
-                        detail(ui, "IPv4 range", prefix);
-                        detail(ui, "Router LAN / server gateway", format!("{}/{}", handoff.local_gateway, prefix.length()));
-                    });
-                    ui.weak("Configure the range gateway on another router interface. Connect your servers through that interface or a switch; give them addresses in this range and use this LAN gateway.");
-                    ui.weak("Applying delivery updates the carrier route. Configure the router ports and routing table yourself.");
+                    ui.strong(tr("ui.your-range-router-lan-interface"));
+                    egui::Grid::new("range-lan-details")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            detail(ui, "ui.ipv4-range", prefix);
+                            detail(
+                                ui,
+                                "ui.router-lan-server-gateway",
+                                crate::localization::tr_args(
+                                    "network.prefix",
+                                    &[
+                                        (handoff.local_gateway).to_string(),
+                                        (prefix.length()).to_string(),
+                                    ],
+                                ),
+                            );
+                        });
+                    ui.weak(tr("ui.configure-the-range-gateway-on-another-router"));
+                    ui.weak(tr(
+                        "ui.applying-delivery-updates-the-carrier-route-configure",
+                    ));
                 });
             });
         });
@@ -106,12 +197,14 @@ pub(super) fn show(
 }
 
 fn uplink_label(sim: &NetworkSim, port: PortId) -> String {
-    sim.port(port)
-        .map_or_else(|| format!("Uplink socket {}", port.0), |p| p.name.clone())
+    sim.port(port).map_or_else(
+        || crate::localization::tr_args("ui.uplink-socket", &[(port.0).to_string()]),
+        |p| p.name.clone(),
+    )
 }
 
 fn detail(ui: &mut egui::Ui, label: &str, value: impl std::fmt::Display) {
-    ui.label(label);
+    ui.label(tr(label));
     ui.monospace(value.to_string());
     ui.end_row();
 }

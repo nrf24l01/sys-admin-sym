@@ -1,4 +1,30 @@
 use super::ConsoleSettings;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SettingsFile {
+    #[serde(flatten)]
+    pub console: ConsoleSettings,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+fn default_language() -> String {
+    "en".into()
+}
+impl Default for SettingsFile {
+    fn default() -> Self {
+        Self {
+            console: ConsoleSettings::default(),
+            language: default_language(),
+        }
+    }
+}
+impl std::ops::Deref for SettingsFile {
+    type Target = ConsoleSettings;
+    fn deref(&self) -> &Self::Target {
+        &self.console
+    }
+}
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -11,21 +37,21 @@ impl SettingsStore {
         Self { path }
     }
 
-    pub fn load(&self) -> Result<ConsoleSettings, String> {
+    pub fn load(&self) -> Result<SettingsFile, String> {
         let data = match std::fs::read(&self.path) {
             Ok(data) => data,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(ConsoleSettings::default());
+                return Ok(SettingsFile::default());
             }
             Err(error) => return Err(format!("Could not read settings: {error}")),
         };
-        let settings: ConsoleSettings = serde_json::from_slice(&data)
+        let settings: SettingsFile = serde_json::from_slice(&data)
             .map_err(|error| format!("Invalid settings file: {error}"))?;
         settings.validate()?;
         Ok(settings)
     }
 
-    pub fn save(&self, settings: &ConsoleSettings) -> Result<(), String> {
+    pub fn save(&self, settings: &SettingsFile) -> Result<(), String> {
         settings.validate()?;
         let data = serde_json::to_vec_pretty(settings).map_err(|error| error.to_string())?;
         let temporary = self
@@ -71,14 +97,26 @@ mod tests {
         assert_eq!(store.load().unwrap().port, 47655);
         let config =
             ConsoleSettings::new("0.0.0.0".into(), 51234, "saved-password".into()).unwrap();
-        store.save(&config).unwrap();
+        store
+            .save(&SettingsFile {
+                console: config.clone(),
+                ..Default::default()
+            })
+            .unwrap();
         let loaded = SettingsStore::new(path.clone()).load().unwrap();
         assert_eq!(loaded.host, "0.0.0.0");
         assert_eq!(loaded.port, 51234);
         assert_eq!(loaded.password(), "saved-password");
         let mut invalid = config.clone();
         invalid.port = 0;
-        assert!(store.save(&invalid).is_err());
+        assert!(
+            store
+                .save(&SettingsFile {
+                    console: invalid,
+                    ..Default::default()
+                })
+                .is_err()
+        );
         assert_eq!(store.load().unwrap().port, 51234);
         #[cfg(unix)]
         {

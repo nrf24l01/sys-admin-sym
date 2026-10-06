@@ -20,6 +20,9 @@ class PackageGameTest(unittest.TestCase):
             assets = root / "assets"
             (assets / "equipment").mkdir(parents=True)
             (assets / "equipment" / "server.png").write_bytes(b"image")
+            (assets / "locales").mkdir()
+            (assets / "locales" / "en.json").write_text('{"language":"en"}', encoding="utf-8")
+            (assets / "locales" / "ru.json").write_text('{"language":"ru","name":"Русский"}', encoding="utf-8")
             (root / "README.md").write_text("Instructions", encoding="utf-8")
             (root / "cloud-provider-save.db").write_bytes(b"private save")
             (root / "cloud-provider-settings.json").write_text('{"password":"private"}', encoding="utf-8")
@@ -35,6 +38,8 @@ class PackageGameTest(unittest.TestCase):
                         "cloud-provider-sim/game-ssh",
                         "cloud-provider-sim/README.md",
                         "cloud-provider-sim/assets/equipment/server.png",
+                        "cloud-provider-sim/assets/locales/en.json",
+                        "cloud-provider-sim/assets/locales/ru.json",
                     },
                 )
                 self.assertEqual(archive.read("cloud-provider-sim/assets/equipment/server.png"), b"image")

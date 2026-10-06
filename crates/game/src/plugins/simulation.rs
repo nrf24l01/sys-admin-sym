@@ -116,7 +116,7 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
                     }
                 }
                 Err(error) => {
-                    let _ = responses.send(WorkerResponse::Error(error.to_string()));
+                    let _ = responses.send(WorkerResponse::Error(error));
                 }
             },
             WorkerRequest::Terminal { device, input } => {
@@ -214,14 +214,48 @@ fn translate_ui_actions(
             UiAction::BuyServerChassis => Some(Command::BuyServerChassis),
             UiAction::BuyServerFullPack => Some(Command::BuyServerFullPack),
             UiAction::BuyPublicIpv4Pool => Some(Command::BuyPublicIpv4Pool),
-            UiAction::AssignPublicIpv4 { port, network } => Some(Command::AssignPublicIpv4 { port: *port, network: *network }),
+            UiAction::AssignPublicIpv4 { port, network } => Some(Command::AssignPublicIpv4 {
+                port: *port,
+                network: *network,
+            }),
             UiAction::AssignLanIpv4 { port } => Some(Command::AssignLanIpv4 { port: *port }),
-            UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart { part_id: part_id.clone() }),
-            UiAction::BuyDrive(drive_id) => Some(Command::BuyDrive { drive_id: drive_id.clone() }),
-            UiAction::InstallDrive { device, drive_id, bay } => Some(Command::InstallDrive { device: *device, drive_id: drive_id.clone(), bay: *bay }),
-            UiAction::RemoveDrive { device, bay } => Some(Command::RemoveDrive { device: *device, bay: *bay }),
-            UiAction::InstallServerPart { device, part_id, slot } => Some(Command::InstallServerPart { device: *device, part_id: part_id.clone(), slot: *slot }),
-            UiAction::RemoveServerPart { device, part_id, slot } => Some(Command::RemoveServerPart { device: *device, part_id: part_id.clone(), slot: *slot }),
+            UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart {
+                part_id: part_id.clone(),
+            }),
+            UiAction::BuyDrive(drive_id) => Some(Command::BuyDrive {
+                drive_id: drive_id.clone(),
+            }),
+            UiAction::InstallDrive {
+                device,
+                drive_id,
+                bay,
+            } => Some(Command::InstallDrive {
+                device: *device,
+                drive_id: drive_id.clone(),
+                bay: *bay,
+            }),
+            UiAction::RemoveDrive { device, bay } => Some(Command::RemoveDrive {
+                device: *device,
+                bay: *bay,
+            }),
+            UiAction::InstallServerPart {
+                device,
+                part_id,
+                slot,
+            } => Some(Command::InstallServerPart {
+                device: *device,
+                part_id: part_id.clone(),
+                slot: *slot,
+            }),
+            UiAction::RemoveServerPart {
+                device,
+                part_id,
+                slot,
+            } => Some(Command::RemoveServerPart {
+                device: *device,
+                part_id: part_id.clone(),
+                slot: *slot,
+            }),
             UiAction::BuyCableSupply(supply) => Some(Command::BuyCableSupply { supply: *supply }),
             UiAction::Place { device, rack, unit } => Some(Command::PlaceDevice {
                 device: *device,
@@ -235,7 +269,11 @@ fn translate_ui_actions(
             }),
             UiAction::PowerSocket(socket) => power_socket_action(&snapshot.0, &mut state, *socket),
             UiAction::AddPendingPowerRoutePoint(point) => {
-                if let Some(index) = state.pending_power_route.iter().position(|candidate| candidate == point) {
+                if let Some(index) = state
+                    .pending_power_route
+                    .iter()
+                    .position(|candidate| candidate == point)
+                {
                     state.pending_power_route.remove(index);
                 } else {
                     state.pending_power_route.push(*point);
@@ -243,9 +281,15 @@ fn translate_ui_actions(
                 None
             }
             UiAction::DisconnectPower(outlet) => Some(Command::DisconnectPower { outlet: *outlet }),
-            UiAction::ReroutePowerCable { outlet, route } => Some(Command::ReroutePowerCable { outlet: *outlet, route: route.clone() }),
+            UiAction::ReroutePowerCable { outlet, route } => Some(Command::ReroutePowerCable {
+                outlet: *outlet,
+                route: route.clone(),
+            }),
             UiAction::ResetPower(source) => Some(Command::ResetPowerBreaker { source: *source }),
-            UiAction::RackMains(rack, on) => Some(Command::SetRackMains { rack: *rack, on: *on }),
+            UiAction::RackMains(rack, on) => Some(Command::SetRackMains {
+                rack: *rack,
+                on: *on,
+            }),
             UiAction::Disconnect(link) => Some(Command::Disconnect { link: *link }),
             UiAction::CreateVlan(device) => match state.new_vlan_id.parse::<u16>() {
                 Ok(id) => Some(Command::CreateVlan {
@@ -256,17 +300,15 @@ fn translate_ui_actions(
                     },
                 }),
                 Err(_) => {
-                    set_error(&mut state, "Invalid VLAN ID");
+                    set_error(&mut state, "ui.invalid-vlan-id");
                     None
                 }
             },
             UiAction::CablePort(port) => {
                 begin_ethernet_gesture(&mut state);
                 if snapshot.0.link_for_port(*port).is_some() {
-                    state.notice = Some((
-                        "This port already has a cable. Disconnect it first.".into(),
-                        false,
-                    ));
+                    state.notice =
+                        Some(("ui.this-port-already-has-a-cable-disconnect".into(), false));
                     continue;
                 }
                 if let Some(first) = state.pending_cable {
@@ -284,7 +326,10 @@ fn translate_ui_actions(
                                 if stock.cable_cm < quote.cable_required()
                                     || stock.connectors < quote.connectors_required()
                                 {
-                                    set_error(&mut state, "Buy cable and RJ45 connectors in the shop before making this lead.");
+                                    set_error(
+                                        &mut state,
+                                        "ui.buy-cable-and-rj45-connectors-in-the",
+                                    );
                                     continue;
                                 }
                                 let route = std::mem::take(&mut state.pending_cable_route);
@@ -302,7 +347,7 @@ fn translate_ui_actions(
                                 })
                             }
                             Err(error) => {
-                                set_error(&mut state, error.to_string());
+                                set_error(&mut state, error);
                                 None
                             }
                         }
@@ -314,18 +359,24 @@ fn translate_ui_actions(
                 } else {
                     state.pending_cable = Some(*port);
                     state.pending_cable_route.clear();
-                    state.notice = Some(("Select anchors, then the destination port".into(), true));
+                    state.notice =
+                        Some(("ui.select-anchors-then-the-destination-port".into(), true));
                     None
                 }
             }
             UiAction::AddPendingCableRoutePoint(point) => {
                 if state.pending_cable.is_some() {
-                    if let Some(index) = state.pending_cable_route.iter().position(|candidate| candidate == point) {
+                    if let Some(index) = state
+                        .pending_cable_route
+                        .iter()
+                        .position(|candidate| candidate == point)
+                    {
                         state.pending_cable_route.remove(index);
                     } else {
                         state.pending_cable_route.push(*point);
                     }
-                    state.notice = Some(("Route updated. Select another anchor or the destination port".into(), true));
+                    state.notice =
+                        Some(("ui.route-updated-select-another-anchor-or-the".into(), true));
                 }
                 None
             }
@@ -347,7 +398,7 @@ fn translate_ui_actions(
                     None
                 }
                 None => {
-                    set_error(&mut state, "Missing server configuration");
+                    set_error(&mut state, "ui.missing-server-configuration");
                     None
                 }
             },
@@ -361,7 +412,7 @@ fn translate_ui_actions(
                         .collect();
                     if allowed.is_none() {
                         state.notice = Some((
-                            "Invalid VLAN list: use comma-separated VLAN IDs.".into(),
+                            "ui.invalid-vlan-list-use-comma-separated-vlan".into(),
                             false,
                         ));
                     }
@@ -379,13 +430,19 @@ fn translate_ui_actions(
                             mode: SwitchPortMode::Access { vlan: None },
                         })
                     } else {
-                        draft.vlan.parse::<u16>().ok().map(|vlan| Command::SetSwitchPortMode {
-                            port: *port,
-                            mode: SwitchPortMode::Access { vlan: Some(VlanId(vlan)) },
-                        })
+                        draft
+                            .vlan
+                            .parse::<u16>()
+                            .ok()
+                            .map(|vlan| Command::SetSwitchPortMode {
+                                port: *port,
+                                mode: SwitchPortMode::Access {
+                                    vlan: Some(VlanId(vlan)),
+                                },
+                            })
                     };
                     if result.is_none() {
-                        set_error(&mut state, "Invalid access VLAN: enter a VLAN ID or leave it blank.");
+                        set_error(&mut state, "ui.invalid-access-vlan-enter-a-vlan-id.2");
                     }
                     result
                 }
@@ -394,14 +451,12 @@ fn translate_ui_actions(
                 let prefix = match draft.prefix.parse() {
                     Ok(prefix) if prefix <= 32 => prefix,
                     Err(_) => {
-                        state.notice = Some((
-                            "Invalid router prefix: enter a number from 0 to 32.".into(),
-                            false,
-                        ));
+                        state.notice =
+                            Some(("ui.invalid-router-prefix-enter-a-number-from".into(), false));
                         return None;
                     }
                     _ => {
-                        set_error(&mut state, "Invalid router prefix: enter a number from 0 to 32.");
+                        set_error(&mut state, "ui.invalid-router-prefix-enter-a-number-from");
                         return None;
                     }
                 };
@@ -411,11 +466,11 @@ fn translate_ui_actions(
                     match draft.vlan.parse::<u16>() {
                         Ok(vlan) if (1..=4094).contains(&vlan) => Some(VlanId(vlan)),
                         Err(_) => {
-                            set_error(&mut state, "Invalid router VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+                            set_error(&mut state, "ui.invalid-router-vlan-enter-a-vlan-id");
                             return None;
                         }
                         _ => {
-                            set_error(&mut state, "Invalid router VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+                            set_error(&mut state, "ui.invalid-router-vlan-enter-a-vlan-id");
                             return None;
                         }
                     }
@@ -426,11 +481,11 @@ fn translate_ui_actions(
                     match draft.address.parse::<Ipv4Addr>() {
                         Ok(address) if !address.is_unspecified() => Some(address),
                         Err(_) => {
-                            set_error(&mut state, "Invalid router IPv4 address: enter a host address.");
+                            set_error(&mut state, "ui.invalid-router-ipv4-address-enter-a-host");
                             return None;
                         }
                         _ => {
-                            set_error(&mut state, "Invalid router IPv4 address: enter a host address.");
+                            set_error(&mut state, "ui.invalid-router-ipv4-address-enter-a-host");
                             return None;
                         }
                     }
@@ -461,14 +516,33 @@ fn translate_ui_actions(
                 None
             }
             UiAction::FlushPortConfig(port) => Some(Command::ResetPortConfig { port: *port }),
-            UiAction::RemoveCableRoutePoint { link, index } => Some(Command::RemoveCableRoutePoint { link: *link, index: *index }),
-            UiAction::MoveCableRoutePoint { link, index, point } => Some(Command::MoveCableRoutePoint { link: *link, index: *index, point: *point }),
-            UiAction::RerouteCable { link, route } => Some(Command::RerouteCable { link: *link, route: route.clone() }),
+            UiAction::RemoveCableRoutePoint { link, index } => {
+                Some(Command::RemoveCableRoutePoint {
+                    link: *link,
+                    index: *index,
+                })
+            }
+            UiAction::MoveCableRoutePoint { link, index, point } => {
+                Some(Command::MoveCableRoutePoint {
+                    link: *link,
+                    index: *index,
+                    point: *point,
+                })
+            }
+            UiAction::RerouteCable { link, route } => Some(Command::RerouteCable {
+                link: *link,
+                route: route.clone(),
+            }),
             UiAction::LaunchExternalTerminal(device) => {
-                if snapshot.0.device(*device).is_some_and(|d| matches!(d.kind, DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_))) {
+                if snapshot.0.device(*device).is_some_and(|d| {
+                    matches!(
+                        d.kind,
+                        DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)
+                    )
+                }) {
                     state.terminal_windows.insert(*device);
                     state.terminal_window_focus.insert(*device);
-                    state.notice = Some(("Terminal window opened".into(), true));
+                    state.notice = Some(("ui.terminal-window-opened".into(), true));
                 }
                 None
             }
@@ -476,7 +550,7 @@ fn translate_ui_actions(
                 persistence.write(PersistenceRequest::Save);
                 None
             }
-            UiAction::ApplyConsoleSettings(_) => None,
+            UiAction::ApplyConsoleSettings(_) | UiAction::SelectLanguage(_) => None,
             UiAction::Load => {
                 persistence.write(PersistenceRequest::Load);
                 None
@@ -495,7 +569,7 @@ fn translate_ui_actions(
     }
 }
 
-fn set_error(state: &mut UiState, message: impl Into<String>) {
+fn set_error(state: &mut UiState, message: impl Into<crate::localization::UiMessage>) {
     let message = message.into();
     state.error_dialog = Some(message.clone());
     state.notice = Some((message, false));
@@ -521,15 +595,15 @@ fn power_socket_action(
             if state.pending_power_outlet == Some(outlet) {
                 state.pending_power_outlet = None;
                 state.pending_power_route.clear();
-                state.notice = Some(("Power cable selection cancelled".into(), true));
+                state.notice = Some(("ui.power-cable-selection-cancelled".into(), true));
             } else if snapshot.power.connections.contains_key(&outlet) {
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
                 state.pending_power_route.clear();
                 state.selected = Selection::PowerCable(outlet);
-                state.notice = Some(("Power cable selected".into(), true));
+                state.notice = Some(("ui.power-cable-selected".into(), true));
             } else if state.pending_power_inlet.is_none() && state.pending_power_outlet.is_some() {
-                set_error(state, "Select a power inlet to finish the cable.");
+                set_error(state, "ui.select-a-power-inlet-to-finish-the.2");
             } else if let Some(endpoint) = state.pending_power_inlet.take() {
                 state.pending_power_outlet = None;
                 let mut route = std::mem::take(&mut state.pending_power_route);
@@ -549,19 +623,19 @@ fn power_socket_action(
                             route.reverse();
                             state.pending_power_route = route;
                         }
-                        set_error(state, error.to_string());
+                        set_error(state, error);
                     }
                 }
             } else {
                 state.pending_power_outlet = Some(outlet);
-                state.notice = Some(("Select a power inlet to finish the cable".into(), true));
+                state.notice = Some(("ui.select-a-power-inlet-to-finish-the".into(), true));
             }
         }
         PowerSocket::Inlet(endpoint) => {
             if state.pending_power_inlet == Some(endpoint) {
                 state.pending_power_inlet = None;
                 state.pending_power_route.clear();
-                state.notice = Some(("Power cable selection cancelled".into(), true));
+                state.notice = Some(("ui.power-cable-selection-cancelled".into(), true));
             } else if let Some(outlet) = snapshot
                 .power
                 .connections
@@ -572,9 +646,9 @@ fn power_socket_action(
                 state.pending_power_inlet = None;
                 state.pending_power_route.clear();
                 state.selected = Selection::PowerCable(outlet);
-                state.notice = Some(("Power cable selected".into(), true));
+                state.notice = Some(("ui.power-cable-selected".into(), true));
             } else if state.pending_power_outlet.is_none() && state.pending_power_inlet.is_some() {
-                set_error(state, "Select a power outlet to finish the cable.");
+                set_error(state, "ui.select-a-power-outlet-to-finish-the");
             } else if let Some(outlet) = state.pending_power_outlet.take() {
                 state.pending_power_inlet = None;
                 let command = Command::ConnectPowerRouted {
@@ -590,15 +664,12 @@ fn power_socket_action(
                         if let Command::ConnectPowerRouted { route, .. } = command {
                             state.pending_power_route = route;
                         }
-                        set_error(state, error.to_string());
+                        set_error(state, error);
                     }
                 }
             } else {
                 state.pending_power_inlet = Some(endpoint);
-                state.notice = Some((
-                    "Select a free power outlet to finish the cable".into(),
-                    true,
-                ));
+                state.notice = Some(("ui.select-a-free-power-outlet-to-finish".into(), true));
             }
         }
     }
@@ -609,16 +680,16 @@ fn parse_server_draft(draft: &ServerDraft) -> Result<(String, Ipv4InterfaceConfi
     let address: Ipv4Addr = draft
         .address
         .parse()
-        .map_err(|_| "Invalid server IPv4 address: enter a host address.")?;
+        .map_err(|_| "ui.invalid-server-ipv4-address-enter-a-host")?;
     if address.is_unspecified() {
-        return Err("Invalid server IPv4 address: 0.0.0.0 is not a host address.");
+        return Err("ui.invalid-server-ipv4-address-0-0-0");
     }
     let prefix: u8 = draft
         .prefix
         .parse()
-        .map_err(|_| "Invalid server prefix: enter a number from 0 to 32.")?;
+        .map_err(|_| "ui.invalid-server-prefix-enter-a-number-from")?;
     if prefix > 32 {
-        return Err("Invalid server prefix: enter a number from 0 to 32.");
+        return Err("ui.invalid-server-prefix-enter-a-number-from");
     }
     let gateway = if draft.gateway.trim().is_empty() {
         None
@@ -627,18 +698,21 @@ fn parse_server_draft(draft: &ServerDraft) -> Result<(String, Ipv4InterfaceConfi
             draft
                 .gateway
                 .parse()
-                .map_err(|_| "Invalid server gateway: enter an IPv4 address or leave it blank.")?,
+                .map_err(|_| "ui.invalid-server-gateway-enter-an-ipv4-address")?,
         )
     };
     let vlan = if draft.vlan.trim().is_empty() {
         None
     } else {
-        Some(VlanId(draft.vlan.parse().map_err(
-            |_| "Invalid access VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.",
-        )?))
+        Some(VlanId(
+            draft
+                .vlan
+                .parse()
+                .map_err(|_| "ui.invalid-access-vlan-enter-a-vlan-id")?,
+        ))
     };
     if vlan.is_some_and(|v| !(1..=4094).contains(&v.0)) {
-        return Err("Invalid access VLAN: enter a VLAN ID from 1 to 4094 or leave it blank.");
+        return Err("ui.invalid-access-vlan-enter-a-vlan-id");
     }
     let mut config = Ipv4InterfaceConfig::new(address, prefix, gateway, vlan.unwrap_or(VlanId(1)));
     config.vlan = vlan;
@@ -692,18 +766,39 @@ fn poll_worker(
                 state.notice = events.first().map(|event| {
                     let message = match event {
                         cloud_provider_sim::SimEvent::CableSuppliesPurchased(_) => {
-                            "Cable supplies purchased".into()
+                            "ui.cable-supplies-purchased".into()
                         }
                         cloud_provider_sim::SimEvent::LinkCreated(_) => {
-                            "RJ45 lead connected".into()
+                            "ui.rj45-lead-connected".into()
                         }
                         cloud_provider_sim::SimEvent::LinkRemoved(_) => {
-                            "Lead unplugged and returned to cable inventory".into()
+                            "ui.lead-unplugged-and-returned-to-cable-inventory".into()
                         }
                         cloud_provider_sim::SimEvent::RouterRoutesChanged(_) => {
-                            "Router routing table updated".into()
+                            "ui.router-routing-table-updated".into()
                         }
-                        _ => format!("{event:?}"),
+                        cloud_provider_sim::SimEvent::DeviceAdded(_) => "ui.device-added".into(),
+                        cloud_provider_sim::SimEvent::DeviceMoved { .. } => {
+                            "ui.device-placed".into()
+                        }
+                        cloud_provider_sim::SimEvent::DeviceRemoved(_) => {
+                            "ui.device-removed".into()
+                        }
+                        cloud_provider_sim::SimEvent::DevicePowerChanged { .. } => {
+                            "ui.device-power-changed".into()
+                        }
+                        cloud_provider_sim::SimEvent::PortConfigChanged(_) => {
+                            "ui.interface-configuration-updated".into()
+                        }
+                        cloud_provider_sim::SimEvent::TopologyChanged { .. } => {
+                            "ui.topology-updated".into()
+                        }
+                        cloud_provider_sim::SimEvent::ConnectivityChanged => {
+                            "ui.connectivity-updated".into()
+                        }
+                        cloud_provider_sim::SimEvent::PowerChanged => {
+                            "ui.power-configuration-updated".into()
+                        }
                     };
                     (message, true)
                 });

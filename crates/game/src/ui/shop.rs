@@ -1,8 +1,9 @@
 use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
+use crate::localization::tr;
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::{
-    CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, PublicIpv4Block, ServerFullPack,
+    CableSupply, DeviceTemplate, DriveModel, NetworkSim, PublicIpv4Block, ServerFullPack,
     ServerPart, ServerPartKind, drive_catalog, server_catalog,
 };
 
@@ -13,9 +14,15 @@ fn drive_matches(drive: &DriveModel, state: &ShopState, money: i64) -> bool {
         && state.ports.is_none()
         && state.outlets.is_none()
         && (state.search.trim().is_empty()
-            || format!("{} {}", drive.name, drive.id)
-                .to_lowercase()
-                .contains(&state.search.trim().to_lowercase()))
+            || format!(
+                "{} {} {} {}",
+                drive.name,
+                crate::localization::item_name(&drive.id, &drive.name),
+                drive.id,
+                crate::localization::item_description(&drive.id)
+            )
+            .to_lowercase()
+            .contains(&state.search.trim().to_lowercase()))
         && (!state.affordable_only || drive.price <= money)
         && state.max_price.is_none_or(|max| drive.price <= max)
 }
@@ -33,41 +40,17 @@ fn part_matches(part: &ServerPart, state: &ShopState, money: i64) -> bool {
         && state.ports.is_none()
         && state.outlets.is_none()
         && (state.search.trim().is_empty()
-            || format!("{} {}", part.name, part.id)
-                .to_lowercase()
-                .contains(&state.search.trim().to_lowercase()))
+            || format!(
+                "{} {} {} {}",
+                part.name,
+                crate::localization::item_name(&part.id, &part.name),
+                part.id,
+                crate::localization::item_description(&part.id)
+            )
+            .to_lowercase()
+            .contains(&state.search.trim().to_lowercase()))
         && (!state.affordable_only || part.price <= money)
         && state.max_price.is_none_or(|max| part.price <= max)
-}
-
-fn part_description(part: &ServerPart) -> String {
-    match &part.kind {
-        ServerPartKind::Cpu {
-            socket,
-            pcie_lanes,
-            tdp_w,
-            cores,
-            frequency_mhz,
-        } => format!(
-            "{socket} · {cores} cores @ {} MHz · {pcie_lanes} PCIe lanes · {tdp_w} W TDP",
-            frequency_mhz
-        ),
-        ServerPartKind::Ram {
-            memory_type,
-            capacity_gb,
-        } => format!("{capacity_gb} GB · {memory_type}"),
-        ServerPartKind::PowerSupply { capacity_w } => format!("{capacity_w} W power supply"),
-        ServerPartKind::PciCard {
-            card:
-                PciCard::Ethernet {
-                    lanes,
-                    generation,
-                    rj45_ports,
-                    speed_mbps,
-                    ..
-                },
-        } => format!("{rj45_ports} × RJ45 · {speed_mbps} Mb/s · PCIe Gen {generation} x{lanes}"),
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -78,8 +61,7 @@ enum Purchase {
 }
 
 struct Product {
-    name: &'static str,
-    description: &'static str,
+    id: &'static str,
     section: ShopSection,
     purchase: Purchase,
     ports: Option<u16>,
@@ -87,6 +69,12 @@ struct Product {
 }
 
 impl Product {
+    fn name(&self) -> String {
+        crate::localization::item_name(self.id, self.id)
+    }
+    fn description(&self) -> String {
+        crate::localization::item_description(self.id)
+    }
     fn price(&self) -> i64 {
         match self.purchase {
             Purchase::Equipment(template) => template.price(),
@@ -110,7 +98,7 @@ impl Product {
                 .section
                 .is_none_or(|section| section == self.section)
             && (search.is_empty()
-                || format!("{} {}", self.name, self.description)
+                || format!("{} {} {}", self.id, self.name(), self.description())
                     .to_lowercase()
                     .contains(&search))
             && (!filters.affordable_only || self.price() <= money)
@@ -135,72 +123,63 @@ impl Product {
 
 const PRODUCTS: &[Product] = &[
     Product {
-        name: "Cisco ISR C1111-8P",
-        description: "2 WAN + 8 LAN RJ45 ports · supplied 66 W adapter",
+        id: "cisco_isr_c1111",
         section: ShopSection::Routers,
         purchase: Purchase::Equipment(DeviceTemplate::Router),
         ports: Some(10),
         outlets: None,
     },
     Product {
-        name: "Cisco Catalyst C1000-24T-4G-L",
-        description: "24 RJ45 ports · 4 SFP cages (not yet active)",
+        id: "cisco_catalyst_c1000",
         section: ShopSection::Switches,
         purchase: Purchase::Equipment(DeviceTemplate::Switch),
         ports: Some(24),
         outlets: None,
     },
     Product {
-        name: "Dell PowerEdge R360",
-        description: "1U R360 chassis · integrated 600 W PSU · full pack available with CPU, RAM, NIC and SSD",
+        id: "dell_r360",
         section: ShopSection::DellServers,
         purchase: Purchase::ServerChassis,
         ports: Some(3),
         outlets: None,
     },
     Product {
-        name: "APC Smart-UPS SMT1500RMI2U",
-        description: "1000 W / 1500 VA · battery backup · 4 C13 outlets",
+        id: "apc_smt1500",
         section: ShopSection::Ups,
         purchase: Purchase::Equipment(DeviceTemplate::Ups),
         ports: None,
         outlets: Some(4),
     },
     Product {
-        name: "Rack PDU 8×C13",
-        description: "2300 W / 10 A · 8 C13 outlets · feed from UPS or mains",
+        id: "rack_pdu",
         section: ShopSection::Pdu,
         purchase: Purchase::Equipment(DeviceTemplate::Pdu),
         ports: None,
         outlets: Some(8),
     },
     Product {
-        name: "24-port RJ45 patch panel",
-        description: "24 passive ports · front/rear paired",
+        id: "patch_panel",
         section: ShopSection::Cabling,
         purchase: Purchase::Equipment(DeviceTemplate::PatchPanel),
         ports: Some(24),
         outlets: None,
     },
     Product {
-        name: "Horizontal cable manager",
-        description: "Front routing anchors · no network logic",
+        id: "cable_manager",
         section: ShopSection::Cabling,
         purchase: Purchase::Equipment(DeviceTemplate::CableManager),
         ports: None,
         outlets: None,
     },
     Product {
-        name: "305 m Ethernet cable box",
-        description: "Bulk cable stock for new patch leads",
+        id: "ethernet_cable_box",
         section: ShopSection::Cabling,
         purchase: Purchase::Supply(CableSupply::CableBox305m),
         ports: None,
         outlets: None,
     },
     Product {
-        name: "20 × RJ45 connectors",
-        description: "Two plugs are needed for each new Ethernet lead",
+        id: "rj45_connectors",
         section: ShopSection::Cabling,
         purchase: Purchase::Supply(CableSupply::Rj45Pack20),
         ports: None,
@@ -218,7 +197,7 @@ pub(super) fn show(
         return;
     }
     let mut open = state.open;
-    egui::Window::new("Equipment shop")
+    egui::Window::new(tr("shop.title"))
         .id(egui::Id::new("equipment-shop-window"))
         .open(&mut open)
         .resizable(true)
@@ -226,9 +205,12 @@ pub(super) fn show(
         .min_size(egui::vec2(620.0, 360.0))
         .show(viewport, |ui| {
             ui.horizontal(|ui| {
-                ui.strong(format!("Available: ${}", sim.money));
+                ui.strong(crate::localization::tr_args(
+                    "ui.available",
+                    &[(sim.money).to_string()],
+                ));
                 ui.separator();
-                ui.label("Purchased equipment goes to inventory.");
+                ui.label(tr("ui.purchased-equipment-goes-to-inventory"));
             });
             ui.separator();
             ui.horizontal_top(|ui| {
@@ -244,45 +226,78 @@ pub(super) fn show(
                         .iter()
                         .filter(|product| product.matches(state, sim.money))
                         .collect();
-                    let parts: Vec<_> = server_catalog().parts.iter().filter(|part| part_matches(part, state, sim.money)).collect();
-                    let drives: Vec<_> = drive_catalog().drives.iter().filter(|drive| drive_matches(drive, state, sim.money)).collect();
+                    let parts: Vec<_> = server_catalog()
+                        .parts
+                        .iter()
+                        .filter(|part| part_matches(part, state, sim.money))
+                        .collect();
+                    let drives: Vec<_> = drive_catalog()
+                        .drives
+                        .iter()
+                        .filter(|drive| drive_matches(drive, state, sim.money))
+                        .collect();
                     let public_pool_offer = state.category == ShopCategory::Network
-                        && state.section.is_none_or(|section| section == ShopSection::PublicIp)
-                        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
-                        && (state.search.trim().is_empty() || "public IPv4 /29 address pool".to_lowercase().contains(&state.search.trim().to_lowercase()))
+                        && state
+                            .section
+                            .is_none_or(|section| section == ShopSection::PublicIp)
+                        && state.rack_units.is_none()
+                        && state.ports.is_none()
+                        && state.outlets.is_none()
+                        && (state.search.trim().is_empty()
+                            || tr("ui.public-ipv4-29-address-pool.2")
+                                .to_lowercase()
+                                .contains(&state.search.trim().to_lowercase()))
                         && (!state.affordable_only || sim.money >= PublicIpv4Block::PRICE)
-                        && state.max_price.is_none_or(|max| PublicIpv4Block::PRICE <= max);
-                    ui.label(format!(
-                        "{} product{}",
-                        products.len() + parts.len() + drives.len() + usize::from(public_pool_offer),
-                        if products.len() + parts.len() + drives.len() + usize::from(public_pool_offer) == 1 { "" } else { "s" }
+                        && state
+                            .max_price
+                            .is_none_or(|max| PublicIpv4Block::PRICE <= max);
+                    ui.label(crate::localization::tr_args(
+                        "ui.product",
+                        &[(products.len()
+                            + parts.len()
+                            + drives.len()
+                            + usize::from(public_pool_offer))
+                        .to_string()],
                     ));
                     egui::ScrollArea::vertical()
                         .id_salt("shop-products")
                         .max_height(ui.available_height().max(120.0))
                         .show(ui, |ui| {
-                            if products.is_empty() && parts.is_empty() && drives.is_empty() && !public_pool_offer {
-                                ui.weak("No products match these filters.");
-                                if ui.button("Clear filters").clicked() {
+                            if products.is_empty()
+                                && parts.is_empty()
+                                && drives.is_empty()
+                                && !public_pool_offer
+                            {
+                                ui.weak(tr("ui.no-products-match-these-filters"));
+                                if ui.button(tr("ui.clear-filters")).clicked() {
                                     state.clear_filters();
                                 }
                             }
                             for product in products {
                                 ui.group(|ui| {
                                     ui.set_min_width(ui.available_width());
-                                    ui.strong(product.name);
-                                    ui.label(product.description);
+                                    ui.strong(product.name());
+                                    ui.label(product.description());
                                     ui.horizontal(|ui| {
                                         if let Some(units) = product.rack_units() {
-                                            ui.weak(format!("{units}U"));
+                                            ui.weak(crate::localization::tr_args(
+                                                "rack.units",
+                                                &[(units).to_string()],
+                                            ));
                                         }
                                         if ui
                                             .add_enabled(
                                                 sim.money >= product.price(),
-                                                egui::Button::new(format!(
-                                                    "{} — ${}",
-                                                    if matches!(product.purchase, Purchase::ServerChassis) { "Buy chassis" } else { "Buy" },
-                                                    product.price()
+                                                egui::Button::new(crate::localization::tr_args(
+                                                    if matches!(
+                                                        product.purchase,
+                                                        Purchase::ServerChassis
+                                                    ) {
+                                                        "shop.buy-chassis"
+                                                    } else {
+                                                        "shop.buy"
+                                                    },
+                                                    &[product.price().to_string()],
                                                 )),
                                             )
                                             .clicked()
@@ -290,31 +305,49 @@ pub(super) fn show(
                                             actions.write(product.buy());
                                         }
                                         if matches!(product.purchase, Purchase::ServerChassis)
-                                            && ui.add_enabled(
-                                                sim.money >= ServerFullPack::price(),
-                                                egui::Button::new(format!(
-                                                    "Order full pack — ${}",
-                                                    ServerFullPack::price()
-                                                )),
-                                            ).on_hover_text("Chassis, CPU, 16 GB RAM, 4-port network card and 960 GB SSD; PSU included")
-                                            .clicked()
+                                            && ui
+                                                .add_enabled(
+                                                    sim.money >= ServerFullPack::price(),
+                                                    egui::Button::new(
+                                                        crate::localization::tr_args(
+                                                            "ui.order-full-pack",
+                                                            &[(ServerFullPack::price())
+                                                                .to_string()],
+                                                        ),
+                                                    ),
+                                                )
+                                                .on_hover_text(tr(
+                                                    "ui.chassis-cpu-16-gb-ram-4-port",
+                                                ))
+                                                .clicked()
                                         {
                                             actions.write(UiAction::BuyServerFullPack);
                                         }
                                     });
                                     if matches!(product.purchase, Purchase::ServerChassis) {
-                                        ui.weak("Full pack: CPU, 16 GB RAM, 4-port NIC and 960 GB SSD. Integrated PSU included.");
+                                        ui.weak(tr("ui.full-pack-cpu-16-gb-ram-4"));
                                     }
                                 });
                             }
                             if public_pool_offer {
                                 ui.group(|ui| {
-                                    ui.strong("Public IPv4 /29 address pool");
-                                    ui.weak("Open IP RANGES to select its uplink and view the WAN/LAN addressing instructions.");
+                                    ui.strong(tr("ui.public-ipv4-29-address-pool"));
+                                    ui.weak(tr("ui.open-ip-ranges-to-select-its-uplink"));
                                     let count = sim.public_ipv4_blocks().len();
-                                    ui.label(format!("{count} allocation{} owned", if count == 1 { "" } else { "s" }));
-                                    if ui.add_enabled(sim.money >= PublicIpv4Block::PRICE && count < 32,
-                                        egui::Button::new(format!("Order IPv4 pool — ${}", PublicIpv4Block::PRICE))).clicked() {
+                                    ui.label(crate::localization::tr_args(
+                                        "ui.allocation-owned",
+                                        &[(count).to_string()],
+                                    ));
+                                    if ui
+                                        .add_enabled(
+                                            sim.money >= PublicIpv4Block::PRICE && count < 32,
+                                            egui::Button::new(crate::localization::tr_args(
+                                                "ui.order-ipv4-pool",
+                                                &[(PublicIpv4Block::PRICE).to_string()],
+                                            )),
+                                        )
+                                        .clicked()
+                                    {
                                         actions.write(UiAction::BuyPublicIpv4Pool);
                                     }
                                 });
@@ -323,9 +356,20 @@ pub(super) fn show(
                                 for part in parts {
                                     ui.group(|ui| {
                                         ui.set_min_width(ui.available_width());
-                                        ui.strong(&part.name);
-                                        ui.weak(part_description(part));
-                                        if ui.add_enabled(sim.money >= part.price, egui::Button::new(format!("Buy — ${}", part.price))).clicked() {
+                                        ui.strong(crate::localization::item_name(
+                                            &part.id, &part.name,
+                                        ));
+                                        ui.weak(crate::localization::item_description(&part.id));
+                                        if ui
+                                            .add_enabled(
+                                                sim.money >= part.price,
+                                                egui::Button::new(crate::localization::tr_args(
+                                                    "shop.buy",
+                                                    &[(part.price).to_string()],
+                                                )),
+                                            )
+                                            .clicked()
+                                        {
                                             actions.write(UiAction::BuyServerPart(part.id.clone()));
                                         }
                                     });
@@ -334,11 +378,38 @@ pub(super) fn show(
                             for drive in drives {
                                 ui.group(|ui| {
                                     ui.set_min_width(ui.available_width());
-                                    ui.strong(&drive.name);
-                                    ui.weak(format!("{} GB · {} · {} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
-                                        drive.capacity_gb, if drive.kind == cloud_provider_sim::DriveKind::Ssd { "SSD" } else { "HDD" }, drive.interface,
-                                        drive.read_mb_s, drive.read_iops, drive.write_mb_s, drive.write_iops));
-                                    if ui.add_enabled(sim.money >= drive.price, egui::Button::new(format!("Buy — ${}", drive.price))).clicked() {
+                                    ui.strong(crate::localization::item_name(
+                                        &drive.id,
+                                        &drive.name,
+                                    ));
+                                    ui.weak(crate::localization::item_description(&drive.id));
+                                    ui.weak(crate::localization::tr_args(
+                                        "ui.gb-read-mb-s-iops-write-mb",
+                                        &[
+                                            (drive.capacity_gb).to_string(),
+                                            (if drive.kind == cloud_provider_sim::DriveKind::Ssd {
+                                                "SSD"
+                                            } else {
+                                                "HDD"
+                                            })
+                                            .to_string(),
+                                            (drive.interface).to_string(),
+                                            (drive.read_mb_s).to_string(),
+                                            (drive.read_iops).to_string(),
+                                            (drive.write_mb_s).to_string(),
+                                            (drive.write_iops).to_string(),
+                                        ],
+                                    ));
+                                    if ui
+                                        .add_enabled(
+                                            sim.money >= drive.price,
+                                            egui::Button::new(crate::localization::tr_args(
+                                                "shop.buy",
+                                                &[(drive.price).to_string()],
+                                            )),
+                                        )
+                                        .clicked()
+                                    {
                                         actions.write(UiAction::BuyDrive(drive.id.clone()));
                                     }
                                 });
@@ -354,33 +425,36 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
     for (category, label, sections) in [
         (
             ShopCategory::Network,
-            "Network",
+            "ui.network",
             &[
-                (ShopSection::Routers, "Routers"),
-                (ShopSection::Switches, "Switches"),
-                (ShopSection::Cabling, "Cabling"),
-                (ShopSection::PublicIp, "Public IPv4"),
+                (ShopSection::Routers, "ui.routers"),
+                (ShopSection::Switches, "ui.switches"),
+                (ShopSection::Cabling, "ui.cabling"),
+                (ShopSection::PublicIp, "ui.public-ipv4"),
             ][..],
         ),
         (
             ShopCategory::Compute,
-            "Compute",
+            "ui.compute",
             &[
-                (ShopSection::DellServers, "DELL servers"),
-                (ShopSection::Cpu, "CPU"),
-                (ShopSection::Ram, "RAM"),
-                (ShopSection::PciCards, "PCIe cards"),
-                (ShopSection::Storage, "Storage drives"),
+                (ShopSection::DellServers, "ui.dell-servers"),
+                (ShopSection::Cpu, "ui.cpu"),
+                (ShopSection::Ram, "ui.ram"),
+                (ShopSection::PciCards, "ui.pcie-cards"),
+                (ShopSection::Storage, "ui.storage-drives"),
             ][..],
         ),
         (
             ShopCategory::Power,
-            "Power",
-            &[(ShopSection::Ups, "UPS"), (ShopSection::Pdu, "PDU")][..],
+            "ui.power",
+            &[(ShopSection::Ups, "ui.ups"), (ShopSection::Pdu, "ui.pdu")][..],
         ),
     ] {
         if ui
-            .selectable_label(state.category == category && state.section.is_none(), label)
+            .selectable_label(
+                state.category == category && state.section.is_none(),
+                tr(label),
+            )
             .clicked()
         {
             state.select(category, None);
@@ -388,7 +462,7 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
         ui.indent(label, |ui| {
             for &(section, label) in sections {
                 if ui
-                    .selectable_label(state.section == Some(section), label)
+                    .selectable_label(state.section == Some(section), tr(label))
                     .clicked()
                 {
                     state.select(category, Some(section));
@@ -400,11 +474,11 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
 }
 
 fn filters(ui: &mut egui::Ui, state: &mut ShopState) {
-    ui.add(egui::TextEdit::singleline(&mut state.search).hint_text("Search products"));
+    ui.add(egui::TextEdit::singleline(&mut state.search).hint_text(tr("ui.search-products")));
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut state.affordable_only, "Affordable only");
+        ui.checkbox(&mut state.affordable_only, tr("ui.affordable-only"));
         let mut limited = state.max_price.is_some();
-        if ui.checkbox(&mut limited, "Price limit").changed() {
+        if ui.checkbox(&mut limited, tr("ui.price-limit")).changed() {
             state.max_price = limited.then_some(1000);
         }
         if let Some(price) = &mut state.max_price {
@@ -415,17 +489,23 @@ fn filters(ui: &mut egui::Ui, state: &mut ShopState) {
                     .speed(25),
             );
         }
-        if ui.small_button("Reset").clicked() {
+        if ui.small_button(tr("ui.reset")).clicked() {
             state.clear_filters();
         }
     });
     ui.horizontal_wrapped(|ui| {
-        count_filter(ui, "Rack size", &mut state.rack_units, &[1, 2], "U");
+        count_filter(ui, "ui.rack-size", &mut state.rack_units, &[1, 2], "U");
         match state.category {
-            ShopCategory::Network => {
-                count_filter(ui, "RJ45 ports", &mut state.ports, &[8, 10, 16, 24, 48], "")
+            ShopCategory::Network => count_filter(
+                ui,
+                "ui.rj45-ports",
+                &mut state.ports,
+                &[8, 10, 16, 24, 48],
+                "",
+            ),
+            ShopCategory::Power => {
+                count_filter(ui, "ui.c13-outlets", &mut state.outlets, &[4, 8], "")
             }
-            ShopCategory::Power => count_filter(ui, "C13 outlets", &mut state.outlets, &[4, 8], ""),
             ShopCategory::Compute => {}
         }
     });
@@ -439,13 +519,28 @@ fn count_filter<T: Copy + PartialEq + std::fmt::Display>(
     values: &[T],
     suffix: &str,
 ) {
-    ui.label(label);
+    ui.label(tr(label));
     egui::ComboBox::from_id_salt(label)
-        .selected_text(selected.map_or_else(|| "Any".into(), |count| format!("{count}{suffix}")))
+        .selected_text(selected.map_or_else(
+            || tr("ui.any"),
+            |count| {
+                crate::localization::tr_args(
+                    "format.count-with-unit",
+                    &[(count).to_string(), (suffix).to_string()],
+                )
+            },
+        ))
         .show_ui(ui, |ui| {
-            ui.selectable_value(selected, None, "Any");
+            ui.selectable_value(selected, None, tr("ui.any"));
             for &count in values {
-                ui.selectable_value(selected, Some(count), format!("{count}{suffix}"));
+                ui.selectable_value(
+                    selected,
+                    Some(count),
+                    crate::localization::tr_args(
+                        "format.count-with-unit",
+                        &[(count).to_string(), (suffix).to_string()],
+                    ),
+                );
             }
         });
 }
@@ -819,5 +914,101 @@ mod tests {
                 assert_eq!(matching.len(), 1, "{section:?}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn russian_product_search_uses_localized_names_and_preserves_model_search() {
+    let mut locale = crate::localization::Localization::default();
+    locale.select("ru").unwrap();
+    let _scope = locale.enter();
+    let mut state = ShopState::default();
+    state.select(ShopCategory::Network, Some(ShopSection::Cabling));
+    state.search = "патч".into();
+    assert!(
+        PRODUCTS
+            .iter()
+            .any(|product| product.matches(&state, 100_000))
+    );
+    state.search = "кабель".into();
+    assert!(
+        PRODUCTS
+            .iter()
+            .any(|product| product.matches(&state, 100_000))
+    );
+    state.select(ShopCategory::Network, Some(ShopSection::Routers));
+    state.search = "C1111".into();
+    assert!(
+        PRODUCTS
+            .iter()
+            .any(|product| product.matches(&state, 100_000))
+    );
+    state.select(ShopCategory::Compute, Some(ShopSection::Storage));
+    state.search = "твердотельный".into();
+    let matches: Vec<_> = drive_catalog()
+        .drives
+        .iter()
+        .filter(|drive| drive_matches(drive, &state, 6000))
+        .collect();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].id, "enterprise_ssd_960gb");
+    assert_eq!(
+        crate::localization::tr_args("shop.buy-chassis", &["500".into()]),
+        "Купить корпус — $500"
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn shop_renders_item_owned_drive_descriptions_in_both_languages() {
+    use bevy::{
+        ecs::system::SystemState,
+        prelude::{Messages, World},
+    };
+    for (language, expected) in [
+        ("en", "Enterprise solid-state drive for fast storage."),
+        (
+            "ru",
+            "Серверный твердотельный накопитель для быстрого хранения данных.",
+        ),
+    ] {
+        let mut locale = crate::localization::Localization::default();
+        locale.select(language).unwrap();
+        let _scope = locale.enter();
+        let ctx = egui::Context::default();
+        let sim = NetworkSim::new();
+        let mut state = ShopState {
+            open: true,
+            category: ShopCategory::Compute,
+            section: Some(ShopSection::Storage),
+            ..Default::default()
+        };
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut visible = false;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1200.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    )
+                },
+            );
+            visible = output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == expected));
+            output.textures_delta.clear();
+        }
+        assert!(visible, "missing {language} item description");
     }
 }

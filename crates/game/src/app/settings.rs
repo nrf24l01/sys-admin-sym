@@ -6,7 +6,7 @@ pub struct SettingsWindowState {
     pub port: String,
     pub password: String,
     pub show_password: bool,
-    pub error: Option<String>,
+    pub error: Option<crate::localization::UiMessage>,
 }
 
 impl Default for SettingsWindowState {
@@ -27,11 +27,21 @@ impl SettingsWindowState {
         }
     }
 
-    pub fn config(&self) -> Result<ConsoleSettings, String> {
+    pub fn config(&self) -> Result<ConsoleSettings, crate::localization::UiMessage> {
         let port = self
             .port
             .parse::<u16>()
-            .map_err(|_| "Port must be between 1 and 65535".to_string())?;
-        ConsoleSettings::new(self.host.clone(), port, self.password.clone())
+            .map_err(|_| crate::localization::UiMessage::from("settings.invalid-port"))?;
+        if port == 0 {
+            return Err("settings.invalid-port".into());
+        }
+        if self.host.trim() != "localhost" && self.host.trim().parse::<std::net::IpAddr>().is_err()
+        {
+            return Err("settings.invalid-host".into());
+        }
+        if self.password.is_empty() || self.password.len() > 256 {
+            return Err("settings.invalid-password".into());
+        }
+        ConsoleSettings::new(self.host.clone(), port, self.password.clone()).map_err(Into::into)
     }
 }

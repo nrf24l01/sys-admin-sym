@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::localization::tr;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
 use cloud_provider_sim::*;
@@ -77,31 +78,31 @@ struct PendingCable {
 }
 
 fn inventory_model_name(device: &Device) -> String {
-    device
-        .name
-        .split_once(" #")
-        .map_or_else(|| device.name.clone(), |(model, _)| model.to_owned())
+    let name = crate::localization::device_name(device);
+    name.split_once(" #")
+        .map_or_else(|| name.clone(), |(model, _)| model.to_owned())
 }
 
 fn source_label(sim: &NetworkSim, source: SourceId) -> String {
     match source {
-        SourceId::Rack(id) => sim
-            .rack(id)
-            .map_or_else(|| format!("Rack {id}"), |r| format!("{} mains", r.name)),
+        SourceId::Rack(id) => sim.rack(id).map_or_else(
+            || crate::localization::tr_args("ui.rack.3", &[(id).to_string()]),
+            |r| crate::localization::tr_args("ui.mains", &[crate::localization::rack_name(r)]),
+        ),
         SourceId::Ups(id) => sim
             .devices()
             .find_map(|d| match d.kind {
                 DeviceKind::Ups(ref u) if u.source == Some(source) => Some(d.name.clone()),
                 _ => None,
             })
-            .unwrap_or_else(|| format!("UPS {id}")),
+            .unwrap_or_else(|| crate::localization::tr_args("ui.ups.2", &[(id).to_string()])),
         SourceId::Pdu(id) => sim
             .devices()
             .find_map(|d| match d.kind {
                 DeviceKind::Pdu(ref p) if p.source == Some(source) => Some(d.name.clone()),
                 _ => None,
             })
-            .unwrap_or_else(|| format!("PDU {id}")),
+            .unwrap_or_else(|| crate::localization::tr_args("ui.pdu.2", &[(id).to_string()])),
     }
 }
 
@@ -190,6 +191,7 @@ pub fn main_ui(
     mut actions: MessageWriter<UiAction>,
     game_settings: Res<crate::settings::GameSettings>,
 ) -> Result {
+    let _language = game_settings.localization.enter();
     if images.textures.is_none() {
         images.textures = Some(EquipmentTextures {
             server_front: contexts
@@ -229,16 +231,16 @@ pub fn main_ui(
     top_bar(&mut viewport_ui, &snapshot.0, &mut state);
     if let Some(error) = state.error_dialog.clone() {
         let mut open = true;
-        egui::Window::new("Error")
+        egui::Window::new(tr("error.title"))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
             .default_size(egui::vec2(420.0, 150.0))
             .show(&viewport_ui, |ui| {
-                ui.colored_label(egui::Color32::LIGHT_RED, "Operation failed");
+                ui.colored_label(egui::Color32::LIGHT_RED, tr("ui.operation-failed"));
                 ui.separator();
-                ui.label(error);
-                if ui.button("OK").clicked() {
+                ui.label(error.render());
+                if ui.button(tr("ui.ok")).clicked() {
                     state.error_dialog = None;
                 }
             });
@@ -298,16 +300,19 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
         .resizable(false)
         .show(viewport, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("CLOUD PROVIDER // ROOM 01");
+                ui.heading(tr("ui.cloud-provider-room-01"));
                 ui.separator();
-                ui.strong(format!("${}", sim.money));
+                ui.strong(crate::localization::tr_args(
+                    "format.price",
+                    &[(sim.money).to_string()],
+                ));
                 for (workspace, label) in [
-                    (Workspace::Room, "ROOM"),
-                    (Workspace::Rack, "RACK"),
-                    (Workspace::Topology, "TOPOLOGY"),
+                    (Workspace::Room, "ui.room"),
+                    (Workspace::Rack, "ui.rack"),
+                    (Workspace::Topology, "ui.topology"),
                 ] {
                     if ui
-                        .selectable_label(state.workspace == workspace, label)
+                        .selectable_label(state.workspace == workspace, tr(label))
                         .clicked()
                     {
                         state.workspace = workspace;
@@ -315,16 +320,19 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                 }
                 ui.separator();
                 if ui
-                    .selectable_label(state.ranges_open, "IP RANGES")
+                    .selectable_label(state.ranges_open, tr("ui.ip-ranges"))
                     .clicked()
                 {
                     state.ranges_open = !state.ranges_open;
                 }
-                if ui.selectable_label(state.shop.open, "SHOP").clicked() {
+                if ui
+                    .selectable_label(state.shop.open, tr("ui.shop"))
+                    .clicked()
+                {
                     state.shop.open = !state.shop.open;
                 }
                 if ui
-                    .selectable_label(state.settings.open, "SETTINGS")
+                    .selectable_label(state.settings.open, tr("ui.settings"))
                     .clicked()
                 {
                     state.settings.open = !state.settings.open;
@@ -333,17 +341,20 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                 if state.pending_cable.is_some() {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 196, 64),
-                        format!(
-                            "RJ45 CABLE: {} ANCHOR{} → SELECT PORT",
-                            state.pending_cable_route.len(),
-                            if state.pending_cable_route.len() == 1 {
-                                ""
-                            } else {
-                                "S"
-                            },
+                        crate::localization::tr_args(
+                            "ui.rj45-cable-anchor-select-port",
+                            &[
+                                (state.pending_cable_route.len()).to_string(),
+                                (if state.pending_cable_route.len() == 1 {
+                                    ""
+                                } else {
+                                    "S"
+                                })
+                                .to_string(),
+                            ],
                         ),
                     );
-                    if ui.small_button("Cancel cable").clicked() {
+                    if ui.small_button(tr("ui.cancel-cable")).clicked() {
                         state.pending_cable = None;
                         state.pending_cable_route.clear();
                     }
@@ -352,17 +363,20 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                 if state.pending_power_outlet.is_some() || state.pending_power_inlet.is_some() {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 196, 64),
-                        format!(
-                            "POWER CABLE: {} ANCHOR{} → SELECT COMPLEMENTARY SOCKET",
-                            state.pending_power_route.len(),
-                            if state.pending_power_route.len() == 1 {
-                                ""
-                            } else {
-                                "S"
-                            }
+                        crate::localization::tr_args(
+                            "ui.power-cable-anchor-select-complementary-socket",
+                            &[
+                                (state.pending_power_route.len()).to_string(),
+                                (if state.pending_power_route.len() == 1 {
+                                    ""
+                                } else {
+                                    "S"
+                                })
+                                .to_string(),
+                            ],
                         ),
                     );
-                    if ui.small_button("Cancel power").clicked() {
+                    if ui.small_button(tr("ui.cancel-power")).clicked() {
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
                         state.pending_power_route.clear();
@@ -377,7 +391,7 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                         } else {
                             egui::Color32::LIGHT_RED
                         },
-                        notice,
+                        notice.render(),
                     );
                 }
             });
@@ -388,18 +402,22 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
             }
             let resources = state.network_summary.resources;
             ui.horizontal(|ui| {
-                ui.weak(format!(
-                    "LAN REACHABLE  {} core MHz · {} weighted GB · {} NIC Mb/s",
-                    resources.lan.compute_mhz,
-                    resources.lan.memory_score_gb,
-                    resources.lan.network_mbps
+                ui.weak(crate::localization::tr_args(
+                    "ui.lan-reachable-core-mhz-weighted-gb-nic",
+                    &[
+                        (resources.lan.compute_mhz).to_string(),
+                        (resources.lan.memory_score_gb).to_string(),
+                        (resources.lan.network_mbps).to_string(),
+                    ],
                 ));
                 ui.separator();
-                ui.weak(format!(
-                    "PUBLIC REACHABLE  {} core MHz · {} weighted GB · {} NIC Mb/s",
-                    resources.global.compute_mhz,
-                    resources.global.memory_score_gb,
-                    resources.global.network_mbps
+                ui.weak(crate::localization::tr_args(
+                    "ui.public-reachable-core-mhz-weighted-gb-nic",
+                    &[
+                        (resources.global.compute_mhz).to_string(),
+                        (resources.global.memory_score_gb).to_string(),
+                        (resources.global.network_mbps).to_string(),
+                    ],
                 ));
             });
         })
@@ -438,11 +456,11 @@ fn inspector_panel(
     egui::Panel::right("inspector")
         .default_size(360.0)
         .show(viewport, |ui| {
-            ui.heading("Inspector");
+            ui.heading(tr("inspector.title"));
             ui.separator();
             match state.selected {
                 Selection::None => {
-                    ui.label("Select a device, port, or cable.");
+                    ui.label(tr("ui.select-a-device-port-or-cable"));
                 }
                 Selection::Device(id) => device_inspector(ui, sim, id, state, actions),
                 Selection::Port(id) => port_inspector(ui, sim, id, drafts, actions),
@@ -458,36 +476,46 @@ fn power_cable_inspector(
     outlet: OutletId,
     actions: &mut MessageWriter<UiAction>,
 ) {
-    ui.heading("Power cable");
+    ui.heading(tr("ui.power-cable"));
     let Some(endpoint) = sim.power.connections.get(&outlet).copied() else {
-        ui.label("Power cable no longer connected.");
+        ui.label(tr("ui.power-cable-no-longer-connected"));
         return;
     };
     let destination = match endpoint {
-        PowerEndpoint::Device(id) => sim
-            .device(id)
-            .map_or_else(|| format!("Device {id:?}"), |d| d.name.clone()),
+        PowerEndpoint::Device(id) => sim.device(id).map_or_else(
+            || crate::localization::tr_args("ui.device", &[format!("{:?}", id)]),
+            |d| d.name.clone(),
+        ),
         PowerEndpoint::Source(source) => source_label(sim, source),
     };
-    ui.label(format!(
-        "Source: {} C13-{}",
-        source_label(sim, outlet.source),
-        outlet.index + 1
+    ui.label(crate::localization::tr_args(
+        "ui.source-c13",
+        &[
+            (source_label(sim, outlet.source)).to_string(),
+            (outlet.index + 1).to_string(),
+        ],
     ));
-    ui.label(format!("Destination: {destination}"));
-    ui.label(format!("Cord: {:?}", sim.power.cord_kind(outlet)));
+    ui.label(crate::localization::tr_args(
+        "ui.destination.2",
+        std::slice::from_ref(&destination),
+    ));
+    ui.label(crate::localization::tr_args(
+        "ui.cord",
+        &[format!("{:?}", sim.power.cord_kind(outlet))],
+    ));
     let anchors = sim.power.cord_routes.get(&outlet).map_or(0, Vec::len);
-    ui.label(format!("Rack anchors: {anchors}"));
-    ui.weak(
-        "In Rack view, click a rail anchor to add or remove it from this selected power cable.",
-    );
-    if anchors > 0 && ui.small_button("Clear rack anchors").clicked() {
+    ui.label(crate::localization::tr_args(
+        "ui.rack-anchors",
+        &[(anchors).to_string()],
+    ));
+    ui.weak(tr("ui.in-rack-view-click-a-rail-anchor"));
+    if anchors > 0 && ui.small_button(tr("ui.clear-rack-anchors")).clicked() {
         actions.write(UiAction::ReroutePowerCable {
             outlet,
             route: Vec::new(),
         });
     }
-    if ui.button("Unplug cable").clicked() {
+    if ui.button(tr("ui.unplug-cable")).clicked() {
         actions.write(UiAction::DisconnectPower(outlet));
     }
 }
@@ -500,10 +528,10 @@ fn device_inspector(
     actions: &mut MessageWriter<UiAction>,
 ) {
     let Some(device) = sim.device(id) else {
-        ui.label("Device no longer exists");
+        ui.label(tr("ui.device-no-longer-exists"));
         return;
     };
-    ui.heading(&device.name);
+    ui.heading(crate::localization::device_name(device));
     power_controls(ui, sim, device, actions);
     if let DeviceKind::Server(server) = &device.kind
         && let Some(hardware) = &server.hardware
@@ -528,14 +556,17 @@ fn device_inspector(
     );
     if passive {
         if device.rack.is_some()
-            && ui.button("Eject from rack").on_hover_text(
-                "Uninstall this device; connected cables are unplugged and returned to inventory.",
-            ).clicked()
+            && ui
+                .button(tr("ui.eject-from-rack"))
+                .on_hover_text(tr(
+                    "ui.uninstall-this-device-connected-cables-are-unplugged",
+                ))
+                .clicked()
         {
             actions.write(UiAction::Remove(id));
         }
         ui.separator();
-        ui.weak("Passive rack hardware has no power, status, terminal, or configuration controls. Use its rack sockets to connect and unplug cables.");
+        ui.weak(tr("ui.passive-rack-hardware-has-no-power-status"));
         return;
     }
     ui.colored_label(
@@ -544,31 +575,31 @@ fn device_inspector(
         } else {
             egui::Color32::DARK_GRAY
         },
-        if actual_powered {
-            "● POWER ON"
+        tr(if actual_powered {
+            "ui.power-on"
         } else {
-            "○ POWER OFF"
-        },
+            "ui.power-off"
+        }),
     );
     if device.rack.is_some()
         && ui
-            .button("Eject from rack")
-            .on_hover_text(
-                "Uninstall this device; connected cables are unplugged and returned to inventory.",
-            )
+            .button(tr("ui.eject-from-rack"))
+            .on_hover_text(tr(
+                "ui.uninstall-this-device-connected-cables-are-unplugged",
+            ))
             .clicked()
     {
         actions.write(UiAction::Remove(id));
     }
     if device.rack.is_none() {
-        ui.label("Select an empty rack unit in the Rack view to install this device.");
+        ui.label(tr("ui.select-an-empty-rack-unit-in-the"));
         state.workspace = Workspace::Rack;
     }
     ui.separator();
-    if matches!(device.kind, DeviceKind::Router(_)) && ui.button("Routing table…").clicked() {
+    if matches!(device.kind, DeviceKind::Router(_)) && ui.button(tr("ui.routing-table")).clicked() {
         actions.write(UiAction::OpenRouting(id));
     }
-    ui.strong("Ports");
+    ui.strong(tr("ui.ports"));
     egui::Grid::new("device_ports")
         .num_columns(3)
         .striped(true)
@@ -582,41 +613,44 @@ fn device_inspector(
                     } else {
                         egui::Color32::GRAY
                     },
-                    if link.is_some() { "●" } else { "○" },
+                    tr(if link.is_some() { "●" } else { "○" }),
                 );
                 if ui
                     .add_enabled(
                         port.connector.supports_cabling(),
                         egui::Button::selectable(false, &port.name),
                     )
-                    .on_hover_text(if port.connector.supports_cabling() {
-                        "Select port"
+                    .on_hover_text(tr(if port.connector.supports_cabling() {
+                        "ui.select-port"
                     } else {
-                        "SFP cabling is not implemented yet"
-                    })
+                        "ui.sfp-cabling-is-not-implemented-yet"
+                    }))
                     .clicked()
                 {
                     actions.write(UiAction::SelectPort(*port_id));
                 }
-                ui.weak(connector_label(port.connector));
+                ui.weak(tr(connector_label(port.connector)));
                 ui.end_row();
             }
         });
     if let DeviceKind::Switch(sw) = &device.kind {
         ui.separator();
-        ui.strong("VLAN database");
+        ui.strong(tr("ui.vlan-database"));
         for vlan in &sw.vlans {
-            ui.label(format!("{} — {}", vlan.id.0, vlan.name));
+            ui.label(crate::localization::tr_args(
+                "vlan.entry",
+                &[(vlan.id.0).to_string(), (vlan.name).to_string()],
+            ));
         }
         ui.horizontal(|ui| {
-            ui.label("ID");
+            ui.label(tr("ui.id"));
             ui.text_edit_singleline(&mut state.new_vlan_id);
         });
         ui.horizontal(|ui| {
-            ui.label("Name");
+            ui.label(tr("ui.name"));
             ui.text_edit_singleline(&mut state.new_vlan_name);
         });
-        if ui.button("Create VLAN").clicked() {
+        if ui.button(tr("ui.create-vlan")).clicked() {
             actions.write(UiAction::CreateVlan(id));
         }
     }
@@ -633,14 +667,16 @@ fn server_hardware_inspector(
     let catalog = server_catalog();
     let chassis = &catalog.chassis;
     ui.separator();
-    ui.strong("Server hardware");
-    ui.label(format!(
-        "CPU {}/{} · RAM {}/{} · Integrated PSU {} W",
-        hardware.cpus.len(),
-        chassis.cpu_sockets,
-        hardware.ram.len(),
-        chassis.dimm_slots,
-        chassis.integrated_psu_watts,
+    ui.strong(tr("ui.server-hardware"));
+    ui.label(crate::localization::tr_args(
+        "ui.cpu-ram-integrated-psu-w",
+        &[
+            (hardware.cpus.len()).to_string(),
+            (chassis.cpu_sockets).to_string(),
+            (hardware.ram.len()).to_string(),
+            (chassis.dimm_slots).to_string(),
+            (chassis.integrated_psu_watts).to_string(),
+        ],
     ));
     let cpu_lanes: u16 = hardware
         .cpus
@@ -663,27 +699,34 @@ fn server_hardware_inspector(
             _ => None,
         })
         .sum();
-    ui.label(format!("PCIe lanes: {used_lanes}/{cpu_lanes}"));
+    ui.label(crate::localization::tr_args(
+        "ui.pcie-lanes",
+        &[(used_lanes).to_string(), (cpu_lanes).to_string()],
+    ));
     let active = sim.server_resources(device);
-    ui.label(format!(
-        "Compute: {} core MHz · Memory: {} weighted GB · Live network: {} Mb/s",
-        hardware.compute_mhz(),
-        hardware.memory_score_gb(),
-        active.network_mbps
+    ui.label(crate::localization::tr_args(
+        "ui.compute-core-mhz-memory-weighted-gb-live",
+        &[
+            (hardware.compute_mhz()).to_string(),
+            (hardware.memory_score_gb()).to_string(),
+            (active.network_mbps).to_string(),
+        ],
     ));
     if hardware.ready() {
-        ui.colored_label(egui::Color32::GREEN, "Required hardware installed");
+        ui.colored_label(egui::Color32::GREEN, tr("ui.required-hardware-installed"));
     } else {
-        ui.weak(
-            "Install a CPU and RAM to complete the server; check the PSU wattage if overloaded.",
-        );
+        ui.weak(tr("ui.install-a-cpu-and-ram-to-complete"));
     }
     for (index, slot) in chassis.pcie_slots.iter().enumerate() {
         let installed = hardware.pcie.get(index).and_then(Option::as_deref);
         ui.horizontal(|ui| {
-            ui.label(format!(
-                "{}: x{} / Gen {}",
-                slot.name, slot.lanes, slot.generation
+            ui.label(crate::localization::tr_args(
+                "ui.x-gen",
+                &[
+                    (slot.name).to_string(),
+                    (slot.lanes).to_string(),
+                    (slot.generation).to_string(),
+                ],
             ));
             if let Some(id) = installed {
                 let name = catalog
@@ -691,8 +734,8 @@ fn server_hardware_inspector(
                     .iter()
                     .find(|part| part.id == id)
                     .map_or(id, |part| part.name.as_str());
-                ui.label(name);
-                if ui.button("Remove").clicked() {
+                ui.label(crate::localization::item_name(id, name));
+                if ui.button(tr("ui.remove")).clicked() {
                     actions.write(UiAction::RemoveServerPart {
                         device,
                         part_id: id.into(),
@@ -700,7 +743,7 @@ fn server_hardware_inspector(
                     });
                 }
             } else {
-                ui.weak("empty");
+                ui.weak(tr("ui.empty"));
                 for part in &catalog.parts {
                     let ServerPartKind::PciCard {
                         card:
@@ -719,7 +762,12 @@ fn server_hardware_inspector(
                         && slot.width >= *width
                         && slot.generation >= *generation
                         && used_lanes + u16::from(*lanes) <= cpu_lanes
-                        && ui.button(format!("Install {}", part.name)).clicked()
+                        && ui
+                            .button(crate::localization::tr_args(
+                                "hardware.install-item",
+                                &[crate::localization::item_name(&part.id, &part.name)],
+                            ))
+                            .clicked()
                     {
                         actions.write(UiAction::InstallServerPart {
                             device,
@@ -748,12 +796,16 @@ fn server_hardware_inspector(
                 .count(),
         };
         ui.horizontal(|ui| {
-            ui.label(format!(
-                "{} · inventory {owned} · installed {installed}",
-                part.name
+            ui.label(crate::localization::tr_args(
+                "ui.inventory-installed",
+                &[
+                    crate::localization::item_name(&part.id, &part.name),
+                    (owned).to_string(),
+                    (installed).to_string(),
+                ],
             ));
             if ui
-                .add_enabled(owned > 0, egui::Button::new("Install"))
+                .add_enabled(owned > 0, egui::Button::new(tr("ui.install")))
                 .clicked()
             {
                 actions.write(UiAction::InstallServerPart {
@@ -764,7 +816,7 @@ fn server_hardware_inspector(
             }
             if installed > 0
                 && !matches!(part.kind, ServerPartKind::PciCard { .. })
-                && ui.button("Remove").clicked()
+                && ui.button(tr("ui.remove")).clicked()
             {
                 actions.write(UiAction::RemoveServerPart {
                     device,
@@ -775,37 +827,47 @@ fn server_hardware_inspector(
         });
     }
     ui.separator();
-    ui.strong("Drive bays");
-    ui.weak("Buy drives in Compute → Storage drives, then install them here.");
+    ui.strong(tr("ui.drive-bays"));
+    ui.weak(tr("ui.buy-drives-in-compute-storage-drives-then"));
     for (bay, slot) in chassis.drive_bays.iter().enumerate() {
         ui.horizontal_wrapped(|ui| {
-            ui.label(format!("{} ({})", slot.name, slot.interface));
+            ui.label(crate::localization::tr_args(
+                "hardware.slot",
+                &[(slot.name).to_string(), (slot.interface).to_string()],
+            ));
             if let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) {
                 if let Some(drive) = cloud_provider_sim::drive_catalog()
                     .drives
                     .iter()
                     .find(|d| d.id == id)
                 {
-                    ui.label(format!(
-                        "{} · read {} MB/s / {} IOPS · write {} MB/s / {} IOPS",
-                        drive.name,
-                        drive.read_mb_s,
-                        drive.read_iops,
-                        drive.write_mb_s,
-                        drive.write_iops
+                    ui.label(crate::localization::tr_args(
+                        "ui.read-mb-s-iops-write-mb-s",
+                        &[
+                            crate::localization::item_name(&drive.id, &drive.name),
+                            (drive.read_mb_s).to_string(),
+                            (drive.read_iops).to_string(),
+                            (drive.write_mb_s).to_string(),
+                            (drive.write_iops).to_string(),
+                        ],
                     ));
                 } else {
                     ui.label(id);
                 }
-                if ui.button("Remove drive").clicked() {
+                if ui.button(tr("ui.remove-drive")).clicked() {
                     actions.write(UiAction::RemoveDrive { device, bay });
                 }
             } else {
-                ui.weak("empty");
+                ui.weak(tr("ui.empty"));
                 for drive in &cloud_provider_sim::drive_catalog().drives {
                     if drive.interface == slot.interface
                         && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
-                        && ui.button(format!("Install {}", drive.name)).clicked()
+                        && ui
+                            .button(crate::localization::tr_args(
+                                "hardware.install-item",
+                                &[crate::localization::item_name(&drive.id, &drive.name)],
+                            ))
+                            .clicked()
                     {
                         actions.write(UiAction::InstallDrive {
                             device,
@@ -833,20 +895,24 @@ fn power_controls(
     if let Some(power) = sim.power.device_status(device.id) {
         if matches!(device.kind, DeviceKind::Router(_)) {
             let ac = PowerCordKind::Cisco66WAdapter.input_load(power.load);
-            ui.label(format!(
-                "Cisco adapter: 66 W max · 12 V · 5.5 A max · Router: {} W DC / {:.2} A · AC: {} W / {} VA / {:.2} A",
-                power.load.watts,
-                power.load.watts as f32 / 12.0,
-                ac.watts,
-                ac.va,
-                ac.current_ma as f32 / 1000.0,
+            ui.label(crate::localization::tr_args(
+                "ui.cisco-adapter-66-w-max-12-v",
+                &[
+                    (power.load.watts).to_string(),
+                    format!("{:.2}", power.load.watts as f32 / 12.0),
+                    (ac.watts).to_string(),
+                    (ac.va).to_string(),
+                    format!("{:.2}", ac.current_ma as f32 / 1000.0),
+                ],
             ));
         } else {
-            ui.label(format!(
-                "Load: {} W / {} VA / {:.2} A",
-                power.load.watts,
-                power.load.va,
-                power.load.current_ma as f32 / 1000.0
+            ui.label(crate::localization::tr_args(
+                "ui.load-w-va-a",
+                &[
+                    (power.load.watts).to_string(),
+                    (power.load.va).to_string(),
+                    format!("{:.2}", power.load.current_ma as f32 / 1000.0),
+                ],
             ));
         }
         ui.colored_label(
@@ -855,20 +921,20 @@ fn power_controls(
             } else {
                 egui::Color32::YELLOW
             },
-            if power.effective {
-                "Effective power: ON"
+            tr(if power.effective {
+                "ui.effective-power-on"
             } else if power.requested {
-                "Requested ON · source unavailable"
+                "ui.requested-on-source-unavailable"
             } else {
-                "Requested OFF"
-            },
+                "ui.requested-off"
+            }),
         );
         if ui
-            .button(if power.requested {
-                "Turn device off"
+            .button(tr(if power.requested {
+                "ui.turn-device-off"
             } else {
-                "Turn device on"
-            })
+                "ui.turn-device-on"
+            }))
             .clicked()
         {
             actions.write(UiAction::TogglePower(device.id, !power.requested));
@@ -877,61 +943,73 @@ fn power_controls(
     if let Some(source) = source {
         let telemetry = sim.power.source_telemetry(source);
         ui.separator();
-        ui.strong(if matches!(device.kind, DeviceKind::Ups(_)) {
-            "UPS status"
+        ui.strong(tr(if matches!(device.kind, DeviceKind::Ups(_)) {
+            "ui.ups-status"
         } else {
-            "PDU status"
-        });
+            "ui.pdu-status"
+        }));
         let enabled = sim.power.source_enabled(source);
         if ui
-            .button(if enabled {
-                "Turn source off"
+            .button(tr(if enabled {
+                "ui.turn-source-off"
             } else {
-                "Turn source on"
-            })
+                "ui.turn-source-on"
+            }))
             .clicked()
         {
             actions.write(UiAction::TogglePower(device.id, !enabled));
         }
         if let Some(t) = telemetry {
             let state = if !t.available {
-                "OFF / TRIPPED / NO INPUT"
+                "ui.off-tripped-no-input"
             } else if matches!(source, SourceId::Ups(_)) && !t.input_available {
-                "ON BATTERY"
+                "ui.on-battery"
             } else {
-                "ON MAINS"
+                "ui.on-mains"
             };
-            ui.label(format!(
-                "{state} · output {} W / {} VA / {:.2} A",
-                t.output.watts,
-                t.output.va,
-                t.output.current_ma as f32 / 1000.0
+            ui.label(crate::localization::tr_args(
+                "ui.output-w-va-a",
+                &[
+                    tr(state),
+                    (t.output.watts).to_string(),
+                    (t.output.va).to_string(),
+                    format!("{:.2}", t.output.current_ma as f32 / 1000.0),
+                ],
             ));
-            ui.label(format!(
-                "input {} W / {} VA / {:.2} A",
-                t.input.watts,
-                t.input.va,
-                t.input.current_ma as f32 / 1000.0
+            ui.label(crate::localization::tr_args(
+                "ui.input-w-va-a",
+                &[
+                    (t.input.watts).to_string(),
+                    (t.input.va).to_string(),
+                    format!("{:.2}", t.input.current_ma as f32 / 1000.0),
+                ],
             ));
             if let SourceId::Ups(id) = source {
                 let cap = sim.power.ups.get(&id).map_or(0, |u| u.spec.battery_wh);
-                ui.label(format!(
-                    "Battery: {} / {} Wh ({:.0}%){}",
-                    t.battery_mwh / 1000,
-                    cap,
-                    if cap == 0 {
-                        0.0
-                    } else {
-                        t.battery_mwh as f32 / (cap as f32 * 1000.0) * 100.0
-                    },
-                    t.runtime_seconds.map_or(String::new(), |s| format!(
-                        " · runtime {}m {}s",
-                        s / 60,
-                        s % 60
-                    ))
+                ui.label(crate::localization::tr_args(
+                    "ui.battery-wh",
+                    &[
+                        (t.battery_mwh / 1000).to_string(),
+                        (cap).to_string(),
+                        format!(
+                            "{:.0}",
+                            if cap == 0 {
+                                0.0
+                            } else {
+                                t.battery_mwh as f32 / (cap as f32 * 1000.0) * 100.0
+                            }
+                        ),
+                        (t.runtime_seconds.map_or(String::new(), |s| {
+                            crate::localization::tr_args(
+                                "power.runtime",
+                                &[(s / 60).to_string(), (s % 60).to_string()],
+                            )
+                        }))
+                        .to_string(),
+                    ],
                 ));
                 if sim.power.ups.get(&id).is_some_and(|u| u.tripped)
-                    && ui.button("Reset UPS breaker").clicked()
+                    && ui.button(tr("ui.reset-ups-breaker")).clicked()
                 {
                     actions.write(UiAction::ResetPower(source));
                 }
@@ -943,12 +1021,12 @@ fn power_controls(
                     _ => 0,
                 })
                 .is_some_and(|p| p.tripped)
-                && ui.button("Reset PDU breaker").clicked()
+                && ui.button(tr("ui.reset-pdu-breaker")).clicked()
             {
                 actions.write(UiAction::ResetPower(source));
             }
         }
-        ui.label("Input: connect this device's C14 inlet to a rack or upstream C13 outlet.");
+        ui.label(tr("ui.input-connect-this-device-s-c14-inlet"));
     }
     let endpoint = device_power_endpoint(device);
     let connected = endpoint.and_then(|e| {
@@ -960,17 +1038,19 @@ fn power_controls(
     });
     if let Some(outlet) = connected {
         ui.horizontal(|ui| {
-            ui.label(format!(
-                "Fed by {} C13-{}",
-                source_label(sim, outlet.source),
-                outlet.index + 1
+            ui.label(crate::localization::tr_args(
+                "ui.fed-by-c13",
+                &[
+                    (source_label(sim, outlet.source)).to_string(),
+                    (outlet.index + 1).to_string(),
+                ],
             ));
-            if ui.small_button("Unplug").clicked() {
+            if ui.small_button(tr("ui.unplug")).clicked() {
                 actions.write(UiAction::DisconnectPower(outlet));
             }
         });
     } else if endpoint.is_some() {
-        ui.weak("Power inlet · click the device socket, then a compatible C13 outlet in the rack.");
+        ui.weak(tr("ui.power-inlet-click-the-device-socket-then"));
     }
 }
 
@@ -982,7 +1062,7 @@ fn port_inspector(
     actions: &mut MessageWriter<UiAction>,
 ) {
     let Some(port) = sim.port(id) else {
-        ui.label("Port no longer exists");
+        ui.label(tr("ui.port-no-longer-exists"));
         return;
     };
     if let Some(outlet) = sim.network_outlet(id) {
@@ -991,46 +1071,61 @@ fn port_inspector(
         } else {
             outlet.name()
         });
-        ui.label(format!("RJ45 port {}", id.0));
+        ui.label(crate::localization::tr_args(
+            "ui.rj45-port",
+            &[(id.0).to_string()],
+        ));
         match outlet.kind {
             NetworkOutletKind::Lan { .. } => {
-                ui.label("Passive room socket · wire it to your switching equipment.");
+                ui.label(tr("ui.passive-room-socket-wire-it-to-your"));
             }
             NetworkOutletKind::Uplink { .. } => {
                 upstream::show(ui, sim, id, actions);
             }
         }
         if let Some(link) = sim.link_for_port(id) {
-            ui.label(format!("Connected: cable {}", link.id.0));
-            if ui.button("Disconnect cable").clicked() {
+            ui.label(crate::localization::tr_args(
+                "ui.connected-cable",
+                &[(link.id.0).to_string()],
+            ));
+            if ui.button(tr("ui.disconnect-cable")).clicked() {
                 actions.write(UiAction::Disconnect(link.id));
             }
-        } else if ui.button("Connect RJ45 cable").clicked() {
+        } else if ui.button(tr("ui.connect-rj45-cable")).clicked() {
             actions.write(UiAction::CablePort(id));
         }
         return;
     }
     let owner = sim.device(port.device).expect("port owner exists");
-    ui.heading(format!("{} / {}", owner.name, port.name));
-    ui.label(format!("Connector: {}", connector_label(port.connector)));
+    ui.heading(crate::localization::tr_args(
+        "port.qualified-name",
+        &[
+            crate::localization::device_name(owner),
+            (port.name).to_string(),
+        ],
+    ));
+    ui.label(crate::localization::tr_args(
+        "ui.connector",
+        &[tr(connector_label(port.connector))],
+    ));
     if !port.connector.supports_cabling() {
         ui.colored_label(
             egui::Color32::from_rgb(255, 196, 64),
-            "SFP is visible on the physical device but is not implemented in this MVP.",
+            tr("ui.sfp-is-visible-on-the-physical-device"),
         );
         return;
     }
     let link = sim.link_for_port(id);
     ui.label(match link {
-        Some(link) => format!("LINK UP · cable {}", link.id.0),
-        None => "LINK DOWN".into(),
+        Some(link) => crate::localization::tr_args("ui.link-up-cable", &[(link.id.0).to_string()]),
+        None => tr("ui.link-down"),
     });
-    if link.is_none() && ui.button("Connect RJ45 cable").clicked() {
+    if link.is_none() && ui.button(tr("ui.connect-rj45-cable")).clicked() {
         actions.write(UiAction::CablePort(id));
     }
-    ui.weak("Select the other socket in the rack, or its Connect RJ45 cable button.");
+    ui.weak(tr("ui.select-the-other-socket-in-the-rack"));
     if let Some(link) = link
-        && ui.button("Disconnect cable").clicked()
+        && ui.button(tr("ui.disconnect-cable")).clicked()
     {
         actions.write(UiAction::Disconnect(link.id));
     }
@@ -1038,20 +1133,21 @@ fn port_inspector(
         owner.kind,
         DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
     ) {
-        ui.weak("Passive port: cable connections are managed from the rack view.");
+        ui.weak(tr("ui.passive-port-cable-connections-are-managed-from"));
         return;
     }
     ui.separator();
     match &port.config {
         PortConfig::Server(config) => {
-            ui.label(format!(
-                "Current IPv4: {}",
-                config.ipv4.as_ref().map_or_else(
-                    || "unassigned".into(),
-                    |ip| format!("{}/{}", ip.address, ip.prefix)
-                )
+            ui.label(crate::localization::tr_args(
+                "ui.current-ipv4",
+                &[(config.ipv4.as_ref().map_or_else(
+                    || tr("ui.unassigned"),
+                    |ip| format!("{}/{}", ip.address, ip.prefix),
+                ))
+                .to_string()],
             ));
-            if ui.button("Assign next room LAN IPv4").clicked() {
+            if ui.button(tr("ui.assign-next-room-lan-ipv4")).clicked() {
                 actions.write(UiAction::AssignLanIpv4 { port: id });
             }
             for block in sim
@@ -1063,11 +1159,17 @@ fn port_inspector(
                 let uplink = sim
                     .range_uplink(prefix)
                     .and_then(|id| sim.network_outlet(id))
-                    .map_or_else(|| "Unassigned".into(), |outlet| outlet.name());
+                    .map_or_else(|| tr("ui.unassigned"), |outlet| outlet.name());
                 ui.horizontal(|ui| {
-                    ui.label(format!("{}/29 via {uplink}", block.network));
+                    ui.label(crate::localization::tr_args(
+                        "ui.29-via",
+                        &[(block.network).to_string(), (uplink).to_string()],
+                    ));
                     if ui
-                        .button(format!("Assign public IP##{}", block.network))
+                        .button(crate::localization::tr_args(
+                            "ui.assign-public-ip",
+                            &[(block.network).to_string()],
+                        ))
                         .clicked()
                     {
                         actions.write(UiAction::AssignPublicIpv4 {
@@ -1121,19 +1223,19 @@ fn port_inspector(
                     .map_or_else(String::new, |vlan| vlan.0.to_string());
                 draft.synced_ipv4 = config.ipv4.clone();
             }
-            ui.label("Hostname");
+            ui.label(tr("ui.hostname"));
             ui.text_edit_singleline(&mut draft.hostname);
-            ui.label("IPv4 address");
+            ui.label(tr("ui.ipv4-address"));
             ui.text_edit_singleline(&mut draft.address);
             ui.horizontal(|ui| {
-                ui.label("Prefix");
+                ui.label(tr("ui.prefix"));
                 ui.text_edit_singleline(&mut draft.prefix);
             });
-            ui.label("Access VLAN (optional; blank = untagged)");
+            ui.label(tr("ui.access-vlan-optional-blank-untagged"));
             ui.text_edit_singleline(&mut draft.vlan);
-            ui.label("Default gateway");
+            ui.label(tr("ui.default-gateway"));
             ui.text_edit_singleline(&mut draft.gateway);
-            if ui.button("Apply server config").clicked() {
+            if ui.button(tr("ui.apply-server-config")).clicked() {
                 actions.write(UiAction::ApplyServer(id));
             }
         }
@@ -1157,15 +1259,15 @@ fn port_inspector(
                         trunk: true,
                     },
                 });
-            ui.checkbox(&mut draft.trunk, "Trunk mode");
+            ui.checkbox(&mut draft.trunk, tr("ui.trunk-mode"));
             if draft.trunk {
-                ui.label("Allowed VLANs (comma-separated)");
+                ui.label(tr("ui.allowed-vlans-comma-separated"));
                 ui.text_edit_singleline(&mut draft.allowed);
             } else {
-                ui.label("Access VLAN (optional; blank = untagged)");
+                ui.label(tr("ui.access-vlan-optional-blank-untagged"));
                 ui.text_edit_singleline(&mut draft.vlan);
             }
-            if ui.button("Apply switch port").clicked() {
+            if ui.button(tr("ui.apply-switch-port")).clicked() {
                 actions.write(UiAction::ApplySwitch(id));
             }
         }
@@ -1188,34 +1290,32 @@ fn port_inspector(
                     .unwrap_or_default(),
                 internet: first.is_some_and(|v| v.internet_connected),
             });
-            ui.label("Interface name");
+            ui.label(tr("ui.interface-name"));
             ui.text_edit_singleline(&mut draft.name);
-            ui.label("IPv4 (blank = unconfigured)");
+            ui.label(tr("ui.ipv4-blank-unconfigured"));
             ui.text_edit_singleline(&mut draft.address);
             ui.horizontal(|ui| {
-                ui.label("Prefix");
+                ui.label(tr("ui.prefix"));
                 ui.add(egui::TextEdit::singleline(&mut draft.prefix).desired_width(55.0));
-                ui.label("VLAN");
+                ui.label(tr("ui.vlan"));
                 ui.add(egui::TextEdit::singleline(&mut draft.vlan).desired_width(55.0));
             });
-            if ui.button("Routing table…").clicked() {
+            if ui.button(tr("ui.routing-table")).clicked() {
                 actions.write(UiAction::OpenRouting(port.device));
             }
             draft.internet = false;
-            if ui.button("Apply router interface").clicked() {
+            if ui.button(tr("ui.apply-router-interface")).clicked() {
                 actions.write(UiAction::ApplyRouter(id));
             }
         }
         PortConfig::PatchPanel | PortConfig::CableManager | PortConfig::Infrastructure => {
-            ui.label("Passive physical interface; paired ports follow the rack side.");
+            ui.label(tr("ui.passive-physical-interface-paired-ports-follow-the"));
         }
     }
     ui.separator();
     if ui
-        .button("Flush configuration")
-        .on_hover_text(
-            "Reset this interface to its device template defaults; link and power stay unchanged.",
-        )
+        .button(tr("ui.flush-configuration"))
+        .on_hover_text(tr("ui.reset-this-interface-to-its-device-template"))
         .clicked()
     {
         actions.write(UiAction::FlushPortConfig(id));
@@ -1229,42 +1329,51 @@ fn link_inspector(
     actions: &mut MessageWriter<UiAction>,
 ) {
     let Some(link) = sim.link(id) else {
-        ui.label("Cable no longer exists");
+        ui.label(tr("ui.cable-no-longer-exists"));
         return;
     };
     let endpoint = |id| {
         sim.port(id)
             .map(|p| {
-                format!(
-                    "{} / {}",
-                    sim.device(p.device).map(|d| d.name.as_str()).unwrap_or("?"),
-                    p.name
+                crate::localization::tr_args(
+                    "port.qualified-name",
+                    &[
+                        (sim.device(p.device).map(|d| d.name.as_str()).unwrap_or("?")).to_string(),
+                        (p.name).to_string(),
+                    ],
                 )
             })
             .unwrap_or_default()
     };
-    ui.heading(format!("Cable {}", id.0));
-    ui.label(format!(
-        "{:.2} m {:?} Ethernet lead · 2 RJ45 plugs",
-        link.length_cm as f32 / 100.0,
-        link.color,
+    ui.heading(crate::localization::tr_args(
+        "ui.cable",
+        &[(id.0).to_string()],
     ));
-    ui.weak("Drag its jacket in the rack to move the slack. Unplugging returns the finished lead for reuse.");
+    ui.label(crate::localization::tr_args(
+        "ui.m-ethernet-lead-2-rj45-plugs",
+        &[
+            format!("{:.2}", link.length_cm as f32 / 100.0),
+            crate::localization::cable_color(link.color),
+        ],
+    ));
+    ui.weak(tr("cable.description"));
     ui.label(endpoint(link.a));
     ui.label("↕");
     ui.label(endpoint(link.b));
     ui.separator();
-    ui.strong("Manual route");
-    ui.weak("Ordered rack anchors shape the physical cable path.");
+    ui.strong(tr("ui.manual-route"));
+    ui.weak(tr("ui.ordered-rack-anchors-shape-the-physical-cable"));
     let route = link.route.clone();
     for (index, point) in route.iter().enumerate() {
         ui.horizontal(|ui| {
-            ui.monospace(format!(
-                "{}: U{} {:?} {} cm",
-                index + 1,
-                point.unit,
-                point.side,
-                point.offset_cm
+            ui.monospace(crate::localization::tr_args(
+                "ui.u-cm",
+                &[
+                    (index + 1).to_string(),
+                    (point.unit).to_string(),
+                    crate::localization::rack_side(point.side),
+                    (point.offset_cm).to_string(),
+                ],
             ));
             if ui.small_button("×").clicked() {
                 actions.write(UiAction::RemoveCableRoutePoint { link: id, index });
@@ -1285,7 +1394,7 @@ fn link_inspector(
                     route: reordered,
                 });
             }
-            if ui.small_button("Left").clicked() {
+            if ui.small_button(tr("ui.left")).clicked() {
                 let mut moved = *point;
                 moved.offset_cm = 0;
                 actions.write(UiAction::MoveCableRoutePoint {
@@ -1294,7 +1403,7 @@ fn link_inspector(
                     point: moved,
                 });
             }
-            if ui.small_button("Right").clicked() {
+            if ui.small_button(tr("ui.right")).clicked() {
                 let mut moved = *point;
                 moved.offset_cm = 48;
                 actions.write(UiAction::MoveCableRoutePoint {
@@ -1306,9 +1415,9 @@ fn link_inspector(
         });
     }
     if route.is_empty() {
-        ui.label("No anchors; click a rack anchor to add one.");
+        ui.label(tr("ui.no-anchors-click-a-rack-anchor-to"));
     }
-    if ui.button("Disconnect").clicked() {
+    if ui.button(tr("ui.disconnect")).clicked() {
         actions.write(UiAction::Disconnect(id));
     }
 }
@@ -1337,64 +1446,133 @@ fn rack_view(
     actions: &mut MessageWriter<UiAction>,
 ) {
     egui::CentralPanel::default().show(viewport, |ui| {
-        let Some(rack) = state.active_rack.and_then(|id| sim.rack(id))
-            .or_else(|| sim.racks().min_by_key(|r| r.id)) else {
+        let Some(rack) = state
+            .active_rack
+            .and_then(|id| sim.rack(id))
+            .or_else(|| sim.racks().min_by_key(|r| r.id))
+        else {
             return;
         };
         ui.vertical_centered(|ui| {
-            ui.heading(format!("{} · {:?} SIDE", rack.name, state.rack_side));
+            ui.heading(crate::localization::tr_args(
+                "ui.side",
+                &[
+                    crate::localization::rack_name(rack),
+                    crate::localization::rack_side(state.rack_side),
+                ],
+            ));
             ui.horizontal(|ui| {
-                ui.menu_button(format!("Select rack: {}", rack.name), |ui| {
-                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                        let mut racks: Vec<_> = sim.racks().collect();
-                        racks.sort_by_key(|rack| rack.id);
-                        for candidate in racks {
-                            if ui.selectable_label(candidate.id == rack.id, &candidate.name).clicked() {
-                                state.active_rack = Some(candidate.id);
-                                ui.close();
-                            }
-                        }
-                    });
-                });
-                if ui.button("Room view").clicked() { state.workspace = Workspace::Room; }
+                ui.menu_button(
+                    crate::localization::tr_args(
+                        "ui.select-rack",
+                        &[crate::localization::rack_name(rack)],
+                    ),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .max_height(300.0)
+                            .show(ui, |ui| {
+                                let mut racks: Vec<_> = sim.racks().collect();
+                                racks.sort_by_key(|rack| rack.id);
+                                for candidate in racks {
+                                    if ui
+                                        .selectable_label(candidate.id == rack.id, &candidate.name)
+                                        .clicked()
+                                    {
+                                        state.active_rack = Some(candidate.id);
+                                        ui.close();
+                                    }
+                                }
+                            });
+                    },
+                );
+                if ui.button(tr("ui.room-view")).clicked() {
+                    state.workspace = Workspace::Room;
+                }
             });
             ui.horizontal(|ui| {
                 for side in [RackSide::Front, RackSide::Rear] {
                     if ui
-                        .selectable_label(state.rack_side == side, format!("{side:?}"))
+                        .selectable_label(
+                            state.rack_side == side,
+                            crate::localization::rack_side(side),
+                        )
                         .clicked()
                     {
                         state.rack_side = side;
                     }
                 }
                 ui.separator();
-                ui.label("Cables:");
-                for visibility in [CableVisibility::All, CableVisibility::Selected, CableVisibility::Hidden] {
-                    if ui.selectable_label(state.cable_visibility == visibility, format!("{visibility:?}")).clicked() {
+                ui.label(tr("ui.cables.2"));
+                for visibility in [
+                    CableVisibility::All,
+                    CableVisibility::Selected,
+                    CableVisibility::Hidden,
+                ] {
+                    if ui
+                        .selectable_label(
+                            state.cable_visibility == visibility,
+                            crate::localization::cable_visibility(visibility),
+                        )
+                        .clicked()
+                    {
                         state.cable_visibility = visibility;
                     }
                 }
             });
-            ui.weak(
-                "Buy cable + RJ45 plugs, then click two sockets. Select a cable, then click the visible left/right rail anchors to add or remove route points. Drag a wire to move its slack.",
-            );
+            ui.weak(tr("cable.install-guide"));
             if let Some(rp) = sim.power.racks.get(&rack.id) {
                 ui.horizontal(|ui| {
                     let reading = sim.power.source_telemetry(SourceId::Rack(rack.id));
                     let watts = reading.map_or(0, |x| x.output.watts);
                     let amps = reading.map_or(0.0, |x| x.output.current_ma as f32 / 1000.0);
-                    ui.label(format!("Power: mains {} · breaker {} · {} W / {:.2} A · 4 C13 outlets", if rp.mains_on { "ON" } else { "OFF" }, if rp.breaker_on { "OK" } else { "TRIPPED" }, watts, amps));
-                    if ui.button(if rp.mains_on { "Mains off" } else { "Mains on" }).clicked() { actions.write(UiAction::RackMains(rack.id, !rp.mains_on)); }
-                    if !rp.breaker_on && ui.button("Reset breaker").clicked() { actions.write(UiAction::ResetPower(SourceId::Rack(rack.id))); }
+                    ui.label(crate::localization::tr_args(
+                        "ui.power-mains-breaker-w-a-4-c13",
+                        &[
+                            tr(if rp.mains_on { "ui.on" } else { "ui.off" }),
+                            tr(if rp.breaker_on { "ui.ok" } else { "ui.tripped" }),
+                            (watts).to_string(),
+                            format!("{:.2}", amps),
+                        ],
+                    ));
+                    if ui
+                        .button(tr(if rp.mains_on {
+                            "ui.mains-off"
+                        } else {
+                            "ui.mains-on"
+                        }))
+                        .clicked()
+                    {
+                        actions.write(UiAction::RackMains(rack.id, !rp.mains_on));
+                    }
+                    if !rp.breaker_on && ui.button(tr("ui.reset-breaker")).clicked() {
+                        actions.write(UiAction::ResetPower(SourceId::Rack(rack.id)));
+                    }
                 });
-                for source in power_sources(sim).into_iter().filter(|s| !matches!(s, SourceId::Rack(_))) {
-                    if let Some(t) = sim.power.source_telemetry(source) { ui.label(format!("{}: {} W / {} VA · {}", source_label(sim, source), t.output.watts, t.output.va, if t.available { "ONLINE" } else { "OFFLINE" })); }
+                for source in power_sources(sim)
+                    .into_iter()
+                    .filter(|s| !matches!(s, SourceId::Rack(_)))
+                {
+                    if let Some(t) = sim.power.source_telemetry(source) {
+                        ui.label(crate::localization::tr_args(
+                            "ui.w-va",
+                            &[
+                                (source_label(sim, source)).to_string(),
+                                (t.output.watts).to_string(),
+                                (t.output.va).to_string(),
+                                tr(if t.available {
+                                    "ui.online"
+                                } else {
+                                    "ui.offline"
+                                }),
+                            ],
+                        ));
+                    }
                 }
             }
         });
-            egui::ScrollArea::both()
-                .id_salt("rack-scroll")
-                .show(ui, |ui| {
+        egui::ScrollArea::both()
+            .id_salt("rack-scroll")
+            .show(ui, |ui| {
                 let selected_inventory = match state.selected {
                     Selection::Device(id) if sim.device(id).is_some_and(|d| d.rack.is_none()) => {
                         Some(id)
@@ -1418,36 +1596,119 @@ fn rack_view(
                     .show(ui, |ui| {
                         ui.set_width(rack_width);
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        layout.paint_crossbar(ui, &format!("{} U  /  {:?}", rack.units, state.rack_side).to_uppercase());
+                        layout.paint_crossbar(
+                            ui,
+                            &crate::localization::tr_args(
+                                "rack.crossbar",
+                                &[
+                                    (rack.units).to_string(),
+                                    crate::localization::rack_side(state.rack_side),
+                                ],
+                            )
+                            .to_uppercase(),
+                        );
                         ui.horizontal(|ui| {
-                            ui.label("RACK C13:");
+                            ui.label(tr("ui.rack-c13"));
                             for n in 0..4u8 {
-                                let outlet = OutletId { source: SourceId::Rack(rack.id), index: n };
+                                let outlet = OutletId {
+                                    source: SourceId::Rack(rack.id),
+                                    index: n,
+                                };
                                 let occupied = sim.power.connections.contains_key(&outlet);
-                                let response = ui.allocate_response(egui::vec2(44.0, 28.0), egui::Sense::click()).on_hover_text(if occupied { "C13 occupied · right-click to unplug" } else { "C13 outlet · click to connect" });
-                                paint_power_socket(ui.painter(), textures.power_connectors, response.rect.shrink(2.0));
-                                power_socket_rects.push((PowerSocket::Outlet(outlet), response.rect));
+                                let response = ui
+                                    .allocate_response(egui::vec2(44.0, 28.0), egui::Sense::click())
+                                    .on_hover_text(tr(if occupied {
+                                        "ui.c13-occupied-right-click-to-unplug"
+                                    } else {
+                                        "ui.c13-outlet-click-to-connect"
+                                    }));
+                                paint_power_socket(
+                                    ui.painter(),
+                                    textures.power_connectors,
+                                    response.rect.shrink(2.0),
+                                );
+                                power_socket_rects
+                                    .push((PowerSocket::Outlet(outlet), response.rect));
                                 if state.pending_power_outlet == Some(outlet)
                                     || state.pending_power_inlet.is_some()
                                     || state.selected == Selection::PowerCable(outlet)
                                     || response.hovered()
                                 {
-                                    ui.painter().rect_stroke(response.rect.shrink(1.0), 2.0, egui::Stroke::new(2.0, if state.selected == Selection::PowerCable(outlet) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                    ui.painter().rect_stroke(
+                                        response.rect.shrink(1.0),
+                                        2.0,
+                                        egui::Stroke::new(
+                                            2.0,
+                                            if state.selected == Selection::PowerCable(outlet) {
+                                                egui::Color32::from_rgb(120, 205, 255)
+                                            } else if response.hovered() {
+                                                egui::Color32::LIGHT_BLUE
+                                            } else {
+                                                egui::Color32::from_rgb(255, 196, 64)
+                                            },
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
                                 }
                                 power_outlets.insert(outlet, response.rect.center());
-                                if response.clicked() { actions.write(if occupied { UiAction::SelectPowerCable(outlet) } else { UiAction::PowerSocket(crate::app::PowerSocket::Outlet(outlet)) }); }
-                                response.context_menu(|menu| { if occupied && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(outlet)); menu.close(); } });
+                                if response.clicked() {
+                                    actions.write(if occupied {
+                                        UiAction::SelectPowerCable(outlet)
+                                    } else {
+                                        UiAction::PowerSocket(crate::app::PowerSocket::Outlet(
+                                            outlet,
+                                        ))
+                                    });
+                                }
+                                response.context_menu(|menu| {
+                                    if occupied && menu.button(tr("ui.unplug-cable")).clicked() {
+                                        actions.write(UiAction::DisconnectPower(outlet));
+                                        menu.close();
+                                    }
+                                });
                             }
                         });
-                        if let Some(outlet) = sim.network_outlets().find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: rack.id }) {
+                        if let Some(outlet) = sim
+                            .network_outlets()
+                            .find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: rack.id })
+                        {
                             ui.horizontal(|ui| {
-                                ui.label("ROOM LAN:");
+                                ui.label(tr("ui.room-lan"));
                                 let connected = sim.link_for_port(outlet.port).is_some();
-                                let response = ui.allocate_response(egui::vec2(86.0, 27.0), egui::Sense::click()).on_hover_text(format!("Rack LAN port {} · click to connect", outlet.port.0));
-                                ui.painter().rect_filled(response.rect.shrink(1.0), 2.0, egui::Color32::from_rgb(37, 49, 55));
-                                let socket = egui::Rect::from_center_size(egui::pos2(response.rect.left() + 17.0, response.rect.center().y), egui::vec2(25.0, 18.0));
-                                room::NetworkSocketRenderer::paint(ui.painter(), socket, connected, state.selected == Selection::Port(outlet.port));
-                                ui.painter().text(egui::pos2(response.rect.left() + 33.0, response.rect.center().y), egui::Align2::LEFT_CENTER, "LAN", egui::FontId::monospace(10.0), egui::Color32::WHITE);
+                                let response = ui
+                                    .allocate_response(egui::vec2(86.0, 27.0), egui::Sense::click())
+                                    .on_hover_text(crate::localization::tr_args(
+                                        "ui.rack-lan-port-click-to-connect",
+                                        &[(outlet.port.0).to_string()],
+                                    ));
+                                ui.painter().rect_filled(
+                                    response.rect.shrink(1.0),
+                                    2.0,
+                                    egui::Color32::from_rgb(37, 49, 55),
+                                );
+                                let socket = egui::Rect::from_center_size(
+                                    egui::pos2(
+                                        response.rect.left() + 17.0,
+                                        response.rect.center().y,
+                                    ),
+                                    egui::vec2(25.0, 18.0),
+                                );
+                                room::NetworkSocketRenderer::paint(
+                                    ui.painter(),
+                                    socket,
+                                    connected,
+                                    state.selected == Selection::Port(outlet.port),
+                                );
+                                ui.painter().text(
+                                    egui::pos2(
+                                        response.rect.left() + 33.0,
+                                        response.rect.center().y,
+                                    ),
+                                    egui::Align2::LEFT_CENTER,
+                                    tr("ui.lan"),
+                                    egui::FontId::monospace(10.0),
+                                    egui::Color32::WHITE,
+                                );
                                 port_visuals.push((outlet.port, response.rect));
                             });
                         }
@@ -1457,15 +1718,17 @@ fn rack_view(
                                 egui::Sense::click(),
                             );
                             let row = layout.row(row_rect);
-                            let panel_rect = rack_device_panel_rect(
-                                rack,
-                                layout.row_height,
-                                unit,
-                                row.face,
-                            );
+                            let panel_rect =
+                                rack_device_panel_rect(rack, layout.row_height, unit, row.face);
                             row.paint(ui.painter(), unit, rack.occupies(unit).is_some());
                             for (offset_cm, position) in [0, 48].into_iter().zip(row.anchors) {
-                                route_anchors.push((rack.id, unit, state.rack_side, offset_cm, position));
+                                route_anchors.push((
+                                    rack.id,
+                                    unit,
+                                    state.rack_side,
+                                    offset_cm,
+                                    position,
+                                ));
                             }
                             if let Some(device_id) = rack.occupies(unit) {
                                 // A 2U chassis occupies two rack placements but has one
@@ -1486,15 +1749,32 @@ fn rack_view(
                                 }
                                 let device = sim.device(device_id).expect("rack device exists");
                                 let row_response = ui.interact(
-                                    panel_rect, egui::Id::new(("device-panel", device_id.0)), egui::Sense::click(),
+                                    panel_rect,
+                                    egui::Id::new(("device-panel", device_id.0)),
+                                    egui::Sense::click(),
                                 );
                                 row_response.context_menu(|menu| {
-                                    menu.label(device.name.as_str());
-                                    if let Some(endpoint) = device_power_endpoint(device) && let Some((outlet, _)) = sim.power.connections.iter().find(|(_, target)| **target == endpoint) && menu.button(format!("Unplug power ({} C13-{})", source_label(sim, outlet.source), outlet.index + 1)).clicked() {
-                                                actions.write(UiAction::DisconnectPower(*outlet));
-                                                menu.close();
+                                    menu.label(crate::localization::device_name(device));
+                                    if let Some(endpoint) = device_power_endpoint(device)
+                                        && let Some((outlet, _)) = sim
+                                            .power
+                                            .connections
+                                            .iter()
+                                            .find(|(_, target)| **target == endpoint)
+                                        && menu
+                                            .button(crate::localization::tr_args(
+                                                "ui.unplug-power-c13",
+                                                &[
+                                                    (source_label(sim, outlet.source)).to_string(),
+                                                    (outlet.index + 1).to_string(),
+                                                ],
+                                            ))
+                                            .clicked()
+                                    {
+                                        actions.write(UiAction::DisconnectPower(*outlet));
+                                        menu.close();
                                     }
-                                    if menu.button("Eject from rack").clicked() {
+                                    if menu.button(tr("ui.eject-from-rack")).clicked() {
                                         actions.write(UiAction::Remove(device_id));
                                         menu.close();
                                     }
@@ -1511,7 +1791,8 @@ fn rack_view(
                                             RackSide::Front,
                                             offset_cm,
                                             egui::pos2(
-                                                panel_rect.left() + panel_rect.width() * offset_cm as f32 / 48.0,
+                                                panel_rect.left()
+                                                    + panel_rect.width() * offset_cm as f32 / 48.0,
                                                 panel_rect.center().y,
                                             ),
                                         ));
@@ -1526,10 +1807,21 @@ fn rack_view(
                                             1.0,
                                             egui::Color32::from_rgb(43, 48, 54),
                                         );
-                                        let sides: Vec<_> = device.ports().iter().map(|id| sim.port(*id).expect("patch port exists").side).collect();
-                                        for (slot, index) in visible_patch_port_indices(&sides, state.rack_side).into_iter().enumerate() {
+                                        let sides: Vec<_> = device
+                                            .ports()
+                                            .iter()
+                                            .map(|id| {
+                                                sim.port(*id).expect("patch port exists").side
+                                            })
+                                            .collect();
+                                        for (slot, index) in
+                                            visible_patch_port_indices(&sides, state.rack_side)
+                                                .into_iter()
+                                                .enumerate()
+                                        {
                                             let port_id = &device.ports()[index];
-                                            let port = sim.port(*port_id).expect("patch port exists");
+                                            let port =
+                                                sim.port(*port_id).expect("patch port exists");
                                             let socket = rack_port_rect(
                                                 &device.kind,
                                                 panel_rect,
@@ -1545,7 +1837,10 @@ fn rack_view(
                                             ui.painter().text(
                                                 egui::pos2(socket.center().x, socket.top() - 1.0),
                                                 egui::Align2::CENTER_BOTTOM,
-                                                format!("{:02}", slot + 1),
+                                                crate::localization::tr_args(
+                                                    "format.two-digit-number",
+                                                    &[format!("{:02}", slot + 1)],
+                                                ),
                                                 egui::FontId::monospace(6.0),
                                                 egui::Color32::from_gray(170),
                                             );
@@ -1560,71 +1855,224 @@ fn rack_view(
                                         for slot in 1..5 {
                                             let offset_cm = slot * 48 / 5;
                                             let center = egui::pos2(
-                                                panel_rect.left() + panel_rect.width() * offset_cm as f32 / 48.0,
+                                                panel_rect.left()
+                                                    + panel_rect.width() * offset_cm as f32 / 48.0,
                                                 panel_rect.center().y,
                                             );
                                             ui.painter().circle_stroke(
                                                 center,
                                                 5.0,
-                                                egui::Stroke::new(2.0, egui::Color32::from_rgb(82, 92, 99)),
+                                                egui::Stroke::new(
+                                                    2.0,
+                                                    egui::Color32::from_rgb(82, 92, 99),
+                                                ),
                                             );
                                         }
                                     }
                                     _ => {
-                                        let textured = matches!(device.kind, DeviceKind::Server(_)
-                                            | DeviceKind::Switch(_) | DeviceKind::Router(_)
-                                            | DeviceKind::Ups(_) | DeviceKind::Pdu(_));
+                                        let textured = matches!(
+                                            device.kind,
+                                            DeviceKind::Server(_)
+                                                | DeviceKind::Switch(_)
+                                                | DeviceKind::Router(_)
+                                                | DeviceKind::Ups(_)
+                                                | DeviceKind::Pdu(_)
+                                        );
                                         if textured {
                                             let texture = match device.kind {
-                                                DeviceKind::Server(_) if state.rack_side == RackSide::Front => textures.server_front,
+                                                DeviceKind::Server(_)
+                                                    if state.rack_side == RackSide::Front =>
+                                                {
+                                                    textures.server_front
+                                                }
                                                 DeviceKind::Server(_) => textures.server_rear,
-                                                DeviceKind::Switch(_) if state.rack_side == RackSide::Front => textures.switch_front,
+                                                DeviceKind::Switch(_)
+                                                    if state.rack_side == RackSide::Front =>
+                                                {
+                                                    textures.switch_front
+                                                }
                                                 DeviceKind::Switch(_) => textures.switch_rear,
-                                                DeviceKind::Router(_) if state.rack_side == RackSide::Front => textures.router_front,
+                                                DeviceKind::Router(_)
+                                                    if state.rack_side == RackSide::Front =>
+                                                {
+                                                    textures.router_front
+                                                }
                                                 DeviceKind::Router(_) => textures.router_rear,
                                                 DeviceKind::Ups(_) => textures.ups_faces,
                                                 DeviceKind::Pdu(_) => textures.pdu_faces,
                                                 _ => unreachable!(),
                                             };
-                                            ui.painter().image(texture, panel_rect, equipment_uv(&device.kind, state.rack_side), if device.powered { egui::Color32::WHITE } else { egui::Color32::from_gray(90) });
+                                            ui.painter().image(
+                                                texture,
+                                                panel_rect,
+                                                equipment_uv(&device.kind, state.rack_side),
+                                                if device.powered {
+                                                    egui::Color32::WHITE
+                                                } else {
+                                                    egui::Color32::from_gray(90)
+                                                },
+                                            );
                                             if state.rack_side == RackSide::Rear {
-                                                paint_server_backplane(ui.painter(), panel_rect, &device.kind, device.powered);
+                                                paint_server_backplane(
+                                                    ui.painter(),
+                                                    panel_rect,
+                                                    &device.kind,
+                                                    device.powered,
+                                                );
                                             } else {
-                                                paint_server_drives(ui.painter(), panel_rect, &device.kind);
+                                                paint_server_drives(
+                                                    ui.painter(),
+                                                    panel_rect,
+                                                    &device.kind,
+                                                );
                                             }
-                                            if matches!(device.kind, DeviceKind::Ups(_)) && state.rack_side == RackSide::Front {
+                                            if matches!(device.kind, DeviceKind::Ups(_))
+                                                && state.rack_side == RackSide::Front
+                                            {
                                                 let lcd = ups_lcd_rect(panel_rect);
-                                                ui.painter().rect_filled(lcd, 1.0, egui::Color32::from_rgb(12, 25, 28));
+                                                ui.painter().rect_filled(
+                                                    lcd,
+                                                    1.0,
+                                                    egui::Color32::from_rgb(12, 25, 28),
+                                                );
                                                 let telemetry = match device.kind {
-                                                    DeviceKind::Ups(ref ups) => ups.source.and_then(|s| sim.power.source_telemetry(s)),
+                                                    DeviceKind::Ups(ref ups) => {
+                                                        ups.source.and_then(|s| {
+                                                            sim.power.source_telemetry(s)
+                                                        })
+                                                    }
                                                     _ => None,
                                                 };
-                                                let (battery, load) = telemetry.map_or((0, 0), |t| {
-                                                    let cap = match device.kind {
-                                                        DeviceKind::Ups(ref ups) => ups.source.and_then(|s| match s { SourceId::Ups(id) => sim.power.ups.get(&id).map(|u| u.spec.battery_wh), _ => None }),
-                                                        _ => None,
-                                                    }.unwrap_or(0);
-                                                    (if cap == 0 { 0 } else { (t.battery_mwh / 1000 * 100 / u64::from(cap)) as u32 }, t.output.watts)
-                                                });
-                                                let font = egui::FontId::monospace((lcd.height() * 0.22).clamp(5.0, 9.0));
-                                                ui.painter().text(egui::pos2(lcd.center().x, lcd.center().y - font.size), egui::Align2::CENTER_CENTER, format!("BAT {battery}%"), font.clone(), egui::Color32::from_rgb(112, 235, 184));
-                                                ui.painter().text(egui::pos2(lcd.center().x, lcd.center().y + font.size), egui::Align2::CENTER_CENTER, format!("LOAD {load}W"), font, egui::Color32::from_rgb(112, 235, 184));
-                                                let button = egui::Rect::from_center_size(normalized_panel_position(panel_rect, (0.814, 0.29)), egui::vec2(18.0, 18.0));
-                                                let response = ui.interact(button, egui::Id::new(("ups-power-button", device_id.0)), egui::Sense::click());
+                                                let (battery, load) =
+                                                    telemetry.map_or((0, 0), |t| {
+                                                        let cap = match device.kind {
+                                                            DeviceKind::Ups(ref ups) => {
+                                                                ups.source.and_then(|s| match s {
+                                                                    SourceId::Ups(id) => {
+                                                                        sim.power.ups.get(&id).map(
+                                                                            |u| u.spec.battery_wh,
+                                                                        )
+                                                                    }
+                                                                    _ => None,
+                                                                })
+                                                            }
+                                                            _ => None,
+                                                        }
+                                                        .unwrap_or(0);
+                                                        (
+                                                            if cap == 0 {
+                                                                0
+                                                            } else {
+                                                                (t.battery_mwh / 1000 * 100
+                                                                    / u64::from(cap))
+                                                                    as u32
+                                                            },
+                                                            t.output.watts,
+                                                        )
+                                                    });
+                                                let font = egui::FontId::monospace(
+                                                    (lcd.height() * 0.22).clamp(5.0, 9.0),
+                                                );
+                                                ui.painter().text(
+                                                    egui::pos2(
+                                                        lcd.center().x,
+                                                        lcd.center().y - font.size,
+                                                    ),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    crate::localization::tr_args(
+                                                        "ui.bat",
+                                                        &[(battery).to_string()],
+                                                    ),
+                                                    font.clone(),
+                                                    egui::Color32::from_rgb(112, 235, 184),
+                                                );
+                                                ui.painter().text(
+                                                    egui::pos2(
+                                                        lcd.center().x,
+                                                        lcd.center().y + font.size,
+                                                    ),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    crate::localization::tr_args(
+                                                        "ui.load-w",
+                                                        &[(load).to_string()],
+                                                    ),
+                                                    font,
+                                                    egui::Color32::from_rgb(112, 235, 184),
+                                                );
+                                                let button = egui::Rect::from_center_size(
+                                                    normalized_panel_position(
+                                                        panel_rect,
+                                                        (0.814, 0.29),
+                                                    ),
+                                                    egui::vec2(18.0, 18.0),
+                                                );
+                                                let response = ui.interact(
+                                                    button,
+                                                    egui::Id::new((
+                                                        "ups-power-button",
+                                                        device_id.0,
+                                                    )),
+                                                    egui::Sense::click(),
+                                                );
                                                 if response.clicked() {
                                                     let enabled = match device.kind {
-                                                        DeviceKind::Ups(ref ups) => ups.source.is_some_and(|s| sim.power.source_enabled(s)),
+                                                        DeviceKind::Ups(ref ups) => {
+                                                            ups.source.is_some_and(|s| {
+                                                                sim.power.source_enabled(s)
+                                                            })
+                                                        }
                                                         _ => false,
                                                     };
-                                                    actions.write(UiAction::TogglePower(device_id, !enabled));
+                                                    actions.write(UiAction::TogglePower(
+                                                        device_id, !enabled,
+                                                    ));
                                                 }
                                             }
                                         } else {
-                                            ui.painter().rect_filled(panel_rect.shrink(3.0), 1.0, egui::Color32::from_rgb(38, 44, 50));
-                                            ui.painter().rect_stroke(panel_rect.shrink(8.0), 1.0, egui::Stroke::new(1.0, egui::Color32::from_gray(75)), egui::StrokeKind::Inside);
-                                            ui.painter().circle_filled(egui::pos2(panel_rect.left() + 14.0, panel_rect.center().y), 4.0, if device.powered { egui::Color32::GREEN } else { egui::Color32::from_gray(35) });
-                                            if matches!(device.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)) {
-                                                for fan in 0..3 { ui.painter().circle_stroke(egui::pos2(panel_rect.center().x + (fan as f32 - 1.0) * 18.0, panel_rect.center().y), 7.0, egui::Stroke::new(1.0, egui::Color32::from_gray(85))); }
+                                            ui.painter().rect_filled(
+                                                panel_rect.shrink(3.0),
+                                                1.0,
+                                                egui::Color32::from_rgb(38, 44, 50),
+                                            );
+                                            ui.painter().rect_stroke(
+                                                panel_rect.shrink(8.0),
+                                                1.0,
+                                                egui::Stroke::new(
+                                                    1.0,
+                                                    egui::Color32::from_gray(75),
+                                                ),
+                                                egui::StrokeKind::Inside,
+                                            );
+                                            ui.painter().circle_filled(
+                                                egui::pos2(
+                                                    panel_rect.left() + 14.0,
+                                                    panel_rect.center().y,
+                                                ),
+                                                4.0,
+                                                if device.powered {
+                                                    egui::Color32::GREEN
+                                                } else {
+                                                    egui::Color32::from_gray(35)
+                                                },
+                                            );
+                                            if matches!(
+                                                device.kind,
+                                                DeviceKind::Switch(_) | DeviceKind::Router(_)
+                                            ) {
+                                                for fan in 0..3 {
+                                                    ui.painter().circle_stroke(
+                                                        egui::pos2(
+                                                            panel_rect.center().x
+                                                                + (fan as f32 - 1.0) * 18.0,
+                                                            panel_rect.center().y,
+                                                        ),
+                                                        7.0,
+                                                        egui::Stroke::new(
+                                                            1.0,
+                                                            egui::Color32::from_gray(85),
+                                                        ),
+                                                    );
+                                                }
                                             }
                                         }
                                     }
@@ -1632,48 +2080,171 @@ fn rack_view(
                                 let inlet_meta = device.kind.power_inlet();
                                 if inlet_meta.is_some_and(|inlet| inlet.side == state.rack_side)
                                     && device.rack.is_some_and(|p| p.unit == unit)
-                                    && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
+                                    && !matches!(
+                                        device.kind,
+                                        DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+                                    )
                                 {
-                                    let inlet = device_power_inlet_rect(&device.kind, panel_rect).expect("device has power inlet");
+                                    let inlet = device_power_inlet_rect(&device.kind, panel_rect)
+                                        .expect("device has power inlet");
                                     let endpoint = device_power_endpoint(device);
                                     if let Some(endpoint) = endpoint {
-                                        power_socket_rects.push((PowerSocket::Inlet(endpoint), inlet));
+                                        power_socket_rects
+                                            .push((PowerSocket::Inlet(endpoint), inlet));
                                     }
-                                    let fed = endpoint.and_then(|e| sim.power.connections.iter().find(|(_, x)| **x == e).map(|(o, _)| *o));
+                                    let fed = endpoint.and_then(|e| {
+                                        sim.power
+                                            .connections
+                                            .iter()
+                                            .find(|(_, x)| **x == e)
+                                            .map(|(o, _)| *o)
+                                    });
                                     let cable_end = inlet.center();
-                                    if let Some(endpoint) = endpoint { power_endpoints.push((endpoint, cable_end)); }
-                                    let response = ui.interact(inlet, egui::Id::new(("power-inlet", device_id.0)), egui::Sense::click()).on_hover_text(if fed.is_some() { "Occupied · right-click to unplug" } else { "Power inlet · click to connect" });
-                                    if endpoint.is_some_and(|e| state.pending_power_inlet == Some(e))
+                                    if let Some(endpoint) = endpoint {
+                                        power_endpoints.push((endpoint, cable_end));
+                                    }
+                                    let response = ui
+                                        .interact(
+                                            inlet,
+                                            egui::Id::new(("power-inlet", device_id.0)),
+                                            egui::Sense::click(),
+                                        )
+                                        .on_hover_text(tr(if fed.is_some() {
+                                            "ui.occupied-right-click-to-unplug"
+                                        } else {
+                                            "ui.power-inlet-click-to-connect"
+                                        }));
+                                    if endpoint
+                                        .is_some_and(|e| state.pending_power_inlet == Some(e))
                                         || state.pending_power_outlet.is_some()
-                                        || fed.is_some_and(|outlet| state.selected == Selection::PowerCable(outlet))
+                                        || fed.is_some_and(|outlet| {
+                                            state.selected == Selection::PowerCable(outlet)
+                                        })
                                         || response.hovered()
                                     {
-                                        ui.painter().rect_stroke(inlet, 2.0, egui::Stroke::new(2.0, if fed.is_some_and(|outlet| state.selected == Selection::PowerCable(outlet)) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                        ui.painter().rect_stroke(
+                                            inlet,
+                                            2.0,
+                                            egui::Stroke::new(
+                                                2.0,
+                                                if fed.is_some_and(|outlet| {
+                                                    state.selected == Selection::PowerCable(outlet)
+                                                }) {
+                                                    egui::Color32::from_rgb(120, 205, 255)
+                                                } else if response.hovered() {
+                                                    egui::Color32::LIGHT_BLUE
+                                                } else {
+                                                    egui::Color32::from_rgb(255, 196, 64)
+                                                },
+                                            ),
+                                            egui::StrokeKind::Inside,
+                                        );
                                     }
-                                    if response.clicked() && let Some(endpoint) = endpoint { actions.write(UiAction::PowerSocket(crate::app::PowerSocket::Inlet(endpoint))); }
-                                    response.context_menu(|menu| { if let Some(outlet) = fed && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(outlet)); menu.close(); } });
+                                    if response.clicked()
+                                        && let Some(endpoint) = endpoint
+                                    {
+                                        actions.write(UiAction::PowerSocket(
+                                            crate::app::PowerSocket::Inlet(endpoint),
+                                        ));
+                                    }
+                                    response.context_menu(|menu| {
+                                        if let Some(outlet) = fed
+                                            && menu.button(tr("ui.unplug-cable")).clicked()
+                                        {
+                                            actions.write(UiAction::DisconnectPower(outlet));
+                                            menu.close();
+                                        }
+                                    });
                                 }
-                                if state.rack_side == RackSide::Rear && device.rack.is_some_and(|p| p.unit == unit) {
-                                    let source = match device.kind { DeviceKind::Ups(ref x) => x.source, DeviceKind::Pdu(ref x) => x.source, _ => None };
+                                if state.rack_side == RackSide::Rear
+                                    && device.rack.is_some_and(|p| p.unit == unit)
+                                {
+                                    let source = match device.kind {
+                                        DeviceKind::Ups(ref x) => x.source,
+                                        DeviceKind::Pdu(ref x) => x.source,
+                                        _ => None,
+                                    };
                                     if let Some(source) = source {
                                         let count = sim.power.outlets(source);
                                         for n in 0..count {
-                                            let socket = source_outlet_rect(&device.kind, panel_rect, n);
-                                            let occupied = sim.power.connections.contains_key(&OutletId { source, index: n as u8 });
-                                            let outlet_id = OutletId { source, index: n as u8 };
-                                            power_socket_rects.push((PowerSocket::Outlet(outlet_id), socket));
+                                            let socket =
+                                                source_outlet_rect(&device.kind, panel_rect, n);
+                                            let occupied =
+                                                sim.power.connections.contains_key(&OutletId {
+                                                    source,
+                                                    index: n as u8,
+                                                });
+                                            let outlet_id = OutletId {
+                                                source,
+                                                index: n as u8,
+                                            };
+                                            power_socket_rects
+                                                .push((PowerSocket::Outlet(outlet_id), socket));
                                             let outlet_end = socket.center();
-                                            let response = ui.interact(socket, egui::Id::new(("power-outlet", device_id.0, n)), egui::Sense::click()).on_hover_text(if occupied { "C13 occupied" } else { "C13 outlet · select as source" });
+                                            let response = ui
+                                                .interact(
+                                                    socket,
+                                                    egui::Id::new(("power-outlet", device_id.0, n)),
+                                                    egui::Sense::click(),
+                                                )
+                                                .on_hover_text(tr(if occupied {
+                                                    "ui.c13-occupied"
+                                                } else {
+                                                    "ui.c13-outlet-select-as-source"
+                                                }));
                                             if state.pending_power_outlet == Some(outlet_id)
                                                 || state.pending_power_inlet.is_some()
-                                                || state.selected == Selection::PowerCable(outlet_id)
+                                                || state.selected
+                                                    == Selection::PowerCable(outlet_id)
                                                 || response.hovered()
                                             {
-                                                ui.painter().rect_stroke(socket, 2.0, egui::Stroke::new(2.0, if state.selected == Selection::PowerCable(outlet_id) { egui::Color32::from_rgb(120, 205, 255) } else if response.hovered() { egui::Color32::LIGHT_BLUE } else { egui::Color32::from_rgb(255, 196, 64) }), egui::StrokeKind::Inside);
+                                                ui.painter().rect_stroke(
+                                                    socket,
+                                                    2.0,
+                                                    egui::Stroke::new(
+                                                        2.0,
+                                                        if state.selected
+                                                            == Selection::PowerCable(outlet_id)
+                                                        {
+                                                            egui::Color32::from_rgb(120, 205, 255)
+                                                        } else if response.hovered() {
+                                                            egui::Color32::LIGHT_BLUE
+                                                        } else {
+                                                            egui::Color32::from_rgb(255, 196, 64)
+                                                        },
+                                                    ),
+                                                    egui::StrokeKind::Inside,
+                                                );
                                             }
-                                            power_outlets.insert(OutletId { source, index: n as u8 }, outlet_end);
-                                            if response.clicked() { actions.write(if occupied { UiAction::SelectPowerCable(outlet_id) } else { UiAction::PowerSocket(crate::app::PowerSocket::Outlet(outlet_id)) }); }
-                                            response.context_menu(|menu| { if occupied && menu.button("Unplug cable").clicked() { actions.write(UiAction::DisconnectPower(OutletId { source, index: n as u8 })); menu.close(); } });
+                                            power_outlets.insert(
+                                                OutletId {
+                                                    source,
+                                                    index: n as u8,
+                                                },
+                                                outlet_end,
+                                            );
+                                            if response.clicked() {
+                                                actions.write(if occupied {
+                                                    UiAction::SelectPowerCable(outlet_id)
+                                                } else {
+                                                    UiAction::PowerSocket(
+                                                        crate::app::PowerSocket::Outlet(outlet_id),
+                                                    )
+                                                });
+                                            }
+                                            response.context_menu(|menu| {
+                                                if occupied
+                                                    && menu.button(tr("ui.unplug-cable")).clicked()
+                                                {
+                                                    actions.write(UiAction::DisconnectPower(
+                                                        OutletId {
+                                                            source,
+                                                            index: n as u8,
+                                                        },
+                                                    ));
+                                                    menu.close();
+                                                }
+                                            });
                                         }
                                     }
                                 }
@@ -1690,20 +2261,48 @@ fn rack_view(
                                     ),
                                     egui::StrokeKind::Outside,
                                 );
-                                if !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)) {
+                                if !matches!(
+                                    device.kind,
+                                    DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+                                ) {
                                     ui.painter().circle_filled(
-                                        egui::pos2(panel_rect.right() - 10.0, panel_rect.top() + 10.0),
+                                        egui::pos2(
+                                            panel_rect.right() - 10.0,
+                                            panel_rect.top() + 10.0,
+                                        ),
                                         4.0,
-                                        if device.powered { egui::Color32::GREEN } else { egui::Color32::from_gray(45) },
+                                        if device.powered {
+                                            egui::Color32::GREEN
+                                        } else {
+                                            egui::Color32::from_gray(45)
+                                        },
                                     );
                                 }
-                                if matches!(device.kind, DeviceKind::Server(_)) && state.rack_side == RackSide::Front {
+                                if matches!(device.kind, DeviceKind::Server(_))
+                                    && state.rack_side == RackSide::Front
+                                {
                                     let power_rect = egui::Rect::from_center_size(
-                                        egui::pos2(panel_rect.right() - panel_rect.width() * 0.04, panel_rect.top() + panel_rect.height() * 0.14),
+                                        egui::pos2(
+                                            panel_rect.right() - panel_rect.width() * 0.04,
+                                            panel_rect.top() + panel_rect.height() * 0.14,
+                                        ),
                                         egui::vec2(18.0, 18.0),
                                     );
-                                    if ui.interact(power_rect, egui::Id::new(("rack-power", device_id.0)), egui::Sense::click()).on_hover_text("Power on/off").clicked() {
-                                        actions.write(UiAction::TogglePower(device_id, !sim.power.device_status(device_id).is_some_and(|p| p.requested)));
+                                    if ui
+                                        .interact(
+                                            power_rect,
+                                            egui::Id::new(("rack-power", device_id.0)),
+                                            egui::Sense::click(),
+                                        )
+                                        .on_hover_text(tr("ui.power-on-off"))
+                                        .clicked()
+                                    {
+                                        actions.write(UiAction::TogglePower(
+                                            device_id,
+                                            !sim.power
+                                                .device_status(device_id)
+                                                .is_some_and(|p| p.requested),
+                                        ));
                                     }
                                 }
                                 for (index, port_id) in device.ports().iter().enumerate() {
@@ -1720,7 +2319,10 @@ fn rack_view(
                                     );
                                     port_visuals.push((*port_id, port_rect));
                                     if port.connector.supports_cabling()
-                                        && !matches!(device.kind, DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_))
+                                        && !matches!(
+                                            device.kind,
+                                            DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
+                                        )
                                     {
                                         let led_size = egui::vec2(2.0, 2.0);
                                         // Switch LEDs are printed beside each jack on the
@@ -1780,27 +2382,48 @@ fn rack_view(
                                 if installing {
                                     let hovered = row_response.hovered();
                                     if hovered && let Some(id) = selected_inventory {
-                                        let device = sim.device(id).expect("inventory device exists");
+                                        let device =
+                                            sim.device(id).expect("inventory device exists");
                                         let height = device.template().rack_units();
-                                        let valid = unit as u16 + height as u16 - 1 <= rack.units as u16
-                                            && (unit..unit.saturating_add(height)).all(|u| rack.occupies(u).is_none());
+                                        let valid = unit as u16 + height as u16 - 1
+                                            <= rack.units as u16
+                                            && (unit..unit.saturating_add(height))
+                                                .all(|u| rack.occupies(u).is_none());
                                         let rect = egui::Rect::from_min_max(
-                                            panel_rect.left_top() - egui::vec2(0.0, row_height * (height - 1) as f32),
+                                            panel_rect.left_top()
+                                                - egui::vec2(0.0, row_height * (height - 1) as f32),
                                             panel_rect.right_bottom(),
                                         );
                                         placement_preview = Some((id, rect, valid));
                                     }
                                     ui.painter().rect_filled(
-                                        panel_rect, 1.0,
-                                        if hovered { egui::Color32::from_rgb(28, 52, 48) }
-                                        else { egui::Color32::from_rgb(15, 25, 26) },
+                                        panel_rect,
+                                        1.0,
+                                        if hovered {
+                                            egui::Color32::from_rgb(28, 52, 48)
+                                        } else {
+                                            egui::Color32::from_rgb(15, 25, 26)
+                                        },
                                     );
-                                    ui.painter().rect_stroke(panel_rect, 1.0,
-                                        egui::Stroke::new(1.0, egui::Color32::from_rgb(67, 115, 105)),
-                                        egui::StrokeKind::Inside);
-                                    ui.painter().text(panel_rect.center(), egui::Align2::CENTER_CENTER,
-                                        format!("+ INSTALL AT U{unit:02}"), egui::FontId::monospace(11.0),
-                                        egui::Color32::from_rgb(146, 186, 175));
+                                    ui.painter().rect_stroke(
+                                        panel_rect,
+                                        1.0,
+                                        egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(67, 115, 105),
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    ui.painter().text(
+                                        panel_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        crate::localization::tr_args(
+                                            "ui.install-at-u",
+                                            &[format!("{:02}", unit)],
+                                        ),
+                                        egui::FontId::monospace(11.0),
+                                        egui::Color32::from_rgb(146, 186, 175),
+                                    );
                                 }
                                 if row_response.clicked()
                                     && let Some(device) = selected_inventory
@@ -1813,58 +2436,128 @@ fn rack_view(
                                 }
                             }
                         }
-                        layout.paint_crossbar(ui, "CABLE SERVICE SPACE");
+                        layout.paint_crossbar(ui, "ui.cable-service-space");
                     });
 
                 if let Some((id, rect, valid)) = placement_preview {
                     let device = sim.device(id).expect("inventory device exists");
-                    let color = if valid { egui::Color32::LIGHT_GREEN } else { egui::Color32::LIGHT_RED };
-                    if let Some(texture) = equipment_texture(textures, &device.kind, state.rack_side) {
-                        ui.painter().image(texture, rect, equipment_uv(&device.kind, state.rack_side),
-                            egui::Color32::WHITE.gamma_multiply(0.65));
+                    let color = if valid {
+                        egui::Color32::LIGHT_GREEN
                     } else {
-                        ui.painter().rect_filled(rect, 1.0, egui::Color32::from_black_alpha(200));
+                        egui::Color32::LIGHT_RED
+                    };
+                    if let Some(texture) =
+                        equipment_texture(textures, &device.kind, state.rack_side)
+                    {
+                        ui.painter().image(
+                            texture,
+                            rect,
+                            equipment_uv(&device.kind, state.rack_side),
+                            egui::Color32::WHITE.gamma_multiply(0.65),
+                        );
+                    } else {
+                        ui.painter()
+                            .rect_filled(rect, 1.0, egui::Color32::from_black_alpha(200));
                         if matches!(device.kind, DeviceKind::PatchPanel(_)) {
                             for (index, port_id) in device.ports().iter().enumerate() {
                                 let port = sim.port(*port_id).expect("patch port exists");
                                 if port.side == state.rack_side {
-                                    let socket = rack_port_rect(&device.kind, rect, index, port.connector, state.rack_side);
-                                    ui.painter().rect_filled(socket, 1.0, egui::Color32::from_gray(60));
+                                    let socket = rack_port_rect(
+                                        &device.kind,
+                                        rect,
+                                        index,
+                                        port.connector,
+                                        state.rack_side,
+                                    );
+                                    ui.painter().rect_filled(
+                                        socket,
+                                        1.0,
+                                        egui::Color32::from_gray(60),
+                                    );
                                 }
                             }
                         } else {
                             for slot in 1..5 {
-                                let center = egui::pos2(rect.left() + rect.width() * (slot * 48 / 5) as f32 / 48.0, rect.center().y);
-                                ui.painter().circle_stroke(center, 5.0, egui::Stroke::new(2.0, egui::Color32::from_gray(90)));
+                                let center = egui::pos2(
+                                    rect.left() + rect.width() * (slot * 48 / 5) as f32 / 48.0,
+                                    rect.center().y,
+                                );
+                                ui.painter().circle_stroke(
+                                    center,
+                                    5.0,
+                                    egui::Stroke::new(2.0, egui::Color32::from_gray(90)),
+                                );
                             }
                         }
                     }
-                    ui.painter().rect_stroke(rect, 1.0, egui::Stroke::new(2.0, color), egui::StrokeKind::Inside);
+                    ui.painter().rect_stroke(
+                        rect,
+                        1.0,
+                        egui::Stroke::new(2.0, color),
+                        egui::StrokeKind::Inside,
+                    );
                 }
 
                 // Power leads follow the same physical rack view and rope solver as network cables.
                 let mut power_rope_cables = Vec::new();
-                let anchors: Vec<_> = route_anchors.iter().map(|&(rack, unit, side, offset_cm, pos)| {
-                    (CableRoutePoint { rack, unit, side, offset_cm }, pos)
-                }).collect();
+                let anchors: Vec<_> = route_anchors
+                    .iter()
+                    .map(|&(rack, unit, side, offset_cm, pos)| {
+                        (
+                            CableRoutePoint {
+                                rack,
+                                unit,
+                                side,
+                                offset_cm,
+                            },
+                            pos,
+                        )
+                    })
+                    .collect();
                 let mut power_paths = HashMap::new();
                 let mut power_connectors = HashMap::new();
                 for (outlet, endpoint) in &sim.power.connections {
-                    let target_pos = power_endpoints.iter().find(|(e, _)| e == endpoint).map(|(_, p)| *p);
+                    let target_pos = power_endpoints
+                        .iter()
+                        .find(|(e, _)| e == endpoint)
+                        .map(|(_, p)| *p);
                     let source_pos = power_outlets.get(outlet).copied();
-                    let Some(source_location) = power_socket_location(sim, PowerSocket::Outlet(*outlet), state.rack_side) else { continue };
-                    let Some(target_location) = power_socket_location(sim, PowerSocket::Inlet(*endpoint), state.rack_side) else { continue };
-                    let route = sim.power.cord_routes.get(outlet).map_or(&[][..], Vec::as_slice);
-                    let spans = cables::visible_spans((source_location, source_pos), (target_location, target_pos), route, &anchors);
+                    let Some(source_location) =
+                        power_socket_location(sim, PowerSocket::Outlet(*outlet), state.rack_side)
+                    else {
+                        continue;
+                    };
+                    let Some(target_location) =
+                        power_socket_location(sim, PowerSocket::Inlet(*endpoint), state.rack_side)
+                    else {
+                        continue;
+                    };
+                    let route = sim
+                        .power
+                        .cord_routes
+                        .get(outlet)
+                        .map_or(&[][..], Vec::as_slice);
+                    let spans = cables::visible_spans(
+                        (source_location, source_pos),
+                        (target_location, target_pos),
+                        route,
+                        &anchors,
+                    );
                     let Some(first) = spans.first() else { continue };
                     let source = first[0];
                     let target = *spans.last().unwrap().last().unwrap();
                     let connectors = [PowerSocket::Outlet(*outlet), PowerSocket::Inlet(*endpoint)]
-                        .iter().filter_map(|socket| power_socket_rects.iter()
-                            .find(|(candidate, _)| candidate == socket).map(|(_, rect)| cables::CableConnector {
-                                socket: *rect,
-                                kind: power_connector_kind(sim, *socket),
-                            })).collect();
+                        .iter()
+                        .filter_map(|socket| {
+                            power_socket_rects
+                                .iter()
+                                .find(|(candidate, _)| candidate == socket)
+                                .map(|(_, rect)| cables::CableConnector {
+                                    socket: *rect,
+                                    kind: power_connector_kind(sim, *socket),
+                                })
+                        })
+                        .collect();
                     power_connectors.insert(*outlet, connectors);
                     power_paths.insert(*outlet, spans);
                     power_rope_cables.push((*outlet, source, target, 0));
@@ -1875,7 +2568,13 @@ fn rack_view(
                     PowerCableView {
                         paths: power_paths.clone(),
                         connectors: power_connectors,
-                        routed: sim.power.cord_routes.iter().filter(|(_, route)| !route.is_empty()).map(|(outlet, _)| *outlet).collect(),
+                        routed: sim
+                            .power
+                            .cord_routes
+                            .iter()
+                            .filter(|(_, route)| !route.is_empty())
+                            .map(|(outlet, _)| *outlet)
+                            .collect(),
                         plug: textures.power_plugs_rear,
                         jacket: textures.jacket,
                         origin: rack_frame.response.rect.left_top(),
@@ -1890,7 +2589,9 @@ fn rack_view(
                             .iter()
                             .map(|(_, rect)| *rect)
                             .chain(port_visuals.iter().map(|(_, rect)| *rect))
-                            .chain(anchors.iter().map(|(_, pos)| egui::Rect::from_center_size(*pos, egui::vec2(14.0, 14.0))))
+                            .chain(anchors.iter().map(|(_, pos)| {
+                                egui::Rect::from_center_size(*pos, egui::vec2(14.0, 14.0))
+                            }))
                             .collect(),
                         interaction_enabled: state.pending_power_outlet.is_none()
                             && state.pending_power_inlet.is_none()
@@ -1901,74 +2602,171 @@ fn rack_view(
                 }
 
                 let positions: HashMap<_, _> = port_visuals.iter().copied().collect();
-                let anchors: Vec<_> = route_anchors.iter().map(|&(rack, unit, side, offset_cm, pos)| {
-                    (CableRoutePoint { rack, unit, side, offset_cm }, pos)
-                }).collect();
+                let anchors: Vec<_> = route_anchors
+                    .iter()
+                    .map(|&(rack, unit, side, offset_cm, pos)| {
+                        (
+                            CableRoutePoint {
+                                rack,
+                                unit,
+                                side,
+                                offset_cm,
+                            },
+                            pos,
+                        )
+                    })
+                    .collect();
                 let selected_route = match state.selected {
-                    Selection::PowerCable(outlet) => sim.power.connections.get(&outlet).and_then(|endpoint| {
-                        Some(RoutedCable {
-                            id: RoutedCableId::Power(outlet),
-                            route: sim.power.cord_routes.get(&outlet).cloned().unwrap_or_default(),
-                            endpoints: (
-                                (power_socket_location(sim, PowerSocket::Outlet(outlet), state.rack_side)?, power_outlets.get(&outlet).copied()),
-                                (power_socket_location(sim, PowerSocket::Inlet(*endpoint), state.rack_side)?, power_endpoints.iter().find(|(e, _)| e == endpoint).map(|(_, p)| *p)),
-                            ),
-                            color: egui::Color32::from_rgb(70, 110, 120),
+                    Selection::PowerCable(outlet) => {
+                        sim.power.connections.get(&outlet).and_then(|endpoint| {
+                            Some(RoutedCable {
+                                id: RoutedCableId::Power(outlet),
+                                route: sim
+                                    .power
+                                    .cord_routes
+                                    .get(&outlet)
+                                    .cloned()
+                                    .unwrap_or_default(),
+                                endpoints: (
+                                    (
+                                        power_socket_location(
+                                            sim,
+                                            PowerSocket::Outlet(outlet),
+                                            state.rack_side,
+                                        )?,
+                                        power_outlets.get(&outlet).copied(),
+                                    ),
+                                    (
+                                        power_socket_location(
+                                            sim,
+                                            PowerSocket::Inlet(*endpoint),
+                                            state.rack_side,
+                                        )?,
+                                        power_endpoints
+                                            .iter()
+                                            .find(|(e, _)| e == endpoint)
+                                            .map(|(_, p)| *p),
+                                    ),
+                                ),
+                                color: egui::Color32::from_rgb(70, 110, 120),
+                            })
                         })
-                    }),
+                    }
                     _ => selected_link_id(state, sim).and_then(|link_id| {
                         let link = sim.link(link_id)?;
                         Some(RoutedCable {
                             id: RoutedCableId::Ethernet(link_id),
                             route: link.route.clone(),
                             endpoints: (
-                                (cables::port_location(sim, link.a)?, positions.get(&link.a).map(egui::Rect::center)),
-                                (cables::port_location(sim, link.b)?, positions.get(&link.b).map(egui::Rect::center)),
+                                (
+                                    cables::port_location(sim, link.a)?,
+                                    positions.get(&link.a).map(egui::Rect::center),
+                                ),
+                                (
+                                    cables::port_location(sim, link.b)?,
+                                    positions.get(&link.b).map(egui::Rect::center),
+                                ),
                             ),
                             color: cable_color_value(link.color),
                         })
                     }),
                 };
-                let pending = state.pending_power_outlet
+                let pending = state
+                    .pending_power_outlet
                     .map(|outlet| PendingCableId::Power(PowerSocket::Outlet(outlet)))
-                    .or_else(|| state.pending_power_inlet.map(|endpoint| PendingCableId::Power(PowerSocket::Inlet(endpoint))))
+                    .or_else(|| {
+                        state
+                            .pending_power_inlet
+                            .map(|endpoint| PendingCableId::Power(PowerSocket::Inlet(endpoint)))
+                    })
                     .or_else(|| state.pending_cable.map(PendingCableId::Ethernet))
                     .and_then(|id| {
                         let (start, route, color) = match id {
                             PendingCableId::Ethernet(port) => (
-                                (cables::port_location(sim, port)?, positions.get(&port).map(egui::Rect::center)),
-                                state.pending_cable_route.clone(), cable_color_value(state.cable_color),
+                                (
+                                    cables::port_location(sim, port)?,
+                                    positions.get(&port).map(egui::Rect::center),
+                                ),
+                                state.pending_cable_route.clone(),
+                                cable_color_value(state.cable_color),
                             ),
                             PendingCableId::Power(socket) => (
-                                (power_socket_location(sim, socket, state.rack_side)?,
-                                    power_socket_rects.iter().find(|(candidate, _)| *candidate == socket).map(|(_, rect)| rect.center())),
-                                state.pending_power_route.clone(), egui::Color32::from_rgb(31, 35, 38),
+                                (
+                                    power_socket_location(sim, socket, state.rack_side)?,
+                                    power_socket_rects
+                                        .iter()
+                                        .find(|(candidate, _)| *candidate == socket)
+                                        .map(|(_, rect)| rect.center()),
+                                ),
+                                state.pending_power_route.clone(),
+                                egui::Color32::from_rgb(31, 35, 38),
                             ),
                         };
-                        Some(PendingCable { id, start, route, color })
+                        Some(PendingCable {
+                            id,
+                            start,
+                            route,
+                            color,
+                        })
                     });
-                let creation_targets: Vec<_> = pending.as_ref().map(|pending| match pending.id {
-                    PendingCableId::Ethernet(first) => port_visuals.iter().filter_map(|(port, rect)| {
-                        Some(cables::CreationTarget {
-                            location: cables::port_location(sim, *port)?, rect: *rect,
-                            same_socket: first == *port,
-                            valid: sim.quote_routed_colored_cable(first, *port, state.cable_length_cm, state.cable_color, &state.pending_cable_route).is_ok(),
+                let creation_targets: Vec<_> =
+                    pending
+                        .as_ref()
+                        .map(|pending| match pending.id {
+                            PendingCableId::Ethernet(first) => port_visuals
+                                .iter()
+                                .filter_map(|(port, rect)| {
+                                    Some(cables::CreationTarget {
+                                        location: cables::port_location(sim, *port)?,
+                                        rect: *rect,
+                                        same_socket: first == *port,
+                                        valid: sim
+                                            .quote_routed_colored_cable(
+                                                first,
+                                                *port,
+                                                state.cable_length_cm,
+                                                state.cable_color,
+                                                &state.pending_cable_route,
+                                            )
+                                            .is_ok(),
+                                    })
+                                })
+                                .collect(),
+                            PendingCableId::Power(source) => power_socket_rects
+                                .iter()
+                                .filter_map(|(target, rect)| {
+                                    let valid = match (source, *target) {
+                                        (
+                                            PowerSocket::Outlet(outlet),
+                                            PowerSocket::Inlet(endpoint),
+                                        )
+                                        | (
+                                            PowerSocket::Inlet(endpoint),
+                                            PowerSocket::Outlet(outlet),
+                                        ) => power_preview_is_valid(sim, outlet, endpoint),
+                                        _ => false,
+                                    };
+                                    Some(cables::CreationTarget {
+                                        location: power_socket_location(
+                                            sim,
+                                            *target,
+                                            state.rack_side,
+                                        )?,
+                                        rect: *rect,
+                                        same_socket: source == *target,
+                                        valid,
+                                    })
+                                })
+                                .collect(),
                         })
-                    }).collect(),
-                    PendingCableId::Power(source) => power_socket_rects.iter().filter_map(|(target, rect)| {
-                        let valid = match (source, *target) {
-                            (PowerSocket::Outlet(outlet), PowerSocket::Inlet(endpoint))
-                            | (PowerSocket::Inlet(endpoint), PowerSocket::Outlet(outlet)) => power_preview_is_valid(sim, outlet, endpoint),
-                            _ => false,
-                        };
-                        Some(cables::CreationTarget {
-                            location: power_socket_location(sim, *target, state.rack_side)?, rect: *rect,
-                            same_socket: source == *target, valid,
-                        })
-                    }).collect(),
-                }).unwrap_or_default();
+                        .unwrap_or_default();
                 for (rack_id, unit, side, offset_cm, position) in route_anchors {
-                    let point = CableRoutePoint { rack: rack_id, unit, side, offset_cm };
+                    let point = CableRoutePoint {
+                        rack: rack_id,
+                        unit,
+                        side,
+                        offset_cm,
+                    };
                     if let Some(pending) = pending.as_ref() {
                         if cables::creation_anchor(ui, point, position, &pending.route) {
                             actions.write(pending.id.anchor_action(point));
@@ -1976,16 +2774,32 @@ fn rack_view(
                         continue;
                     }
                     let Some(cable) = selected_route.as_ref() else {
-                        let anchor_rect = egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
-                        ui.interact(anchor_rect, egui::Id::new(("route-anchor", rack_id.0, unit, side == RackSide::Front, offset_cm)), egui::Sense::hover())
-                            .on_hover_text("Cable route anchor · select a cable to add or remove this anchor");
-                        ui.painter().circle_filled(position, 5.0, egui::Color32::from_rgb(76, 104, 115));
+                        let anchor_rect =
+                            egui::Rect::from_center_size(position, egui::vec2(14.0, 14.0));
+                        ui.interact(
+                            anchor_rect,
+                            egui::Id::new((
+                                "route-anchor",
+                                rack_id.0,
+                                unit,
+                                side == RackSide::Front,
+                                offset_cm,
+                            )),
+                            egui::Sense::hover(),
+                        )
+                        .on_hover_text(tr("ui.cable-route-anchor-select-a-cable-to"));
+                        ui.painter().circle_filled(
+                            position,
+                            5.0,
+                            egui::Color32::from_rgb(76, 104, 115),
+                        );
                         continue;
                     };
-                        let used = cable.route.iter().position(|candidate| *candidate == point);
-                        let anchor_rect =
-                            egui::Rect::from_center_size(position, egui::vec2(24.0, 24.0));
-                        let response = ui.interact(
+                    let used = cable.route.iter().position(|candidate| *candidate == point);
+                    let anchor_rect =
+                        egui::Rect::from_center_size(position, egui::vec2(24.0, 24.0));
+                    let response = ui
+                        .interact(
                             anchor_rect,
                             egui::Id::new((
                                 "cable-route-anchor",
@@ -1995,25 +2809,41 @@ fn rack_view(
                                 offset_cm,
                             )),
                             egui::Sense::click(),
-                        ).on_hover_text("Click to add or remove this anchor for the selected cable");
-                        ui.painter().circle_filled(
-                            position,
-                            4.0,
-                            if used.is_some() || response.hovered() {
-                                egui::Color32::from_rgb(255, 196, 64)
-                            } else {
-                                egui::Color32::from_rgb(92, 112, 125)
-                            },
-                        );
-                        let mut proposed = cable.route.clone();
-                        if let Some(index) = used { proposed.remove(index); } else { proposed.push(point); }
-                        if response.hovered() {
-                            let preview_route = if used.is_some() { &cable.route } else { &proposed };
-                            for path in cables::visible_spans(cable.endpoints.0, cable.endpoints.1, preview_route, &anchors) {
-                                cables::paint_preview(ui, path, cable.color);
-                            }
+                        )
+                        .on_hover_text(tr("ui.click-to-add-or-remove-this-anchor"));
+                    ui.painter().circle_filled(
+                        position,
+                        4.0,
+                        if used.is_some() || response.hovered() {
+                            egui::Color32::from_rgb(255, 196, 64)
+                        } else {
+                            egui::Color32::from_rgb(92, 112, 125)
+                        },
+                    );
+                    let mut proposed = cable.route.clone();
+                    if let Some(index) = used {
+                        proposed.remove(index);
+                    } else {
+                        proposed.push(point);
+                    }
+                    if response.hovered() {
+                        let preview_route = if used.is_some() {
+                            &cable.route
+                        } else {
+                            &proposed
+                        };
+                        for path in cables::visible_spans(
+                            cable.endpoints.0,
+                            cable.endpoints.1,
+                            preview_route,
+                            &anchors,
+                        ) {
+                            cables::paint_preview(ui, path, cable.color);
                         }
-                        if response.clicked() { actions.write(cable.id.reroute(proposed)); }
+                    }
+                    if response.clicked() {
+                        actions.write(cable.id.reroute(proposed));
+                    }
                 }
                 // Space below the rack is the floor for hanging service loops.
                 ui.allocate_space(egui::vec2(rack_width, 120.0));
@@ -2044,8 +2874,14 @@ fn rack_view(
                     actions.write(UiAction::SelectLink(link));
                 }
                 if let Some(pending) = pending.as_ref() {
-                    cables::show_creation_preview(ui, pending.start, &pending.route,
-                        pending.color, &creation_targets, &anchors);
+                    cables::show_creation_preview(
+                        ui,
+                        pending.start,
+                        &pending.route,
+                        pending.color,
+                        &creation_targets,
+                        &anchors,
+                    );
                 }
                 for (port_id, activity_led, rect) in led_visuals {
                     let activity = sim.port_activity(port_id, 180);
@@ -2097,7 +2933,7 @@ fn rack_view(
                             1.5,
                             egui::Color32::from_rgba_premultiplied(255, 196, 64, 42),
                         );
-                }
+                    }
                     if is_pending
                         || hovered
                         || paired_selected
@@ -2137,43 +2973,50 @@ fn rack_view(
                                 state.cable_color,
                                 &state.pending_cable_route,
                             ) {
-                                Ok(q) if q.reused => format!(
-                                    "\nReuse {:.2} m finished lead (no materials used)",
-                                    q.length_cm as f32 / 100.0
+                                Ok(q) if q.reused => crate::localization::tr_args(
+                                    "ui.reuse-m-finished-lead-no-materials-used",
+                                    &[format!("{:.2}", q.length_cm as f32 / 100.0)],
                                 ),
-                                Ok(q) => format!(
-                                    "\nCut {:.2} m cable + 2 RJ45 connectors",
-                                    q.length_cm as f32 / 100.0
+                                Ok(q) => crate::localization::tr_args(
+                                    "ui.cut-m-cable-2-rj45-connectors",
+                                    &[format!("{:.2}", q.length_cm as f32 / 100.0)],
                                 ),
-                                Err(error) => format!("\n{error}"),
+                                Err(error) => crate::localization::tr_args(
+                                    "format.diagnostic-line",
+                                    &[crate::localization::UiMessage::from(error).render()],
+                                ),
                             }
                         })
                         .unwrap_or_default();
-                    let response = response.on_hover_text(format!(
-                        "{} / {} · {}\n{}{quote}",
-                        sim.device(port.device)
-                            .map(|d| d.name.as_str())
-                            .unwrap_or("?"),
-                        port.name,
-                        connector_label(port.connector),
-                        if supported {
-                            if link.is_some() {
-                                "RJ45 plug connected · Right click: configure / unplug"
+                    let response = response.on_hover_text(crate::localization::tr_args(
+                        "port.tooltip",
+                        &[
+                            (sim.device(port.device)
+                                .map(|d| d.name.as_str())
+                                .unwrap_or("?"))
+                            .to_string(),
+                            (port.name).to_string(),
+                            tr(connector_label(port.connector)),
+                            if supported {
+                                if link.is_some() {
+                                    tr("port.connected-guide")
+                                } else {
+                                    tr("port.connect-guide")
+                                }
                             } else {
-                                "Left click: connect RJ45 cable\nRight click: configure"
-                            }
-                        } else {
-                            "SFP cabling is not implemented yet"
-                        }
+                                tr("port.sfp-unavailable")
+                            },
+                            (quote).to_string(),
+                        ],
                     ));
                     response.context_menu(|menu| {
-                        menu.label("Cable actions");
+                        menu.label(tr("ui.cable-actions"));
                         if let Some(link) = link {
-                            if menu.button("Unplug cable").clicked() {
+                            if menu.button(tr("ui.unplug-cable")).clicked() {
                                 actions.write(UiAction::Disconnect(link.id));
                                 menu.close();
                             }
-                        } else if supported && menu.button("Connect RJ45 cable").clicked() {
+                        } else if supported && menu.button(tr("ui.connect-rj45-cable")).clicked() {
                             actions.write(UiAction::CablePort(port_id));
                             menu.close();
                         }
@@ -2541,11 +3384,11 @@ fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &Device
             .drives
             .iter()
             .find(|drive| drive.id == id);
-        let label = model.map_or("DRIVE", |drive| {
+        let label = model.map_or("ui.drive", |drive| {
             if drive.kind == cloud_provider_sim::DriveKind::Ssd {
-                "SSD"
+                "ui.ssd"
             } else {
-                "HDD"
+                "ui.hdd"
             }
         });
         let badge = egui::Rect::from_min_size(
@@ -2556,7 +3399,7 @@ fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &Device
         painter.text(
             badge.center(),
             egui::Align2::CENTER_CENTER,
-            label,
+            tr(label),
             egui::FontId::monospace(8.0),
             egui::Color32::from_rgb(175, 214, 216),
         );
@@ -2565,8 +3408,8 @@ fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &Device
 
 fn connector_label(connector: PortConnector) -> &'static str {
     match connector {
-        PortConnector::Rj45 => "RJ45",
-        PortConnector::Sfp => "SFP (not implemented)",
+        PortConnector::Rj45 => "ui.rj45",
+        PortConnector::Sfp => "ui.sfp-not-implemented",
     }
 }
 
@@ -2734,7 +3577,7 @@ mod power_geometry_tests {
 
 fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut MessageWriter<UiAction>) {
     egui::CentralPanel::default().show(viewport, |ui| {
-        ui.heading("Logical topology");
+        ui.heading(tr("topology.title"));
         let rect = ui.available_rect_before_wrap();
         let painter = ui.painter_at(rect);
         let mut devices: Vec<_> = sim.devices().filter(|d| d.rack.is_some()).collect();
@@ -2806,7 +3649,7 @@ fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut Messag
             painter.text(
                 pos,
                 egui::Align2::CENTER_CENTER,
-                &device.name,
+                crate::localization::device_name(device),
                 egui::FontId::proportional(16.0),
                 egui::Color32::WHITE,
             );

@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": "ethernet_cable_box",
+      "display_name": {
+        "en": "305 m Ethernet cable box",
+        "ru": "Бухта Ethernet-кабеля 305 м"
+      },
+      "desc": {
+        "en": "Bulk cable stock for new patch leads",
+        "ru": "Кабель в бухте для новых соединений"
+      }
+    },
+    {
+      "id": "rj45_connectors",
+      "display_name": {
+        "en": "20 × RJ45 connectors",
+        "ru": "20 разъёмов RJ45"
+      },
+      "desc": {
+        "en": "Two plugs are needed for each new Ethernet lead",
+        "ru": "Для нового Ethernet-кабеля нужны два разъёма"
+      }
+    }
+  ]
+}

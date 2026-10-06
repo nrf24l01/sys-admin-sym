@@ -1,6 +1,7 @@
 use super::simulation::SimulationWorker;
 use crate::app::{GameSet, SettingsWindowState, UiAction, UiState};
-use crate::settings::{GameSettings, SettingsStore};
+use crate::localization::Localization;
+use crate::settings::{GameSettings, SettingsFile, SettingsStore};
 use bevy::prelude::*;
 
 pub struct SettingsPlugin;
@@ -14,18 +15,27 @@ impl Plugin for SettingsPlugin {
         );
         let loaded = store.load();
         let error = loaded.as_ref().err().cloned();
-        let console = loaded.unwrap_or_default();
+        let mut saved = loaded.unwrap_or_default();
+        let mut localization = Localization::load(&crate::asset_root().join("locales"));
+        if localization.select(&saved.language).is_err() {
+            saved.language = "en".into();
+            localization.select("en").expect("English fallback");
+        }
         app.insert_resource(UiState {
-            settings: SettingsWindowState::from_config(&console),
-            notice: error.map(|error| (error, false)),
+            settings: SettingsWindowState::from_config(&saved.console),
+            notice: error.map(|error| (error.into(), false)),
             ..Default::default()
         })
         .insert_resource(GameSettings {
-            console,
+            console: saved.console,
+            language: saved.language,
+            localization,
             console_error: None,
             store,
         })
-        .add_systems(Update, apply_settings.in_set(GameSet::Settings));
+        .add_systems(Update, apply_settings.in_set(GameSet::Settings))
+        .add_systems(Startup, localize_window_title)
+        .add_systems(Update, localize_window_title.after(GameSet::Settings));
     }
 }
 
@@ -36,12 +46,27 @@ fn apply_settings(
     mut ui: ResMut<UiState>,
 ) {
     for action in actions.read() {
+        if let UiAction::SelectLanguage(language) = action {
+            let result = settings.select_language(language);
+            match result {
+                Ok(()) => {
+                    ui.settings.error = None;
+                    ui.notice = Some(("settings.language-changed".into(), true));
+                }
+                Err(error) => ui.settings.error = Some(error.into()),
+            }
+            continue;
+        }
         let UiAction::ApplyConsoleSettings(config) = action else {
             continue;
         };
         let previous = settings.console.clone();
+        let config = config.clone();
         let result = worker.configure_console(config.clone()).and_then(|_| {
-            if let Err(error) = settings.store.save(config) {
+            if let Err(error) = settings.store.save(&SettingsFile {
+                console: config.clone(),
+                language: settings.language.clone(),
+            }) {
                 return match worker.configure_console(previous.clone()) {
                     Ok(()) => Err(error),
                     Err(restore_error) => Err(format!("{error}; {restore_error}")),
@@ -54,12 +79,20 @@ fn apply_settings(
             Ok(()) => {
                 settings.console = config.clone();
                 ui.settings.error = None;
-                ui.notice = Some(("Settings applied and saved".into(), true));
+                ui.notice = Some(("settings.applied".into(), true));
             }
             Err(error) => {
-                ui.settings.error = Some(error.clone());
-                ui.notice = Some((error, false));
+                ui.settings.error = Some(error.clone().into());
+                ui.notice = Some((error.into(), false));
             }
+        }
+    }
+}
+
+fn localize_window_title(settings: Res<GameSettings>, mut windows: Query<&mut Window>) {
+    if settings.is_changed() {
+        for mut window in &mut windows {
+            window.title = settings.localization.text("app.title");
         }
     }
 }

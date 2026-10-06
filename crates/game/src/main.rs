@@ -4,6 +4,7 @@ use bevy_egui::EguiPlugin;
 
 mod app;
 mod console;
+mod localization;
 mod persistence;
 mod plugins;
 mod settings;
@@ -39,7 +40,7 @@ fn main() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Cloud Provider Simulator".into(),
+                        title: localization::Localization::default().text("app.title"),
                         resolution: (1600, 900).into(),
                         ..default()
                     }),

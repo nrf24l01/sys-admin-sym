@@ -29,16 +29,22 @@ fn handle_persistence_requests(
         match request {
             PersistenceRequest::Save => match store.0.save(&snapshot.0) {
                 Ok(()) => {
-                    ui.notice = Some((format!("Saved to {}", store.0.path().display()), true))
+                    ui.notice = Some((
+                        crate::localization::UiMessage::new(
+                            "game.saved-path",
+                            vec![store.0.path().display().to_string()],
+                        ),
+                        true,
+                    ))
                 }
-                Err(error) => ui.notice = Some((error.to_string(), false)),
+                Err(error) => ui.notice = Some((error.to_string().into(), false)),
             },
             PersistenceRequest::Load => match store.0.load() {
                 Ok(sim) => {
                     let _ = worker.tx.send(WorkerRequest::Replace(Box::new(sim)));
-                    ui.notice = Some(("Save loaded".into(), true));
+                    ui.notice = Some(("ui.save-loaded".into(), true));
                 }
-                Err(error) => ui.notice = Some((error.to_string(), false)),
+                Err(error) => ui.notice = Some((error.to_string().into(), false)),
             },
         }
     }

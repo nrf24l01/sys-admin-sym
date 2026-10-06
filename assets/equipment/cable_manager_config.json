@@ -1,4 +1,13 @@
 {
+  "id": "cable_manager",
+  "display_name": {
+    "en": "Horizontal cable manager",
+    "ru": "Горизонтальный кабельный организатор"
+  },
+  "desc": {
+    "en": "Front routing anchors · no network logic",
+    "ru": "Точки маршрута спереди · без сетевой логики"
+  },
   "type": "cable_manager",
   "texture": "",
   "ports": {
