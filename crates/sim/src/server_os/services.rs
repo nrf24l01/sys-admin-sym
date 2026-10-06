@@ -319,13 +319,7 @@ impl LinuxServices {
                 }
                 "dhcp" => {
                     Self::down_addresses(&mut candidate, port);
-                    if !candidate.network_reaches(port, false) {
-                        return Err(format!(
-                            "{}: no DHCP lease available on the room LAN",
-                            stanza.name
-                        ));
-                    }
-                    candidate.assign_lan_ipv4(port).map_err(|e| e.to_string())?;
+                    candidate.request_dhcp(port).map_err(|e| e.to_string())?;
                 }
                 "manual" => {}
                 _ => return Err(format!("unsupported interface mode {}", stanza.mode)),

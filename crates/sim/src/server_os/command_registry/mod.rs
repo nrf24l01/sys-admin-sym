@@ -60,6 +60,9 @@ impl CommandRegistry {
 
     fn builtins() -> Self {
         let mut registry = Self::new();
+        registry
+            .register(crate::provider::console::ProviderConsole)
+            .expect("unique command");
         registry.register(IpCommand).expect("unique command");
         for name in ["ping", "traceroute", "tracepath"] {
             registry

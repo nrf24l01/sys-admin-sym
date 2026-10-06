@@ -47,7 +47,8 @@ but each individual command, including an interface range, is atomic.
 `exit` leaves one configuration level. `end` returns to privileged EXEC.
 `disable` returns to user EXEC. Unambiguous keyword abbreviations such as `en`,
 `conf t`, `int`, `no shut`, and `sh ip int br` work. Ambiguous abbreviations fail.
-Use `do show ...` to inspect state without leaving configuration mode.
+Use `do show ...`, `do ping ...`, or `do traceroute ...` without leaving
+configuration mode. `do write memory` also saves from configuration mode.
 
 ## Interface names
 
@@ -132,10 +133,35 @@ From server A's terminal, `ping 10.0.30.2` checks routing and `ping 10.0.20.1`
 checks the gateway. The router console can `ping 10.0.20.2` or
 `traceroute 10.0.30.2`.
 
-The existing abstract WAN1 internet uplink makes `ping 8.8.8.8` reachable when
-the server has a working gateway path. This does not send real internet packets.
-Shutting down WAN1 disables that simulated uplink. NAT settings and DHCP are
-not emulated as IOS services.
+WAN1 cabling alone does not provide Internet reachability. Configure a transit
+range delivery in **IP RANGES** and explicit forward/return routes in
+each router's **Routing table…** editor. Private-address examples above do not receive implicit NAT.
+See [provider network operations](PROVIDER_NETWORK_GUIDE.md). No host Internet
+packets are sent.
+
+## Static routes from the router console
+
+In global configuration mode, add a default route through the higher network
+gateway shown in **IP RANGES**:
+
+```text
+enable
+configure terminal
+ip route 0.0.0.0 0.0.0.0 192.0.2.5
+end
+show ip route
+ping 192.0.2.5
+ping 8.8.8.8
+write memory
+```
+
+The next hop selects the most specific configured, directly connected interface
+in routing domain zero. If multiple interfaces match equally, specify the
+interface: `ip route 0.0.0.0 0.0.0.0 Gi0/0/0 192.0.2.5`.
+Use `no ip route NETWORK MASK NEXT-HOP` (or the interface form) to remove it.
+Routes appear in the GUI, `show ip route`, and `show running-config`; `write
+memory` saves them for reload. Interface configuration can switch directly to
+another interface using `interface NAME`.
 
 ## Supported configuration
 
@@ -147,6 +173,8 @@ not emulated as IOS services.
   `no switchport access vlan`, `switchport mode trunk`,
   `switchport trunk native vlan ID`, `switchport trunk allowed vlan LIST`,
   and allowed-list `add LIST` / `remove LIST`.
+- Router global routes: `ip route NETWORK MASK NEXT-HOP`,
+  `ip route NETWORK MASK INTERFACE NEXT-HOP`, and their `no` forms.
 - Router interfaces: `ip address ADDRESS MASK`, `no ip address`;
   router subinterfaces additionally support `encapsulation dot1q ID`.
 - Physical interfaces support `speed 10`, `speed 100`, `speed 1000`, and
@@ -161,8 +189,8 @@ An access assignment creates a missing VLAN. VLAN 1 cannot be deleted.
 The current port model stores only the active switchport mode. Switching from
 trunk to access resets the access VLAN to 1; switching back to trunk restores
 the default allowed list, not a previously configured inactive trunk profile.
-Native VLAN is stored and displayed, but packet tagging/native-VLAN translation
-is not modeled; reachability follows the simulator's VLAN IDs.
+Access/trunk forwarding applies VLAN tags and native-VLAN translation in the
+Ethernet engine. An untagged server address can leave its VLAN affinity unset.
 
 ## Verify configuration and links
 
@@ -178,6 +206,7 @@ show interfaces Gi1/0/1 switchport
 show interfaces trunk
 show ip interface brief
 show ip route
+show ip arp
 show cdp neighbors
 ```
 
@@ -187,9 +216,10 @@ endpoint; the speed column reports the negotiated rate when the link is up and
 the local advertisement when it is down.
 CDP output derives active adjacent network devices from the topology; the
 simulator does not exchange or age CDP packets. Router diagnostics support
-connected destinations and the abstract internet uplink. Traceroute lists
+connected destinations and explicitly configured transit paths. Traceroute lists
 semantic hops, not measured packet timing. Switches cannot originate ping
-because management interfaces are not implemented.
+because switch-originated diagnostics are not implemented; switch management
+addresses can receive ping and SSH through an actual network path.
 
 ## Saving and reloading
 
@@ -198,7 +228,12 @@ device's configuration inside the simulation. `reload` asks for confirmation:
 press Enter to restore startup configuration, or type `cancel` to keep the
 running state. Unsaved changes are discarded only on confirmation. Reload
 requires a saved startup configuration. Rack placement, power, cables, money,
-and other devices are preserved.
+and other devices are preserved. Per-device routing-domain bindings, BGP
+sessions, filtering, DHCP pools, switch management and spanning-tree settings
+are also restored. Carrier delivery contracts and address inventory remain
+independent. DHCP leases and learned ARP entries are operational state, not
+startup configuration. Older startup records without the new network snapshot
+retain their previous reload behavior.
 
 Use the game's **Save** button after commands finish to persist the simulation,
 including both running and startup configurations, to SQLite. **Load** restores
@@ -207,12 +242,15 @@ running configuration in this simulator; use `reload` for startup restoration.
 
 ## Compatibility boundary
 
-This is a functional configuration subset, not a complete IOS clone. There is
-no firmware boot process, remote SSH/Telnet service, authentication/AAA,
-management SVI, STP, EtherChannel, ACL, QoS, IPv6, DHCP service, configurable IOS
-NAT, static-route forwarding, OSPF/BGP/EIGRP, SNMP, or real packet engine.
-Unsupported commands fail explicitly. The existing Inspector remains available
-for the simulator-specific internet-uplink flag and server configuration.
+This is a functional IOS command subset. Firmware boot, authentication/AAA,
+EtherChannel, QoS, IPv6, configurable IOS NAT, OSPF/EIGRP and SNMP are not modeled.
+The Ethernet/IPv4 packet engine supports static-route forwarding. Provider-side
+BGP policy, converged spanning-tree forwarding, interface filtering, switch
+management and semantic DHCP have scenario configuration APIs; their complete
+IOS command grammar and protocol-message exchange are not implemented.
+Unsupported IOS commands fail explicitly. Use the Inspector for device
+interfaces, the router's routing editor for static routes, and **IP RANGES**
+for allocation delivery and WAN/LAN addressing instructions. `show ip route` includes static routes configured in the GUI.
 
 Regression tests cover console modes, invalid/ambiguous commands, device-session
 isolation, atomic range failure, VLAN switching, routed VLANs, gateway ping,

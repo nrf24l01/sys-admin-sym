@@ -115,25 +115,50 @@ than separate supplier SKUs.
 The room renderer uses the same layout for horizontal trays. IDs 1–40 retain
 their original locations, and loading older saves adds the new managers.
 
-The room owns two global uplink RJ45 sockets and each rack owns one LAN RJ45
-socket. These are permanent `NetworkOutlet` endpoints, saved with ordinary
-Ethernet links. Rack LAN sockets share one simulated broadcast network.
-They are drawn and selected as RJ45 ports in the room and rack views. Servers
-can receive sequential private addresses from the room's `10.0.0.0/16` pool.
-The Network shop sells simulated public `/29` blocks for a selected uplink;
-each block provides one provider gateway and five server addresses. Servers
-can claim an address on a data port, and inbound ICMP reaches it only when the
-selected uplink, switching path, server port and return path are active. The
-addresses use `203.0.113.0/24`, a documentation-only range, so no real-world
-Internet service is implied. Block purchases and assignments persist in saves.
-`DataCenterResources` credits a powered server only when a live data port has a
-physical path to the corresponding room network. Public Internet diagnostics
-also require a router WAN interface to have a live
-physical path to an uplink socket. The server console can open
-an SSH session by management IP when its `mgmt0` interface can reach a server,
-router, or switch. Switch management IPs are configured in IOS global mode with
-`management ip <address>`. `TerminalRenderer` owns the terminal UI separately
-from simulation command execution.
+The room owns two uplink RJ45 handoff sockets and one unpatched LAN socket per
+rack. Outlets are saved with ordinary links; rack sockets do not form an implicit
+broadcast network. Use explicit switches and paired patch-panel devices.
+
+`ProviderNetwork` encapsulates address inventory, transit contracts, explicit
+routing domains, BGP import/export policy, filtering, DHCP pools and management
+configuration. `ProviderCommand` validates changes before mutation. Public
+address ownership is independent of transit; incoming packets use an upstream
+route to an edge next hop and the same packet engine as internal traffic. The
+legacy WAN flag no longer creates replies or installs routes. Named external
+lab hosts respond only when reachable and available. No host Internet traffic
+is generated.
+
+Each `Router` owns its saved `domain_routes` alongside legacy static routes.
+The routing editor issues typed commands scoped to that device and chooses only
+its own egress interfaces. Old globally stored routes migrate into their owning
+router during save loading. Route replacement validates before mutation.
+The **IP RANGES** window projects owned pools and carrier routes into a routed
+allocation: public prefix, selected uplink, higher subnet/gateway, WAN next hop
+and suggested local gateway. `RouteOwnedRange` validates all changed carrier
+routes before applying them. Selection never configures a player device.
+`RoutedRangeHandoff` is a read-only view over the existing transit contracts;
+there is no duplicate assignment store. Guest `netctl` mutations enforce
+interface ownership.
+
+Router forwarding uses live interfaces, longest prefixes, preference and stable
+ECMP. Domain routes name their domain and VLAN; legacy static routes belong to
+domain zero. Optional ARP tracking withdraws unavailable next hops. BGP sessions
+model peer eligibility, policy and route installation, with immediate state
+changes rather than wire-protocol timers. Ordered interface policies filter IPv4
+frames; assigned-source validation also guards ARP. A deterministic per-VLAN
+spanning forest models converged bridge forwarding.
+
+`DataCenterResources` credits servers based on actual packet reachability; NIC
+rates are inventory capacity, not guaranteed end-to-end bandwidth.
+`NetworkCapacity` separately reports live transit capacity and the capacity
+remaining after the largest circuit fails. Traced Ethernet paths retain
+intermediate ports for bottleneck diagnostics. Management SSH requires packet
+reachability and the server's SSH service; switch management includes a subnet,
+VLAN and optional gateway. `mgmt0` remains an OS interface, not a standby BMC.
+
+See [provider design](docs/PROVIDER_NETWORK_DESIGN.md) for object responsibilities
+and [provider operations](docs/PROVIDER_NETWORK_GUIDE.md) for configuration,
+compatibility and protocol bounds.
 
 ## Simulated Linux guests
 
@@ -174,7 +199,7 @@ legacy per-address gateways. Runtime address and route commands apply immediatel
 
 `LinuxServices` applies `/etc/network/interfaces` to a cloned simulation and
 commits it only after every selected stanza and post-up command succeeds.
-Static configuration, room LAN DHCP, netmasks, gateways, DNS file configuration,
+Static configuration, explicit-server DHCP, netmasks, gateways, DNS file configuration,
 and post-up routes are supported. Reboot clears runtime addresses/routes and
 reapplies enabled networking configuration. SSH service state controls new
 management connections and the simulated listener shown by `ss`.
@@ -197,11 +222,11 @@ telemetry for UI activity indicators.
 
 Configuration (ports, VLANs, IPv4 addresses and routes) is serialized. Learned
 ARP/MAC state, frame counters and timestamps live in the runtime backend and
-are cleared or rebuilt when topology revisions change. The WAN is an abstract
-router interface compatibility feature; it does not access an external
-network.
+are cleared or rebuilt when topology revisions change. Transit and external endpoints are explicit provider configuration; legacy WAN
+flags are retained only for save compatibility. No external host network is used.
 
-L1–L3 behavior is implemented. The simulator has no TCP/UDP sessions, transport
+The implemented packet slice covers L1–L3 Ethernet/IPv4/ICMP. DHCP and BGP have
+semantic models with the bounds described in the provider guide. The simulator has no TCP/UDP sessions, transport
 reliability, presentation encoding, application protocols, wire serialization,
 or wall-clock packet timing (L4–L7).
 ## Power

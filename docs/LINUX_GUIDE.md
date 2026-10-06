@@ -34,13 +34,16 @@ per interface are supported. Routes use longest prefix, then lowest metric.
 routes and configured gateways, while address-derived connected routes remain.
 `-4`, `-br`, `-o`, and `-s` select IPv4, brief, one-line, and statistics output.
 
-`mgmt0` is a separate management interface. Connect it to a rack LAN port or a
-management switch. Data NIC names depend on installed cards; inspect `ip link`.
+`mgmt0` is a separate OS management interface. Connect it through explicit
+management switches or patch panels; bare rack LAN sockets do not join racks.
+Data NIC names depend on installed cards; inspect `ip link`.
 
-For public addresses, buy a global IP block in the shop and select its uplink.
-Assign an address from that block to a data interface and use its provider
-gateway. The purchased uplink and both cable paths must be active. Merely typing
-a public IP does not buy or route a range.
+Public addresses are independent of upstream circuits. Buy an address pool in
+the shop or **IP RANGES**; select the range delivery uplink there and use its
+WAN/LAN instructions to configure your router interfaces and forward/return routes
+on each router through **Routing table…**. Guest `netctl` changes are restricted
+to that guest's own interfaces; it cannot configure another device or carrier. See the
+[provider network guide](PROVIDER_NETWORK_GUIDE.md) for a complete routed example.
 
 ## Persistent network configuration
 
@@ -61,7 +64,8 @@ Supported stanza methods are `static`, `dhcp`, `manual`, and `loopback` for `lo`
 Use a CIDR address or an address plus `netmask`. `auto` and `allow-hotplug`
 select interfaces for `ifup -a`/networking startup. `dns-nameservers` writes
 `/etc/resolv.conf`; `post-up` and `up` execute guest commands after configuration.
-DHCP leases come from the room LAN and require a physical path to a LAN socket.
+DHCP leases require a reachable interface with an explicitly configured
+`netctl dhcp` pool and an active broadcast/return path.
 An invalid file leaves the running network configuration intact.
 
 ```sh

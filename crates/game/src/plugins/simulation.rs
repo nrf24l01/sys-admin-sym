@@ -213,7 +213,7 @@ fn translate_ui_actions(
             UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
             UiAction::BuyServerChassis => Some(Command::BuyServerChassis),
             UiAction::BuyServerFullPack => Some(Command::BuyServerFullPack),
-            UiAction::BuyPublicIpv4Block { uplink } => Some(Command::BuyPublicIpv4Block { uplink: *uplink }),
+            UiAction::BuyPublicIpv4Pool => Some(Command::BuyPublicIpv4Pool),
             UiAction::AssignPublicIpv4 { port, network } => Some(Command::AssignPublicIpv4 { port: *port, network: *network }),
             UiAction::AssignLanIpv4 { port } => Some(Command::AssignLanIpv4 { port: *port }),
             UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart { part_id: part_id.clone() }),
@@ -444,6 +444,15 @@ fn translate_ui_actions(
                     internet_connected: draft.internet,
                 })
             }),
+            UiAction::OpenIpRanges => {
+                state.ranges_open = true;
+                None
+            }
+            UiAction::OpenRouting(device) => {
+                state.routing_device = Some(*device);
+                None
+            }
+            UiAction::NetworkCommand(command) => Some(command.clone()),
             UiAction::RunTerminal(device, input) => {
                 let _ = worker.tx.send(WorkerRequest::Terminal {
                     device: *device,
@@ -675,6 +684,9 @@ fn poll_worker(
                 drafts
                     .routers
                     .retain(|port, _| snapshot.0.port(*port).is_some());
+                drafts
+                    .routes
+                    .retain(|id, _| snapshot.0.device(*id).is_some());
             }
             WorkerResponse::Events(events) => {
                 state.notice = events.first().map(|event| {
@@ -688,11 +700,17 @@ fn poll_worker(
                         cloud_provider_sim::SimEvent::LinkRemoved(_) => {
                             "Lead unplugged and returned to cable inventory".into()
                         }
+                        cloud_provider_sim::SimEvent::RouterRoutesChanged(_) => {
+                            "Router routing table updated".into()
+                        }
                         _ => format!("{event:?}"),
                     };
                     (message, true)
                 });
                 for event in &events {
+                    if let cloud_provider_sim::SimEvent::RouterRoutesChanged(id) = event {
+                        drafts.routes.remove(id);
+                    }
                     if matches!(event, cloud_provider_sim::SimEvent::PowerChanged) {
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
@@ -734,6 +752,11 @@ fn poll_worker(
                 }
             }
             WorkerResponse::ConsolesReset => {
+                state.network_summary = NetworkSummaryCache::default();
+                state.routing_device = None;
+                state.selected_range = None;
+                state.range_loaded_for = None;
+                state.range_uplink = None;
                 state.terminals.clear();
                 state.pending_cable = None;
                 state.pending_cable_route.clear();

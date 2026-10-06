@@ -2,8 +2,8 @@ use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::{
-    CableSupply, DeviceTemplate, DriveModel, NetworkOutletKind, NetworkSim, PciCard,
-    PublicIpv4Block, ServerFullPack, ServerPart, ServerPartKind, drive_catalog, server_catalog,
+    CableSupply, DeviceTemplate, DriveModel, NetworkSim, PciCard, PublicIpv4Block, ServerFullPack,
+    ServerPart, ServerPartKind, drive_catalog, server_catalog,
 };
 
 fn drive_matches(drive: &DriveModel, state: &ShopState, money: i64) -> bool {
@@ -246,25 +246,22 @@ pub(super) fn show(
                         .collect();
                     let parts: Vec<_> = server_catalog().parts.iter().filter(|part| part_matches(part, state, sim.money)).collect();
                     let drives: Vec<_> = drive_catalog().drives.iter().filter(|drive| drive_matches(drive, state, sim.money)).collect();
-                    let uplink_offers: Vec<_> = sim.network_outlets().filter(|outlet| {
-                        matches!(outlet.kind, NetworkOutletKind::Uplink { .. })
-                            && state.category == ShopCategory::Network
-                            && state.section.is_none_or(|section| section == ShopSection::PublicIp)
-                            && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
-                            && (state.search.trim().is_empty() || format!("public IPv4 /29 range {}", sim.port(outlet.port).map_or("", |port| port.name.as_str())).to_lowercase().contains(&state.search.trim().to_lowercase()))
-                            && (!state.affordable_only || sim.money >= PublicIpv4Block::PRICE)
-                            && state.max_price.is_none_or(|max| PublicIpv4Block::PRICE <= max)
-                    }).collect();
+                    let public_pool_offer = state.category == ShopCategory::Network
+                        && state.section.is_none_or(|section| section == ShopSection::PublicIp)
+                        && state.rack_units.is_none() && state.ports.is_none() && state.outlets.is_none()
+                        && (state.search.trim().is_empty() || "public IPv4 /29 address pool".to_lowercase().contains(&state.search.trim().to_lowercase()))
+                        && (!state.affordable_only || sim.money >= PublicIpv4Block::PRICE)
+                        && state.max_price.is_none_or(|max| PublicIpv4Block::PRICE <= max);
                     ui.label(format!(
                         "{} product{}",
-                        products.len() + parts.len() + drives.len() + uplink_offers.len(),
-                        if products.len() + parts.len() + drives.len() + uplink_offers.len() == 1 { "" } else { "s" }
+                        products.len() + parts.len() + drives.len() + usize::from(public_pool_offer),
+                        if products.len() + parts.len() + drives.len() + usize::from(public_pool_offer) == 1 { "" } else { "s" }
                     ));
                     egui::ScrollArea::vertical()
                         .id_salt("shop-products")
                         .max_height(ui.available_height().max(120.0))
                         .show(ui, |ui| {
-                            if products.is_empty() && parts.is_empty() && drives.is_empty() && uplink_offers.is_empty() {
+                            if products.is_empty() && parts.is_empty() && drives.is_empty() && !public_pool_offer {
                                 ui.weak("No products match these filters.");
                                 if ui.button("Clear filters").clicked() {
                                     state.clear_filters();
@@ -310,16 +307,15 @@ pub(super) fn show(
                                     }
                                 });
                             }
-                            for outlet in uplink_offers {
+                            if public_pool_offer {
                                 ui.group(|ui| {
-                                    let name = sim.port(outlet.port).map_or("UPLINK", |port| port.name.as_str());
-                                    ui.strong(format!("Public IPv4 /29 · {name}"));
-                                    ui.weak("Five server addresses and one provider gateway. The range is routed to this uplink port.");
-                                    let count = sim.public_ipv4_blocks().iter().filter(|block| block.uplink == outlet.port).count();
-                                    ui.label(format!("{count} range{} on {name}", if count == 1 { "" } else { "s" }));
-                                    if ui.add_enabled(sim.money >= PublicIpv4Block::PRICE && sim.public_ipv4_blocks().len() < 32,
-                                        egui::Button::new(format!("Order on {name} — ${}", PublicIpv4Block::PRICE))).clicked() {
-                                        actions.write(UiAction::BuyPublicIpv4Block { uplink: outlet.port });
+                                    ui.strong("Public IPv4 /29 address pool");
+                                    ui.weak("Open IP RANGES to select its uplink and view the WAN/LAN addressing instructions.");
+                                    let count = sim.public_ipv4_blocks().len();
+                                    ui.label(format!("{count} allocation{} owned", if count == 1 { "" } else { "s" }));
+                                    if ui.add_enabled(sim.money >= PublicIpv4Block::PRICE && count < 32,
+                                        egui::Button::new(format!("Order IPv4 pool — ${}", PublicIpv4Block::PRICE))).clicked() {
+                                        actions.write(UiAction::BuyPublicIpv4Pool);
                                     }
                                 });
                             }
@@ -459,20 +455,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn public_range_order_targets_the_chosen_uplink_port() {
+    fn public_pool_order_is_independent_of_uplink_ports() {
         use bevy::{
             ecs::system::SystemState,
             prelude::{Messages, World},
         };
         let sim = NetworkSim::new();
-        let uplink = sim
-            .network_outlets()
-            .find(|outlet| {
-                sim.port(outlet.port)
-                    .is_some_and(|port| port.name == "UPLINK 2")
-            })
-            .unwrap()
-            .port;
         let ctx = egui::Context::default();
         let mut world = World::new();
         world.init_resource::<Messages<UiAction>>();
@@ -483,7 +471,7 @@ mod tests {
             section: Some(ShopSection::PublicIp),
             ..Default::default()
         };
-        let label = format!("Order on UPLINK 2 — ${}", PublicIpv4Block::PRICE);
+        let label = format!("Order IPv4 pool — ${}", PublicIpv4Block::PRICE);
         let mut position = None;
         for _ in 0..2 {
             let mut output = ctx.run_ui(
@@ -513,7 +501,7 @@ mod tests {
             });
             output.textures_delta.clear();
         }
-        let position = position.expect("UPLINK 2 purchase button is visible");
+        let position = position.expect("IPv4 pool purchase button is visible");
         for pressed in [true, false] {
             let mut output = ctx.run_ui(
                 egui::RawInput {
@@ -541,9 +529,7 @@ mod tests {
         }
         let purchases: Vec<_> = world.resource_mut::<Messages<UiAction>>().drain().collect();
         assert_eq!(purchases.len(), 1);
-        assert!(
-            matches!(purchases[0], UiAction::BuyPublicIpv4Block { uplink: chosen } if chosen == uplink)
-        );
+        assert!(matches!(purchases[0], UiAction::BuyPublicIpv4Pool));
     }
 
     #[test]

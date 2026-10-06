@@ -3,11 +3,12 @@ use crate::{DeviceKind, NetworkSim, PortConfig, PortId, SwitchPortConfig, Switch
 use std::collections::{HashSet, VecDeque};
 
 /// A frame arriving at an endpoint port after one or more switch crossings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameDelivery {
     pub port: PortId,
     pub vlan: VlanId,
     pub frame: EthernetFrame,
+    pub path: Vec<PortId>,
 }
 
 const MAX_FRAME_HOPS: u16 = 64;
@@ -132,14 +133,16 @@ impl NetworkSim {
     }
 
     pub(crate) fn prepare_runtime(&mut self) {
-        self.runtime.prepare(self.topology_revision);
+        self.runtime
+            .prepare(self.topology_revision, self.routing_revision);
     }
 
     /// Transmit one Ethernet frame from `egress`, forwarding it through the
     /// configured physical topology. Switches learn source MACs per VLAN;
     /// endpoint deliveries are returned in deterministic port order.
     pub fn transmit_frame(&mut self, egress: PortId, frame: EthernetFrame) -> Vec<FrameDelivery> {
-        self.runtime.prepare(self.topology_revision);
+        self.runtime
+            .prepare(self.topology_revision, self.routing_revision);
         if self.ingress_vlan(egress, &frame).is_none() {
             return vec![];
         }
@@ -147,10 +150,16 @@ impl NetworkSim {
         let mut queue = VecDeque::new();
         let mut seen: HashSet<(PortId, MacAddress, MacAddress, VlanId)> = HashSet::new();
         let mut deliveries = Vec::new();
-        queue.push_back((egress, initial, 0u16));
+        queue.push_back((egress, initial, 0u16, vec![egress]));
 
-        while let Some((out, frame, hops)) = queue.pop_front() {
+        while let Some((out, frame, hops, mut path)) = queue.pop_front() {
             if hops >= MAX_FRAME_HOPS {
+                continue;
+            }
+            let out_vlan = self
+                .ingress_vlan(out, &frame)
+                .unwrap_or(frame.vlan.unwrap_or(VlanId(1)));
+            if !self.frame_permitted(out, out_vlan, false, frame) {
                 continue;
             }
             let Some(link) = self.link_for_port(out).cloned() else {
@@ -166,32 +175,26 @@ impl NetworkSim {
                 continue;
             }
             self.runtime.send_frame(out, in_port);
+            path.push(in_port);
             if let Some(pair) = self.port(in_port).and_then(|p| p.paired_port) {
                 if !self.port_link_up(pair) {
                     continue;
                 }
-                queue.push_back((pair, frame, hops + 1));
+                path.push(pair);
+                queue.push_back((pair, frame, hops + 1, path));
                 continue;
             }
             if let Some(outlet) = self.network_outlet(in_port) {
-                if matches!(outlet.kind, crate::NetworkOutletKind::Lan { .. }) {
-                    for remote in self.network_outlets.iter().filter(|remote| {
-                        matches!(remote.kind, crate::NetworkOutletKind::Lan { .. })
-                            && remote.port != in_port
-                            && self.port_link_up(remote.port)
-                    }) {
-                        let key = (remote.port, frame.source, frame.destination, VlanId(1));
-                        if seen.insert(key) {
-                            queue.push_back((remote.port, frame, hops + 1));
-                        }
-                    }
-                } else if frame.destination == MacAddress::for_port(in_port)
-                    || is_broadcast(frame.destination)
+                if matches!(outlet.kind, crate::NetworkOutletKind::Uplink { .. })
+                    && self.provider().circuit(in_port).is_some_and(|c| c.enabled)
+                    && (frame.destination == MacAddress::for_port(in_port)
+                        || is_broadcast(frame.destination))
                 {
                     deliveries.push(FrameDelivery {
                         port: in_port,
                         vlan: VlanId(1),
                         frame,
+                        path,
                     });
                 }
                 continue;
@@ -200,6 +203,11 @@ impl NetworkSim {
             let Some(vlan) = self.ingress_vlan(in_port, &frame) else {
                 continue;
             };
+            if self.bridge_port_blocked(in_port, vlan)
+                || !self.frame_permitted(in_port, vlan, true, frame)
+            {
+                continue;
+            }
             let mut received = frame;
             received.vlan = Some(vlan);
             let Some(port) = self.port(in_port) else {
@@ -209,19 +217,41 @@ impl NetworkSim {
 
             match self.device(device).map(|d| &d.kind) {
                 Some(DeviceKind::Switch(_)) => {
+                    if self
+                        .switch_management(device)
+                        .is_some_and(|m| m.vlan == vlan)
+                        && (received.destination == MacAddress::for_port(in_port)
+                            || is_broadcast(received.destination))
+                    {
+                        deliveries.push(FrameDelivery {
+                            port: in_port,
+                            vlan,
+                            frame: received,
+                            path: path.clone(),
+                        });
+                        if !is_broadcast(received.destination) {
+                            continue;
+                        }
+                    }
                     self.runtime
                         .learn_mac(device, vlan, received.source, in_port);
                     let mut targets =
                         self.switch_targets(device, in_port, vlan, received.destination);
                     targets.sort();
                     for target in targets {
+                        if self.bridge_port_blocked(target, vlan) {
+                            continue;
+                        }
                         let key = (target, received.source, received.destination, vlan);
                         if !seen.insert(key) {
+                            self.runtime.loop_drops += 1;
                             continue;
                         }
                         let mut emitted = received;
                         emitted.vlan = self.egress_vlan(target, vlan);
-                        queue.push_back((target, emitted, hops + 1));
+                        let mut forwarded_path = path.clone();
+                        forwarded_path.push(target);
+                        queue.push_back((target, emitted, hops + 1, forwarded_path));
                     }
                 }
                 Some(DeviceKind::Server(_)) | Some(DeviceKind::Router(_)) => {
@@ -229,6 +259,7 @@ impl NetworkSim {
                     if received.destination == own || is_broadcast(received.destination) {
                         deliveries.push(FrameDelivery {
                             port: in_port,
+                            path,
                             vlan,
                             frame: EthernetFrame {
                                 vlan: wire_vlan,
@@ -290,6 +321,16 @@ impl NetworkSim {
                         .any(|i| i.vlan == Some(vlan))
                         .then_some(vlan)
                 } else {
+                    // A physical interface receives untagged traffic even when tagged
+                    // subinterfaces also exist on the same port.
+                    let mut bases = config
+                        .interfaces
+                        .iter()
+                        .filter(|i| !i.name.contains('.'))
+                        .map(|i| i.vlan.unwrap_or(VlanId(1)));
+                    if let Some(vlan) = bases.next() {
+                        return bases.all(|other| other == vlan).then_some(vlan);
+                    }
                     let mut vlans = config.interfaces.iter().filter_map(|i| i.vlan);
                     let vlan = vlans.next().unwrap_or(VlanId(1));
                     (vlans.all(|other| other == vlan)).then_some(vlan)
@@ -349,7 +390,7 @@ impl NetworkSim {
             .collect()
     }
 
-    fn carries_vlan(&self, port: PortId, vlan: VlanId) -> bool {
+    pub(crate) fn carries_vlan(&self, port: PortId, vlan: VlanId) -> bool {
         match &self.port(port).map(|p| &p.config) {
             Some(PortConfig::Switch(c)) => {
                 c.mode.carries(vlan)
@@ -394,7 +435,7 @@ impl NetworkSim {
         matches!(self.device(device).map(|d| &d.kind), Some(DeviceKind::Switch(sw)) if sw.vlans.iter().any(|entry| entry.id == vlan))
     }
 
-    fn endpoint_link_vlan_matches(
+    pub(crate) fn endpoint_link_vlan_matches(
         &self,
         out: PortId,
         input: PortId,
@@ -412,15 +453,16 @@ impl NetworkSim {
         let PortConfig::Server(config) = &source.config else {
             return true;
         };
-        let source_vlan = config
-            .ipv4
-            .as_ref()
-            .and_then(|ip| ip.vlan)
-            .unwrap_or(VlanId(1));
+        let source_vlan = config.ipv4.as_ref().and_then(|ip| ip.vlan);
         match &destination.config {
             PortConfig::Switch(config) => match config.mode {
-                SwitchPortMode::Access { vlan } => vlan.unwrap_or(VlanId(1)) == source_vlan,
-                SwitchPortMode::Trunk { native_vlan, .. } => native_vlan == Some(source_vlan),
+                SwitchPortMode::Access { vlan } => {
+                    source_vlan.is_none_or(|source| vlan.unwrap_or(VlanId(1)) == source)
+                }
+                SwitchPortMode::Trunk { native_vlan, .. } => {
+                    native_vlan.is_some()
+                        && source_vlan.is_none_or(|source| native_vlan == Some(source))
+                }
             },
             _ => true,
         }

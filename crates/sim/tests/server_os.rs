@@ -279,6 +279,26 @@ fn public_secondary_address_uses_owned_uplink_for_both_directions() {
     lab.connect(lab.port(0, "eth0"), uplink);
     lab.run(0, "ip addr add 10.0.0.2/16 dev eth0");
     let public = block.host_addresses().next().unwrap();
+    lab.sim
+        .execute(Command::Provider(ProviderCommand::SetTransit(
+            TransitCircuit {
+                port: uplink,
+                name: "On-link handoff".into(),
+                address: block.gateway(),
+                prefix: 29,
+                asn: 64501,
+                capacity_mbps: 1000,
+                enabled: true,
+                routes: vec![UpstreamRoute {
+                    prefix: Ipv4Prefix::new(block.network, 29).unwrap(),
+                    next_hop: public,
+                }],
+                offered_routes: vec![],
+                authorizations: vec![],
+            },
+        )))
+        .unwrap();
+
     lab.run(
         0,
         &format!(
@@ -405,7 +425,7 @@ fn replacing_a_legacy_default_does_not_restore_it_when_the_new_route_is_deleted(
 }
 
 #[test]
-fn dhcp_configuration_requires_a_live_room_lan_and_assigns_a_lease() {
+fn an_unpatched_room_socket_does_not_supply_a_dhcp_lease() {
     let mut lab = GuestLab::new(1);
     lab.run(
         0,
@@ -419,6 +439,6 @@ fn dhcp_configuration_requires_a_live_room_lan_and_assigns_a_lease() {
         .unwrap()
         .port;
     lab.connect(lab.port(0, "mgmt0"), lan);
-    lab.run(0, "ifup mgmt0");
-    assert!(lab.run(0, "ip -br addr show dev mgmt0")[0].contains("10.0.0.10/16"));
+    assert!(!lab.sim.execute_console(lab.guests[0], "ifup mgmt0").success);
+    assert!(!lab.run(0, "ip -br addr show dev mgmt0")[0].contains("10.0.0.10/16"));
 }

@@ -5,6 +5,8 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSim {
+    #[serde(default)]
+    pub(crate) provider: ProviderNetwork,
     pub(crate) devices: HashMap<DeviceId, Device>,
     pub(crate) ports: HashMap<PortId, Port>,
     pub(crate) links: HashMap<LinkId, Link>,
@@ -55,6 +57,7 @@ impl Default for NetworkSim {
 impl NetworkSim {
     pub fn new() -> Self {
         let mut sim = Self {
+            provider: ProviderNetwork::default(),
             devices: HashMap::new(),
             ports: HashMap::new(),
             links: HashMap::new(),
@@ -83,6 +86,7 @@ impl NetworkSim {
         };
         sim.ensure_predefined_room();
         sim.ensure_network_outlets();
+        sim.migrate_provider_inventory();
         sim
     }
 
@@ -354,8 +358,23 @@ impl NetworkSim {
         self.next_port_id = self.ports.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.next_link_id = self.links.keys().map(|v| v.0).max().unwrap_or(0) + 1;
         self.next_rack_id = self.racks.keys().map(|v| v.0).max().unwrap_or(0) + 1;
+        for port in self.ports.values_mut() {
+            if let PortConfig::Router(config) = &mut port.config {
+                crate::normalize_router_interfaces(&mut config.interfaces);
+            }
+        }
+        for device in self.devices.values_mut() {
+            if let DeviceKind::Router(router) = &mut device.kind {
+                crate::normalize_router_interfaces(&mut router.interfaces);
+            }
+        }
+        for saved in self.startup_configs.values_mut() {
+            saved.normalize_interfaces();
+        }
         self.ensure_predefined_room();
         self.ensure_network_outlets();
+        self.reconcile_provider();
+        self.migrate_provider_inventory();
     }
 
     fn ensure_network_outlets(&mut self) {
@@ -600,6 +619,26 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::Provider(command) => {
+                let router = match &command {
+                    crate::ProviderCommand::SetDomainRoute(route)
+                    | crate::ProviderCommand::RemoveDomainRoute(route)
+                    | crate::ProviderCommand::ReplaceDomainRoute { route, .. } => {
+                        Some(route.router)
+                    }
+                    _ => None,
+                };
+                self.configure_provider(command)?;
+                router.map_or_else(
+                    || vec![SimEvent::ConnectivityChanged],
+                    |id| {
+                        vec![
+                            SimEvent::RouterRoutesChanged(id),
+                            SimEvent::ConnectivityChanged,
+                        ]
+                    },
+                )
+            }
             Command::BuyCableSupply { supply } => {
                 self.buy_cable_supply(supply)?;
                 vec![SimEvent::CableSuppliesPurchased(supply)]
@@ -655,6 +694,10 @@ impl NetworkSim {
             Command::BuyServerFullPack => {
                 let id = self.buy_server_full_pack()?;
                 vec![SimEvent::DeviceAdded(id)]
+            }
+            Command::BuyPublicIpv4Pool => {
+                self.buy_public_ipv4_pool()?;
+                vec![SimEvent::ConnectivityChanged]
             }
             Command::BuyPublicIpv4Block { uplink } => {
                 self.buy_public_ipv4_block(uplink)?;
@@ -886,6 +929,7 @@ impl NetworkSim {
             });
             events.push(SimEvent::ConnectivityChanged);
         }
+        self.reconcile_provider();
         Ok(events)
     }
 
@@ -1025,6 +1069,7 @@ impl NetworkSim {
                         ports,
                         interfaces: vec![interface],
                         routes: Vec::new(),
+                        domain_routes: Vec::new(),
                     }),
                 )
             }
@@ -2053,7 +2098,13 @@ impl NetworkSim {
 
     fn set_port_enabled(&mut self, id: PortId, enabled: bool) -> Result<(), SimError> {
         let port = self.ports.get_mut(&id).ok_or(SimError::PortNotFound(id))?;
-        if !matches!(port.config, PortConfig::Server(_)) {
+        if !matches!(
+            port.config,
+            PortConfig::Server(_)
+                | PortConfig::Router(_)
+                | PortConfig::Switch(_)
+                | PortConfig::Infrastructure
+        ) {
             return Err(SimError::WrongPortType);
         }
         port.enabled = enabled;
@@ -2124,7 +2175,8 @@ impl NetworkSim {
         };
         match &mut self.ports.get_mut(&id).expect("checked").config {
             PortConfig::Router(v) => {
-                v.interfaces.retain(|old| old.vlan != vlan);
+                v.interfaces
+                    .retain(|old| old.vlan.unwrap_or(VlanId(1)) != vlan.unwrap_or(VlanId(1)));
                 v.interfaces.push(interface.clone());
             }
             _ => return Err(SimError::WrongPortType),
@@ -2136,9 +2188,9 @@ impl NetworkSim {
             .kind
         {
             DeviceKind::Router(router) => {
-                router
-                    .interfaces
-                    .retain(|old| !(old.port == id && old.vlan == vlan));
+                router.interfaces.retain(|old| {
+                    !(old.port == id && old.vlan.unwrap_or(VlanId(1)) == vlan.unwrap_or(VlanId(1)))
+                });
                 router.interfaces.push(interface);
             }
             _ => return Err(SimError::WrongPortType),
@@ -2172,9 +2224,12 @@ impl NetworkSim {
         else {
             unreachable!()
         };
-        config
-            .routes
-            .retain(|old| old.network != route.network || old.prefix != route.prefix);
+        config.routes.retain(|old| {
+            old.network != route.network
+                || old.prefix != route.prefix
+                || old.egress != route.egress
+                || old.via != route.via
+        });
         config.routes.push(route);
         self.routing_revision += 1;
         Ok(())

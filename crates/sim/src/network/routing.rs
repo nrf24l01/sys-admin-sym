@@ -52,3 +52,27 @@ pub struct Route {
     pub via: Option<Ipv4Addr>,
     pub egress: PortId,
 }
+
+/// Normalize legacy records that represented untagged VLAN 1 as both None and Some(1).
+/// Prefer an addressed record over a placeholder, then the latest configuration.
+pub(crate) fn normalize_router_interfaces(interfaces: &mut Vec<RouterInterface>) {
+    let mut selected = std::collections::BTreeMap::new();
+    for (index, interface) in interfaces.iter().enumerate() {
+        let key = (interface.port, interface.vlan.unwrap_or(VlanId(1)));
+        let candidate = (interface.address.is_some(), index);
+        selected
+            .entry(key)
+            .and_modify(|current| {
+                if candidate > *current {
+                    *current = candidate;
+                }
+            })
+            .or_insert(candidate);
+    }
+    let mut index = 0;
+    interfaces.retain(|interface| {
+        let keep = selected[&(interface.port, interface.vlan.unwrap_or(VlanId(1)))].1 == index;
+        index += 1;
+        keep
+    });
+}

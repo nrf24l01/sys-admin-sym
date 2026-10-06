@@ -267,7 +267,7 @@ fn router_originated_ping_updates_both_wire_endpoints() {
 }
 
 #[test]
-fn simulated_wan_reply_updates_source_rx_and_tx() {
+fn unconfigured_wan_does_not_manufacture_a_reply() {
     let mut sim = NetworkSim::new();
     supplies(&mut sim);
     let router = buy(&mut sim, DeviceTemplate::Router);
@@ -302,11 +302,11 @@ fn simulated_wan_reply_updates_source_rx_and_tx() {
         .port;
     let wan = sim.device(router).unwrap().ports()[0];
     sim.execute(Command::Connect { a: wan, b: uplink }).unwrap();
-    assert!(sim.ping_mut(source, ip("8.8.8.8")).reachable);
+    assert!(!sim.ping_mut(source, ip("8.8.8.8")).reachable);
     let telemetry = sim.port_telemetry(source);
     assert!(
         telemetry.tx_frames > 0 && telemetry.rx_frames > 0,
-        "WAN reply did not return to source: {telemetry:?}"
+        "local ARP exchange must still be accounted: {telemetry:?}"
     );
 }
 

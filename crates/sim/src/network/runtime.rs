@@ -6,7 +6,7 @@
 
 use crate::{DeviceId, PortId, VlanId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::Ipv4Addr;
 
@@ -51,6 +51,10 @@ pub struct EthernetFrame {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EthernetPayload {
+    DhcpDiscover,
+    DhcpOffer {
+        address: Ipv4Addr,
+    },
     Arp(ArpPacket),
     Ipv4 {
         packet: Ipv4Packet,
@@ -102,10 +106,14 @@ impl PortTelemetry {
 #[derive(Debug, Clone, Default)]
 pub struct NetworkRuntime {
     pub(crate) now_ms: u64,
+    pub(crate) spanning_tree: HashMap<VlanId, HashSet<PortId>>,
+    pub loop_drops: u64,
+    pub policy_drops: u64,
     pub(crate) telemetry: HashMap<PortId, PortTelemetry>,
     pub(crate) arp: HashMap<(PortId, Ipv4Addr, VlanId), MacAddress>,
     pub(crate) mac_learning: HashMap<(DeviceId, VlanId, MacAddress), PortId>,
     pub(crate) mac_learning_revision: u64,
+    pub(crate) routing_revision: u64,
 }
 
 impl NetworkRuntime {
@@ -113,17 +121,25 @@ impl NetworkRuntime {
     pub(crate) fn reset(&mut self) {
         self.now_ms = 0;
         self.telemetry.clear();
+        self.spanning_tree.clear();
+        self.loop_drops = 0;
+        self.policy_drops = 0;
         self.arp.clear();
         self.mac_learning.clear();
         self.mac_learning_revision = 0;
+        self.routing_revision = 0;
     }
 
     /// Synchronize learned state with the current topology before a lookup.
-    pub(crate) fn prepare(&mut self, topology_revision: u64) {
-        if self.mac_learning_revision != topology_revision {
+    pub(crate) fn prepare(&mut self, topology_revision: u64, routing_revision: u64) {
+        if self.mac_learning_revision != topology_revision
+            || self.routing_revision != routing_revision
+        {
             self.arp.clear();
+            self.spanning_tree.clear();
             self.mac_learning.clear();
             self.mac_learning_revision = topology_revision;
+            self.routing_revision = routing_revision;
         }
     }
 

@@ -238,7 +238,7 @@ fn router_subinterfaces_trunks_and_gateway_ping_work_from_cli() {
         .port;
     let wan = port(&sim, router, 0);
     link(&mut sim, wan, uplink);
-    assert!(sim.ping(ap, "8.8.8.8".parse().unwrap()).reachable);
+    assert!(!sim.ping(ap, "8.8.8.8".parse().unwrap()).reachable);
     run(&mut sim, router, "ping 10.0.20.2\ntraceroute 10.0.30.2");
     run(
         &mut sim,
@@ -340,5 +340,54 @@ fn trunk_allow_list_does_not_create_vlans_and_removed_vlans_do_not_forward() {
         run(&mut sim, sw, "show interfaces trunk")
             .join("\n")
             .contains("allowed none")
+    );
+}
+
+#[test]
+fn static_route_validation_and_explicit_interface_selection_are_atomic() {
+    let mut sim = NetworkSim::new();
+    let router = buy(&mut sim, DeviceTemplate::Router, 1);
+    run(
+        &mut sim,
+        router,
+        "enable\nconfigure terminal\ninterface Gi0/0/0\nip address 192.0.2.2 255.255.255.252\ninterface Gi0/0/1\nip address 192.0.2.2 255.255.255.252\nexit",
+    );
+    let before = sim.device(router).unwrap().kind.clone();
+    for command in [
+        "ip route 0.0.0.0 255.0.255.0 192.0.2.1",
+        "ip route 10.0.0.1 255.255.255.0 192.0.2.1",
+        "ip route 0.0.0.0 0.0.0.0 192.0.2.3",
+        "ip route 0.0.0.0 0.0.0.0 10.20.0.1",
+        "ip route 0.0.0.0 0.0.0.0 192.0.2.1",
+    ] {
+        assert!(!sim.execute_console(router, command).success, "{command}");
+        assert_eq!(sim.device(router).unwrap().kind, before);
+        assert_eq!(sim.terminal_prompt(router), "Router(config)#");
+    }
+    run(
+        &mut sim,
+        router,
+        "ip route 0.0.0.0 0.0.0.0 Gi0/0/1 192.0.2.1\nip route 0.0.0.0 0.0.0.0 Gi0/0/1 192.0.2.1",
+    );
+    let DeviceKind::Router(config) = &sim.device(router).unwrap().kind else {
+        panic!()
+    };
+    assert_eq!(config.domain_routes.len(), 1);
+    assert_eq!(config.domain_routes[0].port, port(&sim, router, 1));
+    // A saved next-hop route can still be removed after its interface changes.
+    run(
+        &mut sim,
+        router,
+        "interface Gi0/0/1\nip address 198.51.100.2 255.255.255.252\nexit\nno ip route 0.0.0.0 0.0.0.0 Gi0/0/1 192.0.2.1",
+    );
+    let DeviceKind::Router(config) = &sim.device(router).unwrap().kind else {
+        panic!()
+    };
+    assert!(config.domain_routes.is_empty());
+    let switch = buy(&mut sim, DeviceTemplate::Switch, 2);
+    run(&mut sim, switch, "enable\nconfigure terminal");
+    assert!(
+        !sim.execute_console(switch, "ip route 0.0.0.0 0.0.0.0 192.0.2.1")
+            .success
     );
 }

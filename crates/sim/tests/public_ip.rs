@@ -67,8 +67,30 @@ fn ready_network() -> (NetworkSim, PortId, PortId, PortId) {
     (sim, uplink, server_port, switch_ports[0])
 }
 
+fn explicit_handoff(sim: &mut NetworkSim, port: PortId, block: PublicIpv4Block) {
+    use cloud_provider_sim::{Ipv4Prefix, ProviderCommand, TransitCircuit, UpstreamRoute};
+    sim.execute(Command::Provider(ProviderCommand::SetTransit(
+        TransitCircuit {
+            port,
+            name: "On-link upstream".into(),
+            address: block.gateway(),
+            prefix: 29,
+            asn: 64501,
+            capacity_mbps: 1000,
+            enabled: true,
+            routes: vec![UpstreamRoute {
+                prefix: Ipv4Prefix::new(block.network, 29).unwrap(),
+                next_hop: block.host_addresses().next().unwrap(),
+            }],
+            offered_routes: vec![],
+            authorizations: vec![],
+        },
+    )))
+    .unwrap();
+}
+
 #[test]
-fn purchased_public_range_routes_inbound_packets_to_assigned_server() {
+fn explicit_on_link_handoff_routes_allocated_addresses() {
     let (mut sim, uplink, server_port, switch_port) = ready_network();
     let before = sim.money;
     sim.execute(Command::BuyPublicIpv4Block { uplink }).unwrap();
@@ -86,6 +108,8 @@ fn purchased_public_range_routes_inbound_packets_to_assigned_server() {
         sim.assign_public_ipv4(server_port, block.network).unwrap(),
         address
     );
+    assert!(!sim.ping_from_internet(address).reachable);
+    explicit_handoff(&mut sim, uplink, block);
     assert!(sim.ping_from_internet(address).reachable);
     assert!(sim.ping(server_port, [8, 8, 8, 8].into()).reachable);
     assert!(sim.port_telemetry(switch_port).rx_frames > 0);
@@ -118,6 +142,7 @@ fn routing_uses_the_selected_uplink_and_fails_after_disconnection() {
     })
     .unwrap();
     let address = block.host_addresses().next().unwrap();
+    explicit_handoff(&mut sim, other_uplink, block);
     assert!(!sim.ping_from_internet(address).reachable);
     let link = sim.link_for_port(connected_uplink).unwrap().id;
     sim.execute(Command::Disconnect { link }).unwrap();

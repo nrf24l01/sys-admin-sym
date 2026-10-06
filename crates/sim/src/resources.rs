@@ -1,5 +1,4 @@
-use crate::{DeviceId, DeviceKind, NetworkOutletKind, NetworkSim, PortId};
-use std::collections::{HashSet, VecDeque};
+use crate::{DeviceId, DeviceKind, NetworkSim, PortId};
 
 /// Capacity credited to a network. CPU is measured in aggregate core MHz;
 /// memory is generation and module weighted equivalent GB.
@@ -25,77 +24,32 @@ pub struct DataCenterResources {
 }
 
 impl NetworkSim {
-    /// Whether a router's chosen WAN interface has a live physical path to a room uplink.
-    pub(crate) fn wan_reaches_uplink(&self, source: PortId) -> bool {
-        let mut queue = VecDeque::from([source]);
-        let mut seen = HashSet::new();
-        while let Some(port) = queue.pop_front() {
-            if !seen.insert(port) || !self.port_link_up(port) {
-                continue;
-            }
-            for endpoint in self.physical_path(port) {
-                if self
-                    .network_outlet(endpoint)
-                    .is_some_and(|outlet| matches!(outlet.kind, NetworkOutletKind::Uplink { .. }))
-                {
-                    return true;
-                }
-                if let Some(owner) = self.port(endpoint).and_then(|p| self.device(p.device))
-                    && matches!(owner.kind, DeviceKind::Switch(_))
-                {
-                    queue.extend(
-                        owner
-                            .ports()
-                            .iter()
-                            .copied()
-                            .filter(|id| self.port_link_up(*id)),
-                    );
-                }
-            }
-        }
-        false
-    }
-
     pub fn management_path_reaches(&self, source: PortId, target: DeviceId) -> bool {
-        let mut queue = VecDeque::from([source]);
-        let mut seen = HashSet::new();
-        while let Some(port) = queue.pop_front() {
-            if !seen.insert(port) || !self.port_link_up(port) {
-                continue;
-            }
-            for endpoint in self.physical_path(port) {
-                if let Some(outlet) = self.network_outlet(endpoint) {
-                    if matches!(outlet.kind, NetworkOutletKind::Lan { .. }) {
-                        queue.extend(
-                            self.network_outlets
-                                .iter()
-                                .filter(|other| {
-                                    matches!(other.kind, NetworkOutletKind::Lan { .. })
-                                        && self.port_link_up(other.port)
-                                })
-                                .map(|other| other.port),
-                        );
-                    }
-                    continue;
-                }
-                let Some(owner) = self.port(endpoint).and_then(|p| self.device(p.device)) else {
-                    continue;
-                };
-                if owner.id == target && owner.powered {
-                    return true;
-                }
-                if matches!(owner.kind, DeviceKind::Switch(_)) {
-                    queue.extend(
-                        owner
-                            .ports()
-                            .iter()
-                            .copied()
-                            .filter(|id| self.port_link_up(*id)),
-                    );
-                }
-            }
+        let Some(device) = self.device(target) else {
+            return false;
+        };
+        match &device.kind {
+            DeviceKind::Switch(_) => self
+                .switch_management(target)
+                .is_some_and(|m| self.ping(source, m.address).reachable),
+            DeviceKind::Server(_) => device
+                .ports()
+                .iter()
+                .filter_map(|p| self.port(*p))
+                .filter(|p| p.name == "mgmt0")
+                .any(|p| match &p.config {
+                    crate::PortConfig::Server(c) => c
+                        .addresses()
+                        .any(|a| self.ping(source, a.address).reachable),
+                    _ => false,
+                }),
+            DeviceKind::Router(r) => r
+                .interfaces
+                .iter()
+                .filter_map(|i| i.address)
+                .any(|a| self.ping(source, a).reachable),
+            _ => false,
         }
-        false
     }
 
     pub fn server_resources(&self, id: DeviceId) -> ServerResources {
@@ -188,48 +142,23 @@ impl NetworkSim {
     }
 
     pub(crate) fn network_reaches(&self, source: PortId, global: bool) -> bool {
-        let mut queue = VecDeque::from([source]);
-        let mut seen = HashSet::new();
-        while let Some(port) = queue.pop_front() {
-            if !seen.insert(port) {
-                continue;
-            }
-            let path = self.physical_path(port);
-            for endpoint in path {
-                if let Some(outlet) = self.network_outlet(endpoint) {
-                    if matches!(outlet.kind, NetworkOutletKind::Uplink { .. }) == global {
-                        return true;
-                    }
-                    if matches!(outlet.kind, NetworkOutletKind::Lan { .. }) {
-                        queue.extend(
-                            self.network_outlets
-                                .iter()
-                                .filter(|other| {
-                                    matches!(other.kind, NetworkOutletKind::Lan { .. })
-                                        && self.port_link_up(other.port)
-                                })
-                                .map(|other| other.port),
-                        );
-                    }
-                    continue;
-                }
-                let Some(p) = self.port(endpoint) else {
-                    continue;
-                };
-                let Some(device) = self.device(p.device) else {
-                    continue;
-                };
-                if matches!(device.kind, DeviceKind::Switch(_) | DeviceKind::Router(_)) {
-                    queue.extend(
-                        device
-                            .ports()
-                            .iter()
-                            .copied()
-                            .filter(|id| self.port_link_up(*id)),
-                    );
-                }
-            }
+        if global {
+            return self
+                .ping(source, std::net::Ipv4Addr::new(198, 51, 100, 1))
+                .reachable;
         }
-        false
+        self.ports()
+            .filter(|p| p.id != source)
+            .any(|p| match &p.config {
+                crate::PortConfig::Server(c) => c
+                    .addresses()
+                    .any(|a| self.ping(source, a.address).reachable),
+                crate::PortConfig::Router(c) => c
+                    .interfaces
+                    .iter()
+                    .filter_map(|i| i.address)
+                    .any(|a| self.ping(source, a).reachable),
+                _ => false,
+            })
     }
 }

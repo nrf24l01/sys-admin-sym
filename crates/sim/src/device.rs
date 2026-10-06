@@ -172,6 +172,8 @@ pub struct Router {
     pub ports: Vec<PortId>,
     pub interfaces: Vec<RouterInterface>,
     pub routes: Vec<Route>,
+    #[serde(default)]
+    pub domain_routes: Vec<crate::DomainRoute>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -14,12 +14,18 @@ impl NetworkSim {
             PortConfig::Router(config) => config
                 .interfaces
                 .iter()
-                .find(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
-                .and_then(|i| i.address),
-            PortConfig::Switch(_)
-            | PortConfig::PatchPanel
-            | PortConfig::CableManager
-            | PortConfig::Infrastructure => None,
+                .filter(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
+                .find_map(|i| i.address),
+            PortConfig::Infrastructure => self
+                .provider()
+                .circuit(port)
+                .filter(|c| c.enabled)
+                .map(|c| c.address),
+            PortConfig::Switch(_) => self
+                .switch_management(self.port(port)?.device)
+                .filter(|m| m.vlan == vlan)
+                .map(|m| m.address),
+            PortConfig::PatchPanel | PortConfig::CableManager => None,
         }
     }
 
@@ -51,7 +57,12 @@ impl NetworkSim {
                     .interfaces
                     .iter()
                     .find(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)?;
-                let peer = self.link_for_port(port)?.other(port)?;
+                let peer = self.physical_path(port).into_iter().find(|id| {
+                    *id != port
+                        && self.port(*id).is_some_and(|p| {
+                            !matches!(p.config, PortConfig::PatchPanel | PortConfig::CableManager)
+                        })
+                })?;
                 let trunk = matches!(self.port(peer)?.config, PortConfig::Switch(ref c) if matches!(c.mode, SwitchPortMode::Trunk { .. }))
                     || matches!(self.port(peer)?.config, PortConfig::Router(_))
                         && config
@@ -108,16 +119,6 @@ impl NetworkSim {
             let Some(ip) = self
                 .interface_has_ipv4(delivery.port, delivery.vlan, target)
                 .then_some(target)
-                .or_else(|| {
-                    self.public_ipv4_blocks()
-                        .iter()
-                        .find(|block| {
-                            block.uplink == delivery.port
-                                && block.gateway() == target
-                                && block.contains_host(source_ip)
-                        })
-                        .map(|block| block.gateway())
-                })
             else {
                 continue;
             };

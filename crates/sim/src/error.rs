@@ -3,6 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SimError {
+    #[error("provider network: {0}")]
+    Provider(String),
     #[error("install both devices in a rack before connecting a cable")]
     CableDevicesNotInstalled,
     #[error("cable too short: this route needs at least {minimum_cm} cm")]

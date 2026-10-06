@@ -35,6 +35,16 @@ impl NetworkSim {
         destination: Ipv4Addr,
         selected: Option<PortId>,
     ) -> Option<RouteSelection> {
+        self.server_route_in_domain(device, destination, selected, None)
+    }
+
+    pub(crate) fn server_route_in_domain(
+        &self,
+        device: DeviceId,
+        destination: Ipv4Addr,
+        selected: Option<PortId>,
+        domain: Option<RoutingDomain>,
+    ) -> Option<RouteSelection> {
         let ports = self.device(device)?.ports();
         let mut candidates = Vec::new();
         for id in ports {
@@ -46,6 +56,11 @@ impl NetworkSim {
                 continue;
             };
             for ip in config.addresses() {
+                if domain
+                    .is_some_and(|d| self.provider.domain(*id, ip.vlan.unwrap_or(VlanId(1))) != d)
+                {
+                    continue;
+                }
                 if ip.contains(destination) {
                     candidates.push(RouteSelection {
                         port: *id,
@@ -94,6 +109,13 @@ impl NetworkSim {
                     .find(|ip| ip.contains(route.via.unwrap_or(destination)))
                     .or(config.ipv4.as_ref());
                 if let Some(source) = source {
+                    if domain.is_some_and(|d| {
+                        self.provider
+                            .domain(route.port, source.vlan.unwrap_or(VlanId(1)))
+                            != d
+                    }) {
+                        continue;
+                    }
                     candidates.push(RouteSelection {
                         port: route.port,
                         source: source.clone(),

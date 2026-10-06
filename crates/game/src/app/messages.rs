@@ -13,9 +13,7 @@ pub enum UiAction {
     Buy(DeviceTemplate),
     BuyServerChassis,
     BuyServerFullPack,
-    BuyPublicIpv4Block {
-        uplink: PortId,
-    },
+    BuyPublicIpv4Pool,
     AssignPublicIpv4 {
         port: PortId,
         network: std::net::Ipv4Addr,
@@ -83,6 +81,9 @@ pub enum UiAction {
         link: LinkId,
         route: Vec<CableRoutePoint>,
     },
+    OpenRouting(DeviceId),
+    OpenIpRanges,
+    NetworkCommand(Command),
     RunTerminal(DeviceId, String),
     LaunchExternalTerminal(DeviceId),
     ApplyConsoleSettings(crate::settings::ConsoleSettings),

@@ -1,4 +1,6 @@
 //! IOS-style console for the simulator. No Cisco firmware is executed.
+mod routes;
+
 use crate::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,6 +19,21 @@ pub struct IosStartupConfig {
     kind: DeviceKind,
     ports: Vec<Port>,
     metadata: IosDeviceConfig,
+    #[serde(default)]
+    network: Option<provider::DeviceNetworkConfig>,
+}
+
+impl IosStartupConfig {
+    pub(crate) fn normalize_interfaces(&mut self) {
+        if let DeviceKind::Router(router) = &mut self.kind {
+            crate::normalize_router_interfaces(&mut router.interfaces);
+        }
+        for port in &mut self.ports {
+            if let PortConfig::Router(config) = &mut port.config {
+                crate::normalize_router_interfaces(&mut config.interfaces);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -41,6 +58,8 @@ const SHOW: &[&str] = &[
     "show interfaces <interface> switchport",
     "show ip interface brief",
     "show ip route",
+    "show arp",
+    "show ip arp",
     "show vlan brief",
     "show interfaces trunk",
     "show cdp neighbors",
@@ -78,6 +97,14 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "interface <interface...>",
                     "interface range <range...>",
                 ]);
+                if !switch {
+                    commands.extend([
+                        "ip route <network> <mask> <next-hop>",
+                        "ip route <network> <mask> <interface> <next-hop>",
+                        "no ip route <network> <mask> <next-hop>",
+                        "no ip route <network> <mask> <interface> <next-hop>",
+                    ]);
+                }
                 if switch {
                     commands.extend([
                         "vlan <id>",
@@ -91,6 +118,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                 commands.push("name <name>");
             }
             if let IosMode::Interface { subinterface, .. } = mode {
+                commands.extend(["interface <interface...>", "interface range <range...>"]);
                 commands.extend(["description <text...>", "no description"]);
                 if subinterface.is_none() {
                     commands.extend(["shutdown", "no shutdown"]);
@@ -202,7 +230,7 @@ fn resolve<'a>(input: &str, grammar: &'a [&str]) -> Result<(&'a str, Vec<String>
 
 impl NetworkSim {
     pub fn console_management_ip(&self, device: DeviceId) -> Option<Ipv4Addr> {
-        self.ios_configs.get(&device)?.management_ip
+        self.switch_management(device).map(|m| m.address)
     }
 
     pub fn console_hostname(&self, device: DeviceId) -> Option<&str> {
@@ -302,22 +330,14 @@ impl NetworkSim {
             };
             let target = self.devices().find_map(|dev| match &dev.kind {
                 DeviceKind::Server(server) if dev.id != device => server.ports.iter().find(|id| self.port(**id).is_some_and(|p| p.name == "mgmt0" && matches!(&p.config, PortConfig::Server(config) if config.ipv4.as_ref().is_some_and(|ip| ip.address == address)))).map(|_| dev.id),
-                DeviceKind::Switch(_) if self.ios_configs.get(&dev.id).is_some_and(|config| config.management_ip == Some(address)) => Some(dev.id),
+                DeviceKind::Switch(_) if self.switch_management(dev.id).is_some_and(|config| config.address == address) => Some(dev.id),
                 DeviceKind::Router(router) if router.interfaces.iter().any(|interface| interface.address == Some(address)) => Some(dev.id),
                 _ => None,
             });
             let Some(target) = target else {
                 return reply(false, "management IP not found");
             };
-            let reachable = if matches!(
-                self.device(target).map(|d| &d.kind),
-                Some(DeviceKind::Switch(_))
-            ) {
-                let same_subnet = self.port(source).is_some_and(|port| matches!(&port.config, PortConfig::Server(config) if config.ipv4.as_ref().is_some_and(|ip| ip.contains(address))));
-                same_subnet && self.management_path_reaches(source, target)
-            } else {
-                self.ping(source, address).reachable
-            };
+            let reachable = self.ping(source, address).reachable;
             if !reachable {
                 return reply(false, "management IP is unreachable");
             }
@@ -424,14 +444,18 @@ impl NetworkSim {
         let switch = matches!(self.devices[&device].kind, DeviceKind::Switch(_));
         if *mode == IosMode::ReloadConfirm {
             if input.is_empty() || input.eq_ignore_ascii_case("yes") {
-                let saved = self
+                let mut saved = self
                     .startup_configs
                     .get(&device)
                     .cloned()
                     .ok_or("% No startup configuration. Save with write memory first.")?;
+                saved.normalize_interfaces();
                 self.devices.get_mut(&device).unwrap().kind = saved.kind;
                 for port in saved.ports {
                     self.ports.insert(port.id, port);
+                }
+                if let Some(network) = saved.network {
+                    self.restore_device_network(device, network);
                 }
                 self.ios_configs.insert(device, saved.metadata);
                 self.topology_revision += 1;
@@ -468,6 +492,7 @@ impl NetworkSim {
         }
         let (command, args) = resolve(input, &commands)?;
         if command.starts_with("show ") {
+            self.prepare_runtime();
             return self.ios_show(device, command, &args);
         }
         match command {
@@ -508,14 +533,26 @@ impl NetworkSim {
             }
             "do <command...>" => {
                 let mut exec = IosMode::Privileged;
-                if !args[0]
-                    .split_whitespace()
-                    .next()
-                    .is_some_and(|w| "show".starts_with(&w.to_ascii_lowercase()))
+                let exec_grammar = grammar(&exec, switch);
+                let (exec_command, _) = resolve(&args[0], &exec_grammar)?;
+                if !exec_command.starts_with("show ")
+                    && !matches!(
+                        exec_command,
+                        "ping <address>"
+                            | "traceroute <address>"
+                            | "write memory"
+                            | "copy running-config startup-config"
+                    )
                 {
-                    return Err("% Only do show is supported in configuration mode.".into());
+                    return Err("% This command cannot run through do.".into());
                 }
                 return self.ios_command(device, &mut exec, &args[0]);
+            }
+            "ip route <network> <mask> <next-hop>"
+            | "ip route <network> <mask> <interface> <next-hop>"
+            | "no ip route <network> <mask> <next-hop>"
+            | "no ip route <network> <mask> <interface> <next-hop>" => {
+                self.ios_static_route(device, &args, command.starts_with("no "))?;
             }
             "hostname <name>" => {
                 let name = &args[0];
@@ -535,9 +572,24 @@ impl NetworkSim {
                 if address.is_unspecified() || address.is_multicast() || address.is_broadcast() {
                     return Err("% Invalid management IPv4 address.".into());
                 }
+                let mut management = self.switch_management(device).unwrap_or(SwitchManagement {
+                    switch: device,
+                    address,
+                    prefix: 24,
+                    vlan: VlanId(1),
+                    gateway: None,
+                });
+                management.address = address;
+                self.ios_execute(Command::Provider(ProviderCommand::SetSwitchManagement(
+                    management,
+                )))?;
                 self.ios_configs.entry(device).or_default().management_ip = Some(address);
             }
-            "no management ip" => self.ios_configs.entry(device).or_default().management_ip = None,
+            "no management ip" => {
+                self.clear_switch_management(device);
+                self.ios_configs.entry(device).or_default().management_ip = None;
+                self.routing_revision += 1;
+            }
             "write memory" | "copy running-config startup-config" => {
                 self.startup_configs.insert(
                     device,
@@ -549,6 +601,7 @@ impl NetworkSim {
                             .map(|p| self.ports[p].clone())
                             .collect(),
                         metadata: self.ios_configs.get(&device).cloned().unwrap_or_default(),
+                        network: Some(self.device_network_config(device)),
                     },
                 );
                 return Ok(vec!["Building configuration...".into(), "[OK]".into()]);
@@ -834,10 +887,7 @@ impl NetworkSim {
                 let old = config
                     .interfaces
                     .iter()
-                    .find(|i| {
-                        i.name == name
-                            || (sub.is_none() && !i.name.contains('.') && i.vlan == Some(VlanId(1)))
-                    })
+                    .find(|i| i.name == name || (sub.is_none() && !i.name.contains('.')))
                     .cloned();
                 let mut interface = old.clone().unwrap_or(RouterInterface {
                     name: name.clone(),
@@ -848,6 +898,7 @@ impl NetworkSim {
                     dhcp: false,
                     internet_connected: false,
                 });
+                interface.name = name.clone();
                 match command {
                     "encapsulation dot1q <id>" => interface.vlan = Some(vlan_id(&args[0])?),
                     "ip address <address> <mask>" => {
@@ -922,6 +973,9 @@ impl NetworkSim {
                 for p in &saved.ports {
                     copy.ports.insert(p.id, p.clone());
                 }
+                if let Some(network) = &saved.network {
+                    copy.restore_device_network(device, network.clone());
+                }
                 copy.ios_configs.insert(device, saved.metadata.clone());
                 Ok(copy.ios_running_config(device))
             }
@@ -942,12 +996,33 @@ impl NetworkSim {
                 }
                 Ok(lines)
             }
+            "show arp" | "show ip arp" => {
+                let mut entries: Vec<_> = self
+                    .runtime
+                    .arp
+                    .iter()
+                    .filter(|((port, _, _), _)| dev.ports().contains(port))
+                    .collect();
+                entries.sort_by_key(|((port, address, vlan), _)| (*port, *vlan, *address));
+                let mut lines = vec![
+                    "Address          Hardware address    Interface                 VLAN".into(),
+                ];
+                lines.extend(entries.into_iter().map(|((port, address, vlan), mac)| {
+                    format!(
+                        "{address:<16} {mac}   {:<25} {}",
+                        self.ios_interface_name(device, *port),
+                        vlan.0
+                    )
+                }));
+                Ok(lines)
+            }
             "show ip route" => {
                 let DeviceKind::Router(router) = &dev.kind else {
                     return Err("% Layer 3 routing is not implemented on this switch.".into());
                 };
-                let mut lines =
-                    vec!["Codes: C - connected; simulated internet uplink shown separately".into()];
+                let mut lines = vec![
+                    "Codes: C - connected, S - static; configured routes on this device".into(),
+                ];
                 for iface in &router.interfaces {
                     if !self.ports[&iface.port].enabled {
                         continue;
@@ -962,10 +1037,39 @@ impl NetworkSim {
                     }
                     if iface.internet_connected {
                         lines.push(format!(
-                            "Simulated internet uplink: {}",
+                            "Legacy WAN designation (does not install a route): {}",
                             self.ios_interface_name(device, iface.port)
                         ));
                     }
+                }
+                for route in &router.routes {
+                    lines.push(format!(
+                        "S {}/{} via {}, {}",
+                        route.network,
+                        route.prefix,
+                        route
+                            .via
+                            .map_or_else(|| "on-link".into(), |ip| ip.to_string()),
+                        self.ios_interface_name(device, route.egress)
+                    ));
+                }
+                for route in &router.domain_routes {
+                    lines.push(format!(
+                        "S {} [{}] via {}, {}, VLAN {}, domain {}{}",
+                        route.prefix,
+                        route.preference,
+                        route
+                            .next_hop
+                            .map_or_else(|| "on-link".into(), |ip| ip.to_string()),
+                        self.ios_interface_name(device, route.port),
+                        route.vlan.0,
+                        route.domain.0,
+                        if route.track_neighbor {
+                            ", tracked"
+                        } else {
+                            ""
+                        }
+                    ));
                 }
                 Ok(lines)
             }
@@ -974,33 +1078,33 @@ impl NetworkSim {
                     "Device ID                  Local Interface          Remote Interface".into(),
                 ];
                 for port in dev.ports() {
-                    if let Some(other) = self
-                        .link_for_port(*port)
-                        .filter(|l| l.enabled)
-                        .and_then(|l| l.other(*port))
-                    {
-                        let remote = &self.ports[&other];
-                        let owner = &self.devices[&remote.device];
-                        if !remote.enabled
-                            || !self.ports[port].enabled
-                            || !owner.powered
-                            || owner.rack.is_none()
-                            || dev.rack.is_none()
-                            || matches!(owner.kind, DeviceKind::Server(_))
-                        {
-                            continue;
-                        }
-                        let name = self
-                            .ios_configs
-                            .get(&remote.device)
-                            .and_then(|c| c.hostname.as_deref())
-                            .unwrap_or(&owner.name);
-                        lines.push(format!(
-                            "{name:<26} {}  {}",
-                            self.ios_interface_name(device, *port),
-                            self.ios_interface_name(remote.device, other)
-                        ));
-                    }
+                    let Some(other) = self.physical_path(*port).into_iter().find(|id| {
+                        *id != *port
+                            && self.port(*id).is_some_and(|p| {
+                                !matches!(
+                                    p.config,
+                                    PortConfig::PatchPanel | PortConfig::CableManager
+                                )
+                            })
+                    }) else {
+                        continue;
+                    };
+                    let remote = &self.ports[&other];
+                    let Some(owner) = self.devices.get(&remote.device).filter(|owner| {
+                        matches!(owner.kind, DeviceKind::Switch(_) | DeviceKind::Router(_))
+                    }) else {
+                        continue;
+                    };
+                    let name = self
+                        .ios_configs
+                        .get(&remote.device)
+                        .and_then(|c| c.hostname.as_deref())
+                        .unwrap_or(&owner.name);
+                    lines.push(format!(
+                        "{name:<26} {}  {}",
+                        self.ios_interface_name(device, *port),
+                        self.ios_interface_name(remote.device, other)
+                    ));
                 }
                 Ok(lines)
             }
@@ -1101,7 +1205,7 @@ impl NetworkSim {
                 )
             ),
         ];
-        if let Some(address) = meta.management_ip {
+        if let Some(address) = self.console_management_ip(device) {
             lines.push(format!("management ip {address}"));
         }
         if let DeviceKind::Switch(sw) = &dev.kind {
@@ -1158,7 +1262,10 @@ impl NetworkSim {
                             lines.push(format!(" ip address {ip} {}", prefix_mask(iface.prefix)));
                         }
                         if iface.internet_connected {
-                            lines.push(" ! Simulated internet uplink enabled in Inspector".into());
+                            lines.push(
+                                " ! Legacy WAN designation; configure explicit transit routes"
+                                    .into(),
+                            );
                         }
                     }
                 }
@@ -1181,6 +1288,7 @@ impl NetworkSim {
                 }
             }
         }
+        lines.extend(self.ios_route_config(device));
         lines.push("end".into());
         lines
     }

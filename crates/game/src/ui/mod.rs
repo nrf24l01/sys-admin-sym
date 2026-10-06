@@ -7,10 +7,13 @@ mod cables;
 mod equipment;
 mod inventory;
 mod rack;
+mod ranges;
 mod room;
+mod routing;
 mod settings;
 mod shop;
 mod terminal_renderer;
+mod upstream;
 use cables::{CableScene, CableView, PowerCableView};
 use equipment::equipment_power_port_position;
 use rack::RackLayout;
@@ -261,6 +264,14 @@ pub fn main_ui(
         &mut images.cables,
         &mut actions,
     );
+    routing::show(
+        &mut viewport_ui,
+        &snapshot.0,
+        &mut state,
+        &mut drafts,
+        &mut actions,
+    );
+    ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     shop::show(&mut viewport_ui, &snapshot.0, &mut state.shop, &mut actions);
     settings::show(
         &mut viewport_ui,
@@ -303,6 +314,12 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                     }
                 }
                 ui.separator();
+                if ui
+                    .selectable_label(state.ranges_open, "IP RANGES")
+                    .clicked()
+                {
+                    state.ranges_open = !state.ranges_open;
+                }
                 if ui.selectable_label(state.shop.open, "SHOP").clicked() {
                     state.shop.open = !state.shop.open;
                 }
@@ -364,17 +381,22 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                     );
                 }
             });
-            let resources = sim.datacenter_resources();
+            let revision = (sim.topology_revision, sim.routing_revision);
+            if state.network_summary.revision != Some(revision) {
+                state.network_summary.resources = sim.datacenter_resources();
+                state.network_summary.revision = Some(revision);
+            }
+            let resources = state.network_summary.resources;
             ui.horizontal(|ui| {
                 ui.weak(format!(
-                    "ROOM LAN  {} core MHz · {} weighted GB · {} Mb/s",
+                    "LAN REACHABLE  {} core MHz · {} weighted GB · {} NIC Mb/s",
                     resources.lan.compute_mhz,
                     resources.lan.memory_score_gb,
                     resources.lan.network_mbps
                 ));
                 ui.separator();
                 ui.weak(format!(
-                    "GLOBAL UPLINK  {} core MHz · {} weighted GB · {} Mb/s",
+                    "PUBLIC REACHABLE  {} core MHz · {} weighted GB · {} NIC Mb/s",
                     resources.global.compute_mhz,
                     resources.global.memory_score_gb,
                     resources.global.network_mbps
@@ -543,6 +565,9 @@ fn device_inspector(
         state.workspace = Workspace::Rack;
     }
     ui.separator();
+    if matches!(device.kind, DeviceKind::Router(_)) && ui.button("Routing table…").clicked() {
+        actions.write(UiAction::OpenRouting(id));
+    }
     ui.strong("Ports");
     egui::Grid::new("device_ports")
         .num_columns(3)
@@ -961,34 +986,18 @@ fn port_inspector(
         return;
     };
     if let Some(outlet) = sim.network_outlet(id) {
-        ui.heading(outlet.name());
+        ui.heading(if matches!(outlet.kind, NetworkOutletKind::Uplink { .. }) {
+            port.name.clone()
+        } else {
+            outlet.name()
+        });
         ui.label(format!("RJ45 port {}", id.0));
         match outlet.kind {
             NetworkOutletKind::Lan { .. } => {
-                ui.label("Room LAN · private IPv4 pool 10.0.0.0/16");
+                ui.label("Passive room socket · wire it to your switching equipment.");
             }
             NetworkOutletKind::Uplink { .. } => {
-                ui.label("Global uplink · simulated provider gateway");
-                let mut probe = sim.clone();
-                for block in sim
-                    .public_ipv4_blocks()
-                    .iter()
-                    .filter(|block| block.uplink == id)
-                {
-                    ui.label(format!(
-                        "{}/29 · gateway {} · five server addresses",
-                        block.network,
-                        block.gateway()
-                    ));
-                    for (address, target) in sim.public_assignments(*block) {
-                        let status = if probe.ping_from_internet(address).reachable {
-                            "reachable"
-                        } else {
-                            "offline"
-                        };
-                        ui.label(format!("{address} → port {} · {status}", target.0));
-                    }
-                }
+                upstream::show(ui, sim, id, actions);
             }
         }
         if let Some(link) = sim.link_for_port(id) {
@@ -1050,9 +1059,11 @@ fn port_inspector(
                 .iter()
                 .filter(|_| port.name != "mgmt0")
             {
+                let prefix = Ipv4Prefix::new(block.network, PublicIpv4Block::PREFIX).expect("/29");
                 let uplink = sim
-                    .port(block.uplink)
-                    .map_or("UPLINK", |port| port.name.as_str());
+                    .range_uplink(prefix)
+                    .and_then(|id| sim.network_outlet(id))
+                    .map_or_else(|| "Unassigned".into(), |outlet| outlet.name());
                 ui.horizontal(|ui| {
                     ui.label(format!("{}/29 via {uplink}", block.network));
                     if ui
@@ -1179,15 +1190,18 @@ fn port_inspector(
             });
             ui.label("Interface name");
             ui.text_edit_singleline(&mut draft.name);
-            ui.label("IPv4 (blank = DHCP)");
+            ui.label("IPv4 (blank = unconfigured)");
             ui.text_edit_singleline(&mut draft.address);
             ui.horizontal(|ui| {
                 ui.label("Prefix");
-                ui.text_edit_singleline(&mut draft.prefix);
+                ui.add(egui::TextEdit::singleline(&mut draft.prefix).desired_width(55.0));
                 ui.label("VLAN");
-                ui.text_edit_singleline(&mut draft.vlan);
+                ui.add(egui::TextEdit::singleline(&mut draft.vlan).desired_width(55.0));
             });
-            ui.checkbox(&mut draft.internet, "Internet connected");
+            if ui.button("Routing table…").clicked() {
+                actions.write(UiAction::OpenRouting(port.device));
+            }
+            draft.internet = false;
             if ui.button("Apply router interface").clicked() {
                 actions.write(UiAction::ApplyRouter(id));
             }

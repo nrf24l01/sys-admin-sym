@@ -44,7 +44,7 @@ fn ports(sim: &NetworkSim, device: DeviceId) -> Vec<PortId> {
 }
 
 #[test]
-fn dell_can_connect_directly_to_c1111_and_reach_the_internet() {
+fn wan_cabling_alone_does_not_supply_transit_or_nat() {
     for reverse in [false, true] {
         let mut sim = NetworkSim::new();
         sim.execute(Command::BuyCableSupply {
@@ -95,7 +95,7 @@ fn dell_can_connect_directly_to_c1111_and_reach_the_internet() {
         let wan = ports(&sim, router)[0];
         sim.execute(Command::Connect { a: wan, b: uplink }).unwrap();
         let result = sim.ping(ethernet, ip("8.8.8.8"));
-        assert!(result.reachable, "{result:?}");
+        assert!(!result.reachable, "{result:?}");
         let uplink_link = sim.link_for_port(wan).unwrap().id;
         sim.execute(Command::Disconnect { link: uplink_link })
             .unwrap();
@@ -427,9 +427,9 @@ fn router_forwards_between_vlans() {
 }
 
 #[test]
-fn router_provides_internet_through_allowed_trunk() {
+fn private_vlan_requires_explicit_transit_and_translation_for_internet() {
     let (sim, _, _, _, b) = routed_network(vec![VlanId(10), VlanId(20)]);
-    assert!(sim.ping(ports(&sim, b)[0], ip("8.8.8.8")).reachable);
+    assert!(!sim.ping(ports(&sim, b)[0], ip("8.8.8.8")).reachable);
 }
 
 #[test]

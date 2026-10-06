@@ -144,16 +144,30 @@ impl NetworkSim {
         router: DeviceId,
         destination: Ipv4Addr,
     ) -> ReachabilityResult {
+        self.ping_router_domain_mut(router, RoutingDomain(0), destination)
+    }
+
+    pub fn ping_router_domain_mut(
+        &mut self,
+        router: DeviceId,
+        domain: RoutingDomain,
+        destination: Ipv4Addr,
+    ) -> ReachabilityResult {
         let s = self;
-        let Some((port, i)) = s.router_interfaces(router).into_iter().find(|(_, i)| {
-            i.address
-                .is_some_and(|a| same_subnet(a, destination, i.prefix))
-                && i.vlan.is_some()
-        }) else {
+        let Some((port, vlan, next)) =
+            s.router_route_in_domain(router, Ipv4Addr::UNSPECIFIED, destination, domain)
+        else {
             return ReachabilityResult {
                 reachable: false,
                 hops: vec![],
                 failure: Some(ReachabilityFailure::NoRoute),
+            };
+        };
+        let Some(address) = s.interface_ipv4(port, vlan) else {
+            return ReachabilityResult {
+                reachable: false,
+                hops: vec![],
+                failure: Some(ReachabilityFailure::NoAddress),
             };
         };
         let mut h = vec![Hop {
@@ -162,7 +176,7 @@ impl NetworkSim {
             egress: Some(port),
             note: "router-originated echo request".into(),
         }];
-        let Some(mac) = s.resolve_arp(port, destination, i.vlan.unwrap(), &mut h) else {
+        let Some(mac) = s.resolve_arp(port, next, vlan, &mut h) else {
             return ReachabilityResult {
                 reachable: false,
                 hops: h,
@@ -170,14 +184,14 @@ impl NetworkSim {
             };
         };
         let p = Ipv4Packet {
-            source: i.address.unwrap(),
+            source: address,
             destination,
             ttl: 64,
             protocol: 1,
         };
         let ok = s.deliver(
             port,
-            i.vlan.unwrap(),
+            vlan,
             mac,
             p,
             IcmpMessage::EchoRequest {
@@ -194,7 +208,7 @@ impl NetworkSim {
         }
     }
     #[allow(clippy::too_many_arguments)]
-    fn deliver(
+    pub(crate) fn deliver(
         &mut self,
         out: PortId,
         vlan: VlanId,
@@ -215,6 +229,22 @@ impl NetworkSim {
         };
         let deliveries = self.transmit_frame(out, f);
         for d in deliveries {
+            for path_port in &d.path {
+                if let Some(port) = self.port(*path_port) {
+                    let outgoing = self.link_for_port(*path_port).is_some_and(|l| {
+                        d.path
+                            .windows(2)
+                            .any(|pair| pair[0] == *path_port && l.other(pair[0]) == Some(pair[1]))
+                    });
+                    self.hop(
+                        h,
+                        port.device,
+                        (!outgoing).then_some(*path_port),
+                        outgoing.then_some(*path_port),
+                        "Ethernet forwarding",
+                    );
+                }
+            }
             let Some(port) = self.port(d.port).cloned() else {
                 continue;
             };
@@ -227,9 +257,12 @@ impl NetworkSim {
                                 identifier,
                                 sequence,
                             } => {
-                                let Some(route) =
-                                    self.server_route_selection(port.device, p.source, None)
-                                else {
+                                let Some(route) = self.server_route_in_domain(
+                                    port.device,
+                                    p.source,
+                                    None,
+                                    Some(self.provider.domain(d.port, d.vlan)),
+                                ) else {
                                     continue;
                                 };
                                 let interface_vlan = route.source.vlan.unwrap_or(VlanId(1));
@@ -265,58 +298,18 @@ impl NetworkSim {
                     }
                 }
                 PortConfig::Router(_) => {
-                    if p.ttl <= 1 {
-                        self.hop(h, port.device, Some(d.port), None, "TTL expired");
-                        continue;
-                    }
-                    if self.route_router(port.device, d.port, p, icmp, h, depth) {
+                    if self.route_router(port.device, d.port, d.vlan, p, icmp, h, depth) {
                         return true;
                     }
                 }
-                PortConfig::Switch(_) => {}
+                PortConfig::Switch(_) => {
+                    if self.switch_management_delivery(d.port, d.vlan, p, icmp, h, depth) {
+                        return true;
+                    }
+                }
                 PortConfig::Infrastructure => {
-                    if let Some(block) = self.public_block_for_address(p.source)
-                        && block.uplink == d.port
-                        && self.address_config(out, p.source).is_some()
-                        && self
-                            .port(out)
-                            .and_then(|port| {
-                                self.server_route_selection(port.device, p.destination, Some(out))
-                            })
-                            .is_some_and(|route| route.next_hop == block.gateway())
-                        && !p.destination.is_private()
-                        && let IcmpMessage::EchoRequest {
-                            identifier,
-                            sequence,
-                        } = icmp
-                    {
-                        self.hop(
-                            h,
-                            port.device,
-                            Some(d.port),
-                            Some(d.port),
-                            "public Internet echo reply",
-                        );
-                        let reply = Ipv4Packet {
-                            source: p.destination,
-                            destination: p.source,
-                            ttl: 64,
-                            protocol: 1,
-                        };
-                        if self.deliver(
-                            d.port,
-                            VlanId(1),
-                            MacAddress::for_port(out),
-                            reply,
-                            IcmpMessage::EchoReply {
-                                identifier,
-                                sequence,
-                            },
-                            h,
-                            depth + 1,
-                        ) {
-                            return true;
-                        }
+                    if self.transit_delivery(d.port, p, icmp, h, depth) {
+                        return true;
                     }
                 }
                 PortConfig::PatchPanel | PortConfig::CableManager => {}
@@ -324,19 +317,25 @@ impl NetworkSim {
         }
         false
     }
+    #[allow(clippy::too_many_arguments)]
     fn route_router(
         &mut self,
         r: DeviceId,
         ing: PortId,
+        ingress_vlan: VlanId,
         p: Ipv4Packet,
         icmp: IcmpMessage,
         h: &mut Vec<Hop>,
         depth: u8,
     ) -> bool {
+        let domain = self.provider.domain(ing, ingress_vlan);
         let is = self.router_interfaces(r);
         if is
             .iter()
-            .find(|(_, i)| i.address == Some(p.destination))
+            .find(|(_, i)| {
+                i.address == Some(p.destination)
+                    && self.provider.domain(i.port, i.vlan.unwrap_or(VlanId(1))) == domain
+            })
             .is_some()
         {
             if matches!(icmp, IcmpMessage::EchoReply { .. }) {
@@ -347,7 +346,9 @@ impl NetworkSim {
                 sequence,
             } = icmp
             {
-                let Some((ro, rv, rn)) = self.router_route(r, p.source) else {
+                let Some((ro, rv, rn)) =
+                    self.router_route_in_domain(r, p.destination, p.source, domain)
+                else {
                     return false;
                 };
                 let Some(m) = self.resolve_arp(ro, rn, rv, h) else {
@@ -373,39 +374,12 @@ impl NetworkSim {
                 );
             }
         }
-        let Some((o, v, n)) = self.router_route(r, p.destination) else {
-            if !p.destination.is_private()
-                && self.router_interfaces(r).iter().any(|(p, i)| {
-                    i.internet_connected
-                        && self.wan_reaches_uplink(*p)
-                        && self.device_active(r)
-                        && i.vlan.is_none_or(|v| self.port_vlan_available(*p, v))
-                })
-            {
-                let Some((back_port, back_vlan, next)) = self.router_route(r, p.source) else {
-                    return false;
-                };
-                let Some(back_mac) = self.resolve_arp(back_port, next, back_vlan, h) else {
-                    return false;
-                };
-                self.hop(h, r, Some(ing), Some(back_port), "WAN return packet");
-                let mut reply = p;
-                reply.source = p.destination;
-                reply.destination = p.source;
-                reply.ttl = 64;
-                return self.deliver(
-                    back_port,
-                    back_vlan,
-                    back_mac,
-                    reply,
-                    IcmpMessage::EchoReply {
-                        identifier: 1,
-                        sequence: 1,
-                    },
-                    h,
-                    depth + 1,
-                );
-            }
+        if p.ttl <= 1 {
+            self.hop(h, r, Some(ing), None, "TTL expired");
+            return false;
+        }
+        let Some((o, v, n)) = self.router_route_in_domain(r, p.source, p.destination, domain)
+        else {
             return false;
         };
         let Some(m) = self.resolve_arp(o, n, v, h) else {
@@ -431,33 +405,6 @@ impl NetworkSim {
             note: "ARP resolved".into(),
         });
         Some(m)
-    }
-    fn router_route(&self, r: DeviceId, dst: Ipv4Addr) -> Option<(PortId, VlanId, Ipv4Addr)> {
-        let DeviceKind::Router(x) = &self.device(r)?.kind else {
-            return None;
-        };
-        let connected = x
-            .interfaces
-            .iter()
-            .filter(|i| i.address.is_some_and(|a| same_subnet(a, dst, i.prefix)))
-            .map(|i| (i.prefix, i.port, i.vlan.unwrap_or(VlanId(1)), dst));
-        let routes = x
-            .routes
-            .iter()
-            .filter(|x| same_subnet(x.network, dst, x.prefix))
-            .filter_map(|route| {
-                let i = x.interfaces.iter().find(|i| i.port == route.egress)?;
-                Some((
-                    route.prefix,
-                    route.egress,
-                    i.vlan.unwrap_or(VlanId(1)),
-                    route.via.unwrap_or(dst),
-                ))
-            });
-        connected
-            .chain(routes)
-            .max_by_key(|x| x.0)
-            .map(|(_, p, v, n)| (p, v, n))
     }
     fn server_ipv4(&self, p: PortId) -> Option<Ipv4InterfaceConfig> {
         match &self.ports.get(&p)?.config {

@@ -160,7 +160,13 @@ The room layout and manager positions are predefined.
    without starting a cable. The Catalyst SFP cages are shown for physical
    accuracy but are intentionally inactive in the MVP.
 5. Create VLANs on the switch, configure access/trunk ports, server IPv4, and
-   router subinterfaces.
+   router subinterfaces. Open each router's **Routing table…** to bind destination
+   routes to its outgoing interfaces and next hops. Open **IP RANGES** to select
+   each range's delivery uplink and view the higher network gateway, router WAN
+   IP/subnet and range LAN gateway. Configure the two router interfaces using
+   those instructions. See the
+   [provider network guide](docs/PROVIDER_NETWORK_GUIDE.md). Public-IP purchases
+   add inventory; explicit upstream and return routes provide connectivity.
 6. Select a switch or router to open its IOS-style console. Start with `enable`
    and `configure terminal`; use `?` for supported commands. VLANs, switchports,
    router IP addresses/subinterfaces, shutdown, and startup configurations are
@@ -175,9 +181,10 @@ See [the IOS-style console guide](docs/IOS_GUIDE.md) for Cisco reference manuals
 a working switch/router configuration example, interface names, and the exact
 compatibility limits. This is a simulated CLI subset, not Cisco IOS firmware.
 
-The implemented network layers cover physical media (L1), Ethernet links and
-switching (L2), and IPv4/VLAN routing (L3). Transport and application layers
-(L4–L7) are outside the current scope.
+The packet engine covers physical media (L1), Ethernet/VLAN switching (L2), and
+IPv4 routing/ICMP (L3). Provider routing policy, semantic DHCP exchanges and
+converged spanning-tree forwarding are supported. TCP/UDP sessions and application
+protocol stacks remain outside the current scope.
 
 ## Development
 
@@ -207,3 +214,6 @@ Cisco ISR C1111-8P routers are supplied with a dedicated four-pin 66 W,
 AC load and is selected automatically by legacy `ConnectPower` commands;
 explicit `ConnectPowerCord` commands validate that routers use the adapter and
 other active devices use an IEC C13/C14 cord.
+
+See the [network feature audit](docs/NETWORK_FEATURE_AUDIT.md) for remaining
+player controls and protocol limits.

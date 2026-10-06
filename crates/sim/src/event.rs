@@ -11,6 +11,7 @@ pub enum SimEvent {
     LinkCreated(LinkId),
     LinkRemoved(LinkId),
     PortConfigChanged(PortId),
+    RouterRoutesChanged(DeviceId),
     TopologyChanged { revision: u64 },
     ConnectivityChanged,
     PowerChanged,

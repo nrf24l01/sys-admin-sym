@@ -39,8 +39,20 @@ pub enum Selection {
     PowerCable(cloud_provider_sim::OutletId),
 }
 
+#[derive(Default)]
+pub struct NetworkSummaryCache {
+    pub revision: Option<(u64, u64)>,
+    pub resources: cloud_provider_sim::DataCenterResources,
+}
+
 #[derive(Resource, Default)]
 pub struct UiState {
+    pub network_summary: NetworkSummaryCache,
+    pub routing_device: Option<DeviceId>,
+    pub ranges_open: bool,
+    pub selected_range: Option<cloud_provider_sim::Ipv4Prefix>,
+    pub range_uplink: Option<PortId>,
+    pub range_loaded_for: Option<cloud_provider_sim::Ipv4Prefix>,
     pub shop: super::ShopState,
     pub settings: super::SettingsWindowState,
     pub workspace: Workspace,
@@ -106,4 +118,5 @@ pub struct EditorDrafts {
     pub servers: HashMap<PortId, ServerDraft>,
     pub switches: HashMap<PortId, SwitchPortDraft>,
     pub routers: HashMap<PortId, RouterDraft>,
+    pub routes: HashMap<DeviceId, super::RouteDraft>,
 }
