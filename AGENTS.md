@@ -12,7 +12,7 @@ Optical hardware lives in `crates/sim/src/optics`; keep cage compatibility, cabl
 - `cargo test --workspace --locked`: run all Rust unit and integration tests using the committed lockfile.
 - `cargo clippy --workspace --all-targets -- -D warnings`: catch lint issues across binaries, libraries, and tests.
 - `cargo fmt --all -- --check`: verify Rust formatting; use `cargo fmt --all` to apply it.
-- `python3 -m unittest discover -s tools -p test_package_game.py`: test ZIP packaging behavior.
+- `python3 -m unittest discover -s tools -p 'test_package_*.py'`: test game and standalone client ZIP packaging behavior.
 
 The game writes `cloud-provider-save.db` in its working directory. Avoid committing local save data or generated `target` output.
 
@@ -22,7 +22,7 @@ Follow Rust 2024 conventions and `rustfmt` defaults (four-space indentation). Us
 
 ## Testing Guidelines
 
-Add regression tests for changed simulation behavior in the matching `crates/sim/tests/*.rs` file. For UI or asset-coordinate changes, add focused module tests where practical. Name tests after the behavior they verify, and run the workspace suite plus Clippy before submitting. CI also runs the packaging test and checks that the Linux build starts.
+Add regression tests for changed simulation behavior in the matching `crates/sim/tests/*.rs` file. For UI or asset-coordinate changes, add focused module tests where practical. Name tests after the behavior they verify, and run the workspace suite plus Clippy before submitting. CI also runs packaging tests and checks that the Linux build starts. The independent `build-game-ssh.yml` workflow builds Linux/Windows clients and publishes releases for `game-ssh-v*` tags; see `docs/GAME_SSH.md`.
 
 ## Commit & Pull Request Guidelines
 

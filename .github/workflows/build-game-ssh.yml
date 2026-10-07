@@ -1,0 +1,174 @@
+name: Build game-ssh
+
+on:
+  push:
+    branches: [main]
+    tags: [game-ssh-v*]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/terminal/**
+      - crates/sim/**
+      - assets/equipment/**
+      - tools/package_game_ssh.py
+      - tools/test_package_game_ssh.py
+      - docs/GAME_SSH.md
+      - .github/workflows/build-game-ssh.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/terminal/**
+      - crates/sim/**
+      - assets/equipment/**
+      - tools/package_game_ssh.py
+      - tools/test_package_game_ssh.py
+      - docs/GAME_SSH.md
+      - .github/workflows/build-game-ssh.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  test:
+    name: Test client, simulation, and packaging
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Rust
+        id: rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache Cargo dependencies and tests
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ssh-test-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            ssh-test-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check client and simulation lints
+        run: cargo clippy -p cloud-provider-sim -p game-ssh --all-targets --locked -- -D warnings
+      - name: Run client and simulation tests
+        run: cargo test -p cloud-provider-sim -p game-ssh --locked
+      - name: Test standalone ZIP packaging
+        run: python3 -m unittest discover -s tools -p test_package_game_ssh.py
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            extension: ""
+            runner: ubuntu-22.04
+          - target: x86_64-pc-windows-msvc
+            extension: .exe
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Rust
+        id: rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Cache Cargo dependencies and release build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ssh-build-${{ matrix.target }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            ssh-build-${{ matrix.target }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Run native client tests
+        run: cargo test --locked --target ${{ matrix.target }} -p game-ssh
+      - name: Build release client
+        run: cargo build --release --locked --target ${{ matrix.target }} -p game-ssh --bin game-ssh
+      - name: Smoke test client startup
+        run: target/${{ matrix.target }}/release/game-ssh${{ matrix.extension }} --help
+      - name: Verify Windows runtime dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or !$installation) { throw 'Visual Studio C++ tools were not found' }
+          $tools = Get-ChildItem "$installation/VC/Tools/MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $dumpbin = "$($tools.FullName)/bin/Hostx64/x64/dumpbin.exe"
+          $imports = & $dumpbin /DEPENDENTS "target/${{ matrix.target }}/release/game-ssh.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect game-ssh.exe' }
+          $imports | Write-Output
+          if ($imports -match '(?i)(libgcc|libstdc\+\+|libwinpthread|vcruntime|msvcp|msvcr)[^\s]*\.dll') {
+            throw 'Unexpected runtime DLL dependency in game-ssh.exe'
+          }
+      - name: Package client and instructions
+        run: >-
+          python tools/package_game_ssh.py
+          --executable target/${{ matrix.target }}/release/game-ssh${{ matrix.extension }}
+          --readme docs/GAME_SSH.md
+          --output dist/game-ssh-${{ matrix.target }}.zip
+      - name: Upload standalone client and checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: game-ssh-${{ matrix.target }}
+          path: |
+            dist/game-ssh-${{ matrix.target }}.zip
+            dist/game-ssh-${{ matrix.target }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish tagged client release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/game-ssh-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested client packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: game-ssh-*
+          merge-multiple: true
+          path: dist
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/*.zip dist/*.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "game-ssh $RELEASE_TAG" \
+              --notes "Standalone Linux and Windows clients with SHA-256 checksums. Built from $GITHUB_SHA. See the included README for connection instructions."
+          fi

@@ -57,7 +57,11 @@ server or IOS user mode; in IOS privileged/configuration modes it keeps its norm
 IOS meaning. Commands can also be piped into the client; a failed command stops
 the script and returns a nonzero exit code.
 
-The downloadable ZIP includes `game-ssh` (`game-ssh.exe` on Windows). You can
+Standalone Linux and Windows client downloads and tagged releases are available
+through [Build game-ssh](https://github.com/nrf24l01/sys-admin-sym/actions/workflows/build-game-ssh.yml).
+See [game-ssh instructions](docs/GAME_SSH.md) for downloads, checksums, and release tags.
+
+The downloadable game ZIP also includes `game-ssh` (`game-ssh.exe` on Windows). You can
 place it on your `PATH` to call it from any directory. For a source checkout:
 
 ```bash
