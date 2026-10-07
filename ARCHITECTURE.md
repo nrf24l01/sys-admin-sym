@@ -14,6 +14,13 @@ egui → UiAction → Bevy application layer → Command
                           immutable snapshot → Bevy/egui
 ```
 
+The equipment shop adapts domain models into one presentation catalog with
+category-specific filters, complete artwork, product details and comparison.
+`Command::Purchase` quotes model prices and commits quantity purchases atomically.
+The shop receives a correlated worker result after the committed snapshot;
+compatibility previews share installation rules with domain commands.
+See [Equipment shop](docs/SHOP.md) for browsing and extension behavior.
+
 ## Crates
 
 - `crates/sim`: pure domain model. It depends only on `serde` and `thiserror`.

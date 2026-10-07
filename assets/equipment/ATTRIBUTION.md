@@ -1,5 +1,18 @@
 # Equipment reference image attribution
 
+## Shop catalog artwork
+
+- `shop_products.png`: generated for this project with the built-in OpenAI image
+  generation tool and genuine alpha transparency. The 4 × 3 atlas contains CPU,
+  RAM, four-port RJ45 NIC, two-cage SFP+ NIC, HDD, SSD, bulk cable box, RJ45 plug
+  pack, copper/fiber patch panels, cable manager and address-allocation artwork.
+- These are unbranded representative illustrations, not manufacturer photos.
+  Decorative socket/plug counts do not supply simulator specifications.
+- Complete padded cells and source-correct aspect ratios are mapped in
+  `crates/game/src/ui/shop/artwork.rs`. Existing rack and optical artwork retains
+  its attribution below. No existing connector or rack assets were replaced.
+- The final prompt is preserved in [SHOP_ARTWORK_PROMPT.md](SHOP_ARTWORK_PROMPT.md).
+
 ## Generated power equipment artwork
 
 - `ups_faces.png`: representative APC Smart-UPS front/rear texture atlas.

@@ -47,12 +47,6 @@ impl NetworkSim {
     /// the installed optic's signal. The other endpoint and route are checked
     /// by `quote_assembly` when the player finishes the connection.
     pub fn assembly_supported_at_port(&self, assembly: CableAssemblyId, port: PortId) -> bool {
-        let Some(p) = self.port(port) else {
-            return false;
-        };
-        if self.link_for_port(port).is_some() {
-            return false;
-        }
         let Some(spec) = self
             .optics
             .assemblies
@@ -62,6 +56,20 @@ impl NetworkSim {
         else {
             return false;
         };
+        self.assembly_model_supported_at_port(spec, port)
+    }
+    /// Model-level endpoint preview does not create temporary owned assemblies.
+    pub fn assembly_model_supported_at_port(
+        &self,
+        spec: &CableAssemblyModel,
+        port: PortId,
+    ) -> bool {
+        let Some(p) = self.port(port) else {
+            return false;
+        };
+        if self.link_for_port(port).is_some() {
+            return false;
+        }
         match &spec.medium {
             AssemblyMedium::Fiber { fiber, strands, .. } => {
                 if p.connector == PortConnector::Lc {
@@ -85,6 +93,30 @@ impl NetworkSim {
                     })
             }
         }
+    }
+    /// Preview a catalog module using the installation command's endpoint rules.
+    pub fn transceiver_model_supported_at_port(
+        &self,
+        model: &str,
+        port: PortId,
+    ) -> Result<(), OpticsError> {
+        let cage = self.cage_profile(port).ok_or(OpticsError::NotCage)?;
+        if self.endpoint_module(port).is_some() {
+            return Err(OpticsError::CageOccupied);
+        }
+        let spec = optics_catalog()
+            .module(model)
+            .ok_or(OpticsError::UnknownModel)?;
+        if !cage.supports(spec) {
+            return Err(OpticsError::IncompatibleHost);
+        }
+        if let Some(link) = self.link_for_port(port) {
+            let fiber = self.connected_assembly(link.id).is_some();
+            if fiber != matches!(spec.medium, ModuleMedium::Optical { .. }) {
+                return Err(OpticsError::ConnectorMismatch);
+            }
+        }
+        Ok(())
     }
     pub(crate) fn detach_module(&mut self, port: PortId) {
         for module in self.optics.transceivers.values_mut() {
@@ -171,28 +203,13 @@ impl NetworkSim {
                 vec![SimEvent::ConnectivityChanged]
             }
             OpticsCommand::InstallTransceiver { port, module } => {
-                let cage = self.cage_profile(port).ok_or(OpticsError::NotCage)?;
-                if self.endpoint_module(port).is_some() {
-                    return Err(OpticsError::CageOccupied.into());
-                }
                 let instance = self
                     .optics
                     .transceivers
                     .get(&module)
                     .filter(|m| m.port.is_none())
                     .ok_or(OpticsError::NotOwned)?;
-                let spec = optics_catalog()
-                    .module(&instance.model_id)
-                    .ok_or(OpticsError::UnknownModel)?;
-                if !cage.supports(spec) {
-                    return Err(OpticsError::IncompatibleHost.into());
-                }
-                if let Some(link) = self.link_for_port(port) {
-                    let fiber = self.connected_assembly(link.id).is_some();
-                    if fiber != matches!(spec.medium, ModuleMedium::Optical { .. }) {
-                        return Err(OpticsError::ConnectorMismatch.into());
-                    }
-                }
+                self.transceiver_model_supported_at_port(&instance.model_id, port)?;
                 self.optics.transceivers.get_mut(&module).unwrap().port = Some(port);
                 vec![SimEvent::PortConfigChanged(port)]
             }

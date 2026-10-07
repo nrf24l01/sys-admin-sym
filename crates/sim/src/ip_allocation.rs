@@ -31,6 +31,25 @@ impl PublicIpv4Block {
 }
 
 impl NetworkSim {
+    /// Count only ranges that are not already covered by any provider pool.
+    pub fn available_public_ipv4_pools(&self) -> usize {
+        (0..32)
+            .filter(|index| {
+                let prefix = crate::Ipv4Prefix::new(
+                    Ipv4Addr::new(203, 0, 113, index * 8),
+                    PublicIpv4Block::PREFIX,
+                )
+                .expect("/29");
+                !self
+                    .public_ipv4_blocks
+                    .iter()
+                    .any(|block| block.network == prefix.network())
+                    && !self.provider().pools().iter().any(|pool| {
+                        pool.prefix.contains_prefix(prefix) || prefix.contains_prefix(pool.prefix)
+                    })
+            })
+            .count()
+    }
     pub fn public_ipv4_blocks(&self) -> &[PublicIpv4Block] {
         &self.public_ipv4_blocks
     }

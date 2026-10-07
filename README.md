@@ -196,6 +196,11 @@ protocol stacks remain outside the current scope.
 
 ## Development
 
+`cargo run` lightly optimizes workspace code and fully optimizes third-party
+dependencies, including Bevy and egui, while retaining debug symbols and
+assertions to keep interactive rendering responsive. The first
+development build takes longer while those dependencies are rebuilt.
+
 ```bash
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings

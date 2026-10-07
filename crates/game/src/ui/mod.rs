@@ -1,7 +1,7 @@
 use crate::app::*;
 use crate::localization::tr;
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, EguiTextureHandle, egui};
+use bevy_egui::{EguiContexts, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
@@ -15,6 +15,7 @@ mod routing;
 mod settings;
 mod shop;
 mod terminal_renderer;
+mod textures;
 mod upstream;
 use cables::{CableScene, CableView, PowerCableView};
 use equipment::equipment_power_port_position;
@@ -150,8 +151,9 @@ pub struct EquipmentImages {
     power_plugs_rear: Handle<Image>,
     optical_connectors: Handle<Image>,
     shop_connectors: Handle<Image>,
+    shop_products: Handle<Image>,
     cables: CableScene,
-    textures: Option<EquipmentTextures>,
+    textures: textures::ImageTextures,
 }
 
 #[derive(Clone, Copy)]
@@ -169,24 +171,148 @@ struct EquipmentTextures {
     power_connectors: egui::TextureId,
     power_plugs_rear: egui::TextureId,
     optical_connectors: egui::TextureId,
-    shop_connectors: egui::TextureId,
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
-    images.server_front = assets.load("equipment/server_front.png");
-    images.server_rear = assets.load("equipment/server_rear_clean.png");
-    images.switch_front = assets.load("equipment/switch_front_clean.png");
-    images.switch_rear = assets.load("equipment/switch_rear.png");
-    images.router_front = assets.load("equipment/router_rear_clean.png");
-    images.router_rear = assets.load("equipment/router_front_clean.png");
-    images.ups_faces = assets.load("equipment/ups_faces.png");
-    images.pdu_faces = assets.load("equipment/pdu_faces.png");
-    images.jacket = assets.load("cables/pvc_jacket.png");
-    images.plug = assets.load("cables/rj45_plug.png");
-    images.optical_connectors = assets.load("equipment/optical_connectors.png");
-    images.shop_connectors = assets.load("cables/optical_shop_connectors.png");
-    images.power_connectors = assets.load("equipment/power_connectors.png");
-    images.power_plugs_rear = assets.load("equipment/power_plugs_rear.png");
+    images.server_front = textures::load(&assets, "equipment/server_front.png");
+    images.server_rear = textures::load(&assets, "equipment/server_rear_clean.png");
+    images.switch_front = textures::load(&assets, "equipment/switch_front_clean.png");
+    images.switch_rear = textures::load(&assets, "equipment/switch_rear.png");
+    images.router_front = textures::load(&assets, "equipment/router_rear_clean.png");
+    images.router_rear = textures::load(&assets, "equipment/router_front_clean.png");
+    images.ups_faces = textures::load(&assets, "equipment/ups_faces.png");
+    images.pdu_faces = textures::load(&assets, "equipment/pdu_faces.png");
+    images.jacket = textures::load(&assets, "cables/pvc_jacket.png");
+    images.plug = textures::load(&assets, "cables/rj45_plug.png");
+    images.optical_connectors = textures::load(&assets, "equipment/optical_connectors.png");
+    images.shop_connectors = textures::load(&assets, "cables/optical_shop_connectors.png");
+    images.shop_products = textures::load(&assets, "equipment/shop_products.png");
+    images.power_connectors = textures::load(&assets, "equipment/power_connectors.png");
+    images.power_plugs_rear = textures::load(&assets, "equipment/power_plugs_rear.png");
+    let sources = [
+        images.server_front.id(),
+        images.server_rear.id(),
+        images.switch_front.id(),
+        images.switch_rear.id(),
+        images.router_front.id(),
+        images.router_rear.id(),
+        images.ups_faces.id(),
+        images.pdu_faces.id(),
+        images.jacket.id(),
+        images.plug.id(),
+        images.power_connectors.id(),
+        images.power_plugs_rear.id(),
+        images.optical_connectors.id(),
+        images.shop_connectors.id(),
+        images.shop_products.id(),
+    ];
+    let thumbnails = [
+        images.server_front.id(),
+        images.router_front.id(),
+        images.switch_front.id(),
+        images.ups_faces.id(),
+        images.pdu_faces.id(),
+        images.shop_products.id(),
+        images.optical_connectors.id(),
+        images.shop_connectors.id(),
+    ];
+    images
+        .textures
+        .track(sources.map(|id| (id, thumbnails.contains(&id))));
+}
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct EquipmentAssetUpdates<'w, 's> {
+    assets: ResMut<'w, Assets<Image>>,
+    asset_events: MessageReader<'w, 's, AssetEvent<Image>>,
+    resized: MessageReader<'w, 's, bevy::window::WindowResized>,
+    scale_changed: MessageReader<'w, 's, bevy::window::WindowScaleFactorChanged>,
+    windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
+    initialized: Local<'s, bool>,
+}
+
+pub fn prepare_equipment_textures(
+    mut images: ResMut<EquipmentImages>,
+    mut contexts: EguiContexts,
+    updates: EquipmentAssetUpdates,
+) {
+    let EquipmentAssetUpdates {
+        mut assets,
+        mut asset_events,
+        mut resized,
+        mut scale_changed,
+        windows,
+        mut initialized,
+    } = updates;
+    let window_changed = !*initialized || !resized.is_empty() || !scale_changed.is_empty();
+    resized.clear();
+    scale_changed.clear();
+    let edge = window_changed
+        .then(|| windows.single().ok().map(textures::thumbnail_edge))
+        .flatten();
+    *initialized = true;
+    images.textures.update(
+        &mut assets,
+        &mut contexts,
+        asset_events.read().copied(),
+        edge,
+    );
+}
+
+impl EquipmentImages {
+    fn shop_texture_ids(
+        &mut self,
+        contexts: &mut EguiContexts,
+        details_open: bool,
+    ) -> shop::ShopTextures {
+        let sources = [
+            &self.server_front,
+            &self.router_front,
+            &self.switch_front,
+            &self.ups_faces,
+            &self.pdu_faces,
+            &self.shop_products,
+            &self.optical_connectors,
+            &self.shop_connectors,
+        ];
+        let ids = sources.map(|source| self.textures.thumbnail(source, contexts));
+        let full = if details_open {
+            sources.map(|source| self.textures.texture(source, contexts))
+        } else {
+            ids
+        };
+        shop::ShopTextures {
+            server: ids[0],
+            router: ids[1],
+            switch: ids[2],
+            ups: ids[3],
+            pdu: ids[4],
+            products: ids[5],
+            ready: sources.map(|source| self.textures.contains(source)),
+            full,
+            optics: optics::ShopTextures {
+                modules: ids[6],
+                cables: ids[7],
+            },
+        }
+    }
+    fn texture_ids(&mut self, contexts: &mut EguiContexts) -> EquipmentTextures {
+        EquipmentTextures {
+            server_front: self.textures.texture(&self.server_front, contexts),
+            server_rear: self.textures.texture(&self.server_rear, contexts),
+            switch_front: self.textures.texture(&self.switch_front, contexts),
+            switch_rear: self.textures.texture(&self.switch_rear, contexts),
+            router_front: self.textures.texture(&self.router_front, contexts),
+            router_rear: self.textures.texture(&self.router_rear, contexts),
+            ups_faces: self.textures.texture(&self.ups_faces, contexts),
+            pdu_faces: self.textures.texture(&self.pdu_faces, contexts),
+            optical_connectors: self.textures.texture(&self.optical_connectors, contexts),
+            jacket: self.textures.texture(&self.jacket, contexts),
+            plug: self.textures.texture(&self.plug, contexts),
+            power_connectors: self.textures.texture(&self.power_connectors, contexts),
+            power_plugs_rear: self.textures.texture(&self.power_plugs_rear, contexts),
+        }
+    }
 }
 
 pub fn main_ui(
@@ -199,32 +325,7 @@ pub fn main_ui(
     game_settings: Res<crate::settings::GameSettings>,
 ) -> Result {
     let _language = game_settings.localization.enter();
-    if images.textures.is_none() {
-        images.textures = Some(EquipmentTextures {
-            server_front: contexts
-                .add_image(EguiTextureHandle::Strong(images.server_front.clone())),
-            server_rear: contexts.add_image(EguiTextureHandle::Strong(images.server_rear.clone())),
-            switch_front: contexts
-                .add_image(EguiTextureHandle::Strong(images.switch_front.clone())),
-            switch_rear: contexts.add_image(EguiTextureHandle::Strong(images.switch_rear.clone())),
-            router_front: contexts
-                .add_image(EguiTextureHandle::Strong(images.router_front.clone())),
-            router_rear: contexts.add_image(EguiTextureHandle::Strong(images.router_rear.clone())),
-            ups_faces: contexts.add_image(EguiTextureHandle::Strong(images.ups_faces.clone())),
-            pdu_faces: contexts.add_image(EguiTextureHandle::Strong(images.pdu_faces.clone())),
-            shop_connectors: contexts
-                .add_image(EguiTextureHandle::Strong(images.shop_connectors.clone())),
-            optical_connectors: contexts
-                .add_image(EguiTextureHandle::Strong(images.optical_connectors.clone())),
-            jacket: contexts.add_image(EguiTextureHandle::Strong(images.jacket.clone())),
-            plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
-            power_connectors: contexts
-                .add_image(EguiTextureHandle::Strong(images.power_connectors.clone())),
-            power_plugs_rear: contexts
-                .add_image(EguiTextureHandle::Strong(images.power_plugs_rear.clone())),
-        });
-    }
-    let ctx = contexts.ctx_mut()?;
+    let ctx = contexts.ctx_mut()?.clone();
     if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
         state.pending_cable = None;
         state.pending_assembly = None;
@@ -232,7 +333,7 @@ pub fn main_ui(
         state.pending_power_outlet = None;
         state.pending_power_inlet = None;
     }
-    configure_style(ctx);
+    configure_style(&ctx);
     let mut viewport_ui = egui::Ui::new(
         ctx.clone(),
         "viewport".into(),
@@ -241,6 +342,7 @@ pub fn main_ui(
             .max_rect(ctx.viewport_rect()),
     );
     top_bar(&mut viewport_ui, &snapshot.0, &mut state);
+    let textures = (state.workspace == Workspace::Rack).then(|| images.texture_ids(&mut contexts));
     if let Some(error) = state.error_dialog.clone() {
         let mut open = true;
         egui::Window::new(tr("error.title"))
@@ -269,12 +371,11 @@ pub fn main_ui(
         &mut actions,
     );
     TerminalRenderer::panel(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
-    let textures = images.textures.expect("equipment textures registered");
     workspace(
         &mut viewport_ui,
         &snapshot.0,
         &mut state,
-        &textures,
+        textures.as_ref(),
         &mut images.cables,
         &mut actions,
     );
@@ -286,27 +387,36 @@ pub fn main_ui(
         &mut actions,
     );
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
-    shop::show(
-        &mut viewport_ui,
-        &snapshot.0,
-        &mut state.shop,
-        optics::ShopTextures {
-            modules: textures.optical_connectors,
-            cables: textures.shop_connectors,
-        },
-        &mut actions,
-    );
+    let shop_selection = state.selected;
+    if state.shop.open {
+        let shop_textures = images.shop_texture_ids(
+            &mut contexts,
+            state.shop.details_open || state.shop.comparison_open,
+        );
+        shop::show(
+            &mut viewport_ui,
+            &snapshot.0,
+            &mut state.shop,
+            shop_selection,
+            shop_textures,
+            &mut actions,
+        );
+    }
     settings::show(
         &mut viewport_ui,
         &mut state.settings,
         &game_settings,
         &mut actions,
     );
+    images.textures.retain_used(&mut contexts);
     Ok(())
 }
 
 fn configure_style(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
+    // A steady caret avoids bevy_egui turning delayed blink repaints into
+    // continuous redraws while a text field has focus.
+    visuals.text_cursor.blink = false;
     visuals.panel_fill = egui::Color32::from_rgb(13, 17, 23);
     visuals.window_fill = egui::Color32::from_rgb(17, 23, 31);
     visuals.selection.bg_fill = egui::Color32::from_rgb(31, 111, 91);
@@ -1461,13 +1571,13 @@ fn workspace(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
     state: &mut UiState,
-    textures: &EquipmentTextures,
+    textures: Option<&EquipmentTextures>,
     cables: &mut CableScene,
     actions: &mut MessageWriter<UiAction>,
 ) {
     match state.workspace {
         Workspace::Room => room::show(viewport, sim, state, actions),
-        Workspace::Rack => rack_view(viewport, sim, state, textures, cables, actions),
+        Workspace::Rack => rack_view(viewport, sim, state, textures.unwrap(), cables, actions),
         Workspace::Topology => topology_view(viewport, sim, actions),
     }
 }

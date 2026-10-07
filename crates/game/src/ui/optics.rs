@@ -1,100 +1,16 @@
 //! Optical equipment UI sends commands; physical behavior belongs to sim.
-use crate::app::{ShopCategory, ShopSection, ShopState, UiAction};
+use crate::app::UiAction;
 use crate::localization::{item_description, item_name, tr, tr_args};
 use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::*;
 
-pub(super) fn offers(state: &ShopState, money: i64) -> Vec<(&'static str, i64, OpticsCommand)> {
-    if state.category != ShopCategory::Network
-        || state.section.is_some_and(|s| s != ShopSection::Optics)
-        || state.rack_units.is_some()
-        || state.ports.is_some()
-        || state.outlets.is_some()
-    {
-        return Vec::new();
-    }
-    let catalog = optics_catalog();
-    let all = catalog
-        .modules
-        .iter()
-        .filter(|m| !matches!(m.medium, ModuleMedium::DirectAttach))
-        .map(|m| {
-            (
-                m.id.as_str(),
-                m.price,
-                OpticsCommand::BuyTransceiver {
-                    model: m.id.clone(),
-                },
-            )
-        })
-        .chain(catalog.cables.iter().map(|m| {
-            (
-                m.id.as_str(),
-                m.price,
-                OpticsCommand::BuyAssembly {
-                    model: m.id.clone(),
-                },
-            )
-        }))
-        .chain(catalog.hardware.iter().map(|m| {
-            (
-                m.id.as_str(),
-                m.price,
-                OpticsCommand::BuyHardware {
-                    model: m.id.clone(),
-                },
-            )
-        }));
-    let search = state.search.trim().to_lowercase();
-    all.filter(|(id, price, _)| {
-        (!state.affordable_only || *price <= money)
-            && state.max_price.is_none_or(|max| *price <= max)
-            && (search.is_empty()
-                || format!("{} {} {}", id, item_name(id, id), item_description(id))
-                    .to_lowercase()
-                    .contains(&search))
-    })
-    .collect()
-}
 #[derive(Clone, Copy)]
 pub(super) struct ShopTextures {
     pub modules: egui::TextureId,
     pub cables: egui::TextureId,
 }
 
-pub(super) fn shop_offers(
-    ui: &mut egui::Ui,
-    offers: &[(&str, i64, OpticsCommand)],
-    money: i64,
-    textures: ShopTextures,
-    actions: &mut MessageWriter<UiAction>,
-) {
-    for (id, price, command) in offers {
-        ui.push_id(id, |ui| {
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    if let Some((texture, uv)) = shop_artwork(id, textures) {
-                        let aspect = uv.width() / uv.height();
-                        let size = egui::vec2(64.0 * aspect.min(1.0), 64.0 / aspect.max(1.0));
-                        ui.add(egui::Image::new((texture, size)).uv(uv));
-                    }
-                    ui.strong(item_name(id, id));
-                });
-                ui.weak(item_description(id));
-                if ui
-                    .add_enabled(
-                        *price <= money,
-                        egui::Button::new(tr_args("shop.buy", &[price.to_string()])),
-                    )
-                    .clicked()
-                {
-                    actions.write(UiAction::NetworkCommand(Command::Optics(command.clone())));
-                }
-            });
-        });
-    }
-}
 pub(super) fn port_controls(
     ui: &mut egui::Ui,
     sim: &NetworkSim,
@@ -282,7 +198,10 @@ impl OpticalSprite {
     }
 }
 
-fn shop_artwork(id: &str, textures: ShopTextures) -> Option<(egui::TextureId, egui::Rect)> {
+pub(super) fn shop_artwork(
+    id: &str,
+    textures: ShopTextures,
+) -> Option<(egui::TextureId, egui::Rect)> {
     if let Some(module) = optics_catalog().module(id) {
         let sprite = match module.medium {
             ModuleMedium::Optical { strands: 1, .. } => OpticalSprite::SimplexModule,
@@ -692,32 +611,5 @@ mod tests {
             textures.modules
         );
         assert!(shop_artwork("switch_10g", textures).is_none());
-    }
-
-    #[test]
-    fn catalog_search_uses_item_translations_and_filters_affordability() {
-        let mut localization = Localization::default();
-        localization.select("ru").unwrap();
-        let _scope = localization.enter();
-        let mut state = ShopState {
-            category: ShopCategory::Network,
-            section: Some(ShopSection::Optics),
-            search: "патч-панель".into(),
-            ..Default::default()
-        };
-        assert!(matches!(
-            offers(&state, 6000).as_slice(),
-            [("fiber_panel", _, OpticsCommand::BuyHardware { .. })]
-        ));
-        state.affordable_only = true;
-        assert!(offers(&state, 0).is_empty());
-        state.search = "sfpplus_10g_sr".into();
-        assert!(
-            offers(&state, 6000)
-                .iter()
-                .any(|(id, _, _)| *id == "sfpplus_10g_sr")
-        );
-        state.section = Some(ShopSection::Routers);
-        assert!(offers(&state, 6000).is_empty());
     }
 }

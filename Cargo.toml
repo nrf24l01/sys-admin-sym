@@ -17,3 +17,13 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+
+# Retain debug symbols/assertions while lightly optimizing workspace code.
+[profile.dev]
+opt-level = 1
+
+# Compile the UI/rendering engine at production optimization levels.
+# Unoptimized dependencies are costly on every redraw, including mouse
+# motion and scrolling during `cargo run`.
+[profile.dev.package."*"]
+opt-level = 3

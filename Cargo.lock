@@ -1694,6 +1694,7 @@ dependencies = [
  "bevy_egui",
  "cloud-provider-sim",
  "crossbeam-channel",
+ "image",
  "ron",
  "rusqlite",
  "serde",

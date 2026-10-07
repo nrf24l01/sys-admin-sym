@@ -1,19 +1,21 @@
 use bevy::prelude::*;
 use cloud_provider_sim::{
-    CableRoutePoint, Command, DeviceId, DeviceTemplate, LinkId, NetworkSim, OutletId, PortId,
-    PowerEndpoint, RackId, SimEvent, SourceId, TerminalOutput,
+    CableRoutePoint, Command, DeviceId, LinkId, NetworkSim, OutletId, PortId, PowerEndpoint,
+    RackId, SimEvent, SourceId, TerminalOutput,
 };
 
 #[derive(Message, Debug, Clone)]
 pub enum UiAction {
+    ShopPurchase {
+        request_id: u64,
+        item: cloud_provider_sim::PurchaseItem,
+        quantity: u32,
+    },
     SelectLanguage(String),
     SelectDevice(DeviceId),
     SelectPort(PortId),
     SelectLink(LinkId),
     SelectPowerCable(OutletId),
-    Buy(DeviceTemplate),
-    BuyServerChassis,
-    BuyServerFullPack,
     BuyPublicIpv4Pool,
     AssignPublicIpv4 {
         port: PortId,
@@ -22,8 +24,6 @@ pub enum UiAction {
     AssignLanIpv4 {
         port: PortId,
     },
-    BuyServerPart(String),
-    BuyDrive(String),
     InstallDrive {
         device: DeviceId,
         drive_id: String,
@@ -43,7 +43,6 @@ pub enum UiAction {
         part_id: String,
         slot: Option<usize>,
     },
-    BuyCableSupply(cloud_provider_sim::CableSupply),
     Place {
         device: DeviceId,
         rack: RackId,
@@ -114,6 +113,11 @@ pub enum PersistenceRequest {
 
 #[derive(Debug)]
 pub enum WorkerRequest {
+    ShopPurchase {
+        request_id: u64,
+        item: cloud_provider_sim::PurchaseItem,
+        quantity: u32,
+    },
     Execute(Command),
     Terminal {
         device: DeviceId,
@@ -129,6 +133,10 @@ pub enum WorkerRequest {
 
 #[derive(Debug)]
 pub enum WorkerResponse {
+    ShopPurchase {
+        request_id: u64,
+        result: Result<cloud_provider_sim::PurchaseReceipt, cloud_provider_sim::SimError>,
+    },
     Snapshot(Box<NetworkSim>),
     Events(Vec<SimEvent>),
     Terminal {

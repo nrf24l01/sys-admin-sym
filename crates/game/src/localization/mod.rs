@@ -151,6 +151,17 @@ thread_local! {
     // can use different languages without a process-wide mutable language setting.
     static ACTIVE: RefCell<Arc<Translator>> = RefCell::new(Localization::default().current);
 }
+/// Identity of the immutable translation catalog, including runtime reloads.
+pub(crate) struct TranslationSnapshot(Arc<Translator>);
+impl TranslationSnapshot {
+    pub(crate) fn is_current(&self) -> bool {
+        ACTIVE.with(|active| Arc::ptr_eq(&self.0, &active.borrow()))
+    }
+}
+pub(crate) fn translation_snapshot() -> TranslationSnapshot {
+    ACTIVE.with(|active| TranslationSnapshot(active.borrow().clone()))
+}
+
 pub struct LanguageScope(Arc<Translator>);
 impl Drop for LanguageScope {
     fn drop(&mut self) {

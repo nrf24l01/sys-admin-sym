@@ -33,6 +33,7 @@ impl From<cloud_provider_sim::SimError> for UiMessage {
     fn from(error: cloud_provider_sim::SimError) -> Self {
         use cloud_provider_sim::SimError::*;
         match error {
+            InvalidPurchaseQuantity => Self::new("shop.invalid-quantity", vec![]),
             Optics(error) => Self::new(super::optics_error_id(error), vec![]),
             InsufficientCable {
                 needed_cm,

@@ -1,6 +1,8 @@
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
+use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_egui::EguiPlugin;
+use std::time::Duration;
 
 mod app;
 mod console;
@@ -47,6 +49,12 @@ fn main() {
                     ..default()
                 }),
         )
+        // Simulation runs on its own worker. Redraw idle UI at 10 Hz, waking
+        // immediately for input; background windows only need four refreshes/sec.
+        .insert_resource(WinitSettings {
+            focused_mode: UpdateMode::reactive(Duration::from_millis(100)),
+            unfocused_mode: UpdateMode::reactive_low_power(Duration::from_millis(250)),
+        })
         .add_plugins(EguiPlugin::default())
         .add_plugins(app::GamePlugin)
         .run();

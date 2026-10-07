@@ -7,6 +7,10 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
+    Purchase {
+        item: crate::PurchaseItem,
+        quantity: u32,
+    },
     Provider(crate::ProviderCommand),
     Optics(crate::OpticsCommand),
     BuyCableSupply {

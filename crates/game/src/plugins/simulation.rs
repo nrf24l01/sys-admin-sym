@@ -73,6 +73,7 @@ impl Plugin for SimulationPlugin {
                 .after(translate_ui_actions),
         )
         .add_systems(Update, poll_worker.in_set(GameSet::Simulation));
+        app.world_mut().resource_mut::<UiState>().shop.select_all();
     }
 }
 
@@ -105,6 +106,20 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
         };
         match request {
+            WorkerRequest::ShopPurchase {
+                request_id,
+                item,
+                quantity,
+            } => {
+                let result = sim.quote_purchase(&item, quantity).and_then(|receipt| {
+                    let events = sim.execute(Command::Purchase { item, quantity })?;
+                    let _ = responses.send(WorkerResponse::Events(events));
+                    // Commit the fresh snapshot before enabling another purchase.
+                    let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+                    Ok(receipt)
+                });
+                let _ = responses.send(WorkerResponse::ShopPurchase { request_id, result });
+            }
             WorkerRequest::Execute(command) => match sim.execute(command) {
                 Ok(events) => {
                     if responses.send(WorkerResponse::Events(events)).is_err()
@@ -189,6 +204,29 @@ fn translate_ui_actions(
 ) {
     for action in actions.read() {
         let command = match action {
+            UiAction::ShopPurchase {
+                request_id,
+                item,
+                quantity,
+            } => {
+                if worker
+                    .tx
+                    .send(WorkerRequest::ShopPurchase {
+                        request_id: *request_id,
+                        item: item.clone(),
+                        quantity: *quantity,
+                    })
+                    .is_err()
+                {
+                    state.shop.finish_purchase(
+                        *request_id,
+                        Err(cloud_provider_sim::SimError::Provider(
+                            "simulation worker disconnected".into(),
+                        )),
+                    );
+                }
+                None
+            }
             UiAction::SelectDevice(id) => {
                 state.selected = Selection::Device(*id);
                 None
@@ -211,21 +249,12 @@ fn translate_ui_actions(
                 state.selected = Selection::PowerCable(*outlet);
                 None
             }
-            UiAction::Buy(kind) => Some(Command::BuyDevice { kind: *kind }),
-            UiAction::BuyServerChassis => Some(Command::BuyServerChassis),
-            UiAction::BuyServerFullPack => Some(Command::BuyServerFullPack),
             UiAction::BuyPublicIpv4Pool => Some(Command::BuyPublicIpv4Pool),
             UiAction::AssignPublicIpv4 { port, network } => Some(Command::AssignPublicIpv4 {
                 port: *port,
                 network: *network,
             }),
             UiAction::AssignLanIpv4 { port } => Some(Command::AssignLanIpv4 { port: *port }),
-            UiAction::BuyServerPart(part_id) => Some(Command::BuyServerPart {
-                part_id: part_id.clone(),
-            }),
-            UiAction::BuyDrive(drive_id) => Some(Command::BuyDrive {
-                drive_id: drive_id.clone(),
-            }),
             UiAction::InstallDrive {
                 device,
                 drive_id,
@@ -257,7 +286,6 @@ fn translate_ui_actions(
                 part_id: part_id.clone(),
                 slot: *slot,
             }),
-            UiAction::BuyCableSupply(supply) => Some(Command::BuyCableSupply { supply: *supply }),
             UiAction::Place { device, rack, unit } => Some(Command::PlaceDevice {
                 device: *device,
                 rack: *rack,
@@ -889,6 +917,9 @@ fn poll_worker(
                 }
             }
             WorkerResponse::ConsolesReset => {
+                state.shop.pending = None;
+                state.shop.feedback = None;
+                state.shop.target = None;
                 state.network_summary = NetworkSummaryCache::default();
                 state.routing_device = None;
                 state.selected_range = None;
@@ -903,6 +934,9 @@ fn poll_worker(
                 state.selected = Selection::None;
             }
             WorkerResponse::Error(error) => set_error(&mut state, error),
+            WorkerResponse::ShopPurchase { request_id, result } => {
+                state.shop.finish_purchase(request_id, result)
+            }
         }
     }
 }
@@ -939,6 +973,47 @@ mod tests {
         })
         .unwrap();
         (sim, device)
+    }
+
+    #[test]
+    fn shop_worker_commits_a_snapshot_before_acknowledging_the_order() {
+        let (requests, receiver) = unbounded();
+        let (responses, replies) = unbounded();
+        let worker = thread::spawn(move || worker_loop(receiver, responses));
+        let WorkerResponse::Snapshot(initial) =
+            replies.recv_timeout(Duration::from_secs(2)).unwrap()
+        else {
+            panic!("initial snapshot")
+        };
+        let money = initial.money;
+        requests
+            .send(WorkerRequest::ShopPurchase {
+                request_id: 7,
+                item: cloud_provider_sim::PurchaseItem::Drive("enterprise_ssd_960gb".into()),
+                quantity: 2,
+            })
+            .unwrap();
+        let mut fresh = false;
+        loop {
+            match replies.recv_timeout(Duration::from_secs(2)).unwrap() {
+                WorkerResponse::Snapshot(snapshot) => {
+                    fresh = snapshot.money == money - 460
+                        && snapshot.drive_inventory.get("enterprise_ssd_960gb") == Some(&2);
+                }
+                WorkerResponse::ShopPurchase { request_id, result } => {
+                    assert_eq!(request_id, 7);
+                    assert_eq!(result.unwrap().total, 460);
+                    assert!(
+                        fresh,
+                        "confirmed inventory must precede the acknowledgement"
+                    );
+                    break;
+                }
+                _ => {}
+            }
+        }
+        requests.send(WorkerRequest::Stop).unwrap();
+        worker.join().unwrap();
     }
 
     #[test]
