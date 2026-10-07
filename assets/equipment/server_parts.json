@@ -134,6 +134,46 @@
         "en": "4 × RJ45 · 1000 Mb/s · PCIe Gen 2 x4",
         "ru": "4 × RJ45 · 1000 Мбит/с · PCIe Gen 2 x4"
       }
+    },
+    {
+      "id": "intel_x520_da2",
+      "name": "Intel Ethernet Converged Network Adapter X520-DA2",
+      "display_name": {
+        "en": "Intel X520-DA2",
+        "ru": "Intel X520-DA2"
+      },
+      "desc": {
+        "en": "Intel 82599 · 2 × SFP+ cages · 1/10GbE · PCIe 2.0 x8 · modules sold separately",
+        "ru": "Intel 82599 · 2 слота SFP+ · 1/10GbE · PCIe 2.0 x8 · модули продаются отдельно"
+      },
+      "price": 250,
+      "kind": "pci_card",
+      "card": {
+        "kind": "ethernet",
+        "lanes": 8,
+        "generation": 2,
+        "width": 8,
+        "speed_mbps": 10000,
+        "power_w": 6,
+        "connector": "Sfp",
+        "ports": 2,
+        "cage": {
+          "kind": "sfp_plus",
+          "modes": [
+            {
+              "speed": "Gbps1",
+              "lanes": 1,
+              "fec": "none"
+            },
+            {
+              "speed": "Gbps10",
+              "lanes": 1,
+              "fec": "none"
+            }
+          ],
+          "max_power_mw": 2000
+        }
+      }
     }
   ]
 }

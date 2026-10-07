@@ -236,6 +236,7 @@ pub(super) fn show(
                         .iter()
                         .filter(|drive| drive_matches(drive, state, sim.money))
                         .collect();
+                    let optical_offers = super::optics::offers(state, sim.money);
                     let public_pool_offer = state.category == ShopCategory::Network
                         && state
                             .section
@@ -256,7 +257,8 @@ pub(super) fn show(
                         &[(products.len()
                             + parts.len()
                             + drives.len()
-                            + usize::from(public_pool_offer))
+                            + usize::from(public_pool_offer)
+                            + optical_offers.len())
                         .to_string()],
                     ));
                     egui::ScrollArea::vertical()
@@ -266,6 +268,7 @@ pub(super) fn show(
                             if products.is_empty()
                                 && parts.is_empty()
                                 && drives.is_empty()
+                                && optical_offers.is_empty()
                                 && !public_pool_offer
                             {
                                 ui.weak(tr("ui.no-products-match-these-filters"));
@@ -273,6 +276,7 @@ pub(super) fn show(
                                     state.clear_filters();
                                 }
                             }
+                            super::optics::shop_offers(ui, &optical_offers, sim.money, actions);
                             for product in products {
                                 ui.group(|ui| {
                                     ui.set_min_width(ui.available_width());
@@ -430,6 +434,7 @@ fn categories(ui: &mut egui::Ui, state: &mut ShopState) {
                 (ShopSection::Routers, "ui.routers"),
                 (ShopSection::Switches, "ui.switches"),
                 (ShopSection::Cabling, "ui.cabling"),
+                (ShopSection::Optics, "optics.shop"),
                 (ShopSection::PublicIp, "ui.public-ipv4"),
             ][..],
         ),
@@ -911,7 +916,15 @@ mod tests {
             if section == ShopSection::DellServers {
                 assert!(matching.is_empty());
             } else {
-                assert_eq!(matching.len(), 1, "{section:?}");
+                assert_eq!(
+                    matching.len(),
+                    if section == ShopSection::PciCards {
+                        2
+                    } else {
+                        1
+                    },
+                    "{section:?}"
+                );
             }
         }
     }

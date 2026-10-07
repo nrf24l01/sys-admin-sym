@@ -120,6 +120,8 @@ pub(super) fn show(
                         }
                     }
                     ui.separator();
+                    super::optics::inventory(ui, sim);
+                    ui.separator();
                     ui.heading(tr("ui.inventory"));
                     let inventory: Vec<_> = sim.devices().filter(|d| d.rack.is_none()).collect();
                     if inventory.is_empty() {

@@ -276,12 +276,15 @@ fn invalid_interface_range_and_mask_do_not_partially_mutate_state() {
     let router = buy(&mut sim, DeviceTemplate::Router, 2);
     let last_rj45 = port(&sim, sw, 23);
     run(&mut sim, sw, "enable\nconf t\nint range gi1/0/24 - 25");
-    assert!(!sim.execute_console(sw, "switchport access vlan 20").success);
+    assert!(
+        !sim.execute_console(sw, "switchport access vlan 4095")
+            .success
+    );
     assert!(
         matches!(&sim.port(last_rj45).unwrap().config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: None })
     );
     assert!(
-        matches!(&sim.device(sw).unwrap().kind, DeviceKind::Switch(c) if !c.vlans.iter().any(|v| v.id == VlanId(20)))
+        matches!(&sim.device(sw).unwrap().kind, DeviceKind::Switch(c) if !c.vlans.iter().any(|v| v.id == VlanId(4095)))
     );
     run(
         &mut sim,

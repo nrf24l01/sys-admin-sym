@@ -58,6 +58,7 @@ pub struct UiState {
     pub workspace: Workspace,
     pub selected: Selection,
     pub pending_cable: Option<PortId>,
+    pub pending_assembly: Option<cloud_provider_sim::CableAssemblyId>,
     /// Route points collected between choosing the source and destination plug.
     pub pending_cable_route: Vec<CableRoutePoint>,
     pub cable_length_cm: Option<u32>,

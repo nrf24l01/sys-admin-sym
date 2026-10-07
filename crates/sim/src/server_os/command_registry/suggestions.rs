@@ -53,6 +53,7 @@ impl ArgumentSuggestions {
                 let mut values = context.interfaces();
                 if context.args.is_empty() {
                     values.push("-i".into());
+                    values.push("-m".into());
                 }
                 values
             }

@@ -8,6 +8,7 @@ use std::net::Ipv4Addr;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
     Provider(crate::ProviderCommand),
+    Optics(crate::OpticsCommand),
     BuyCableSupply {
         supply: crate::CableSupply,
     },

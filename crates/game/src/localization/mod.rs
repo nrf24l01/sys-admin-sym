@@ -202,6 +202,8 @@ pub fn cable_color(color: cloud_provider_sim::CableColor) -> String {
         Blue => "cable.color.blue",
         Orange => "cable.color.orange",
         Red => "cable.color.red",
+        Aqua => "cable.color.aqua",
+        Yellow => "cable.color.yellow",
     })
 }
 pub fn rack_side(side: cloud_provider_sim::RackSide) -> String {
@@ -217,4 +219,38 @@ pub fn cable_visibility(visibility: crate::app::CableVisibility) -> String {
         Selected => "cable.visibility.selected",
         Hidden => "cable.visibility.hidden",
     })
+}
+
+pub fn link_fault(fault: cloud_provider_sim::LinkFault) -> String {
+    use cloud_provider_sim::LinkFault::*;
+    tr(match fault {
+        NoCable => "optics.fault.no-cable",
+        EmptyCage => "optics.fault.empty-cage",
+        Disabled => "optics.fault.disabled",
+        Unpowered => "optics.fault.unpowered",
+        NotInstalled => "optics.fault.not-installed",
+        UnsupportedModule => "optics.fault.unsupported-module",
+        ConnectorMismatch => "optics.fault.connector-mismatch",
+        ModeMismatch => "optics.fault.mode-mismatch",
+        FiberMismatch => "optics.fault.fiber-mismatch",
+        WavelengthMismatch => "optics.fault.wavelength-mismatch",
+        PolarityMismatch => "optics.fault.polarity-mismatch",
+        TooLong => "optics.fault.too-long",
+        LowLight => "optics.fault.low-light",
+        ReceiverOverload => "optics.fault.receiver-overload",
+    })
+}
+pub fn optics_error_id(error: cloud_provider_sim::OpticsError) -> &'static str {
+    use cloud_provider_sim::OpticsError::*;
+    match error {
+        MissingTransceiver => "optics.error.missing-transceiver",
+        UnknownModel => "optics.error.unknown-model",
+        NotOwned => "optics.error.not-owned",
+        NotCage => "optics.error.not-cage",
+        CageOccupied => "optics.error.cage-occupied",
+        IncompatibleHost => "optics.error.incompatible-host",
+        ConnectorMismatch => "optics.error.connector-mismatch",
+        AttachedCable => "optics.error.attached-cable",
+        NotFiber => "optics.error.not-fiber",
+    }
 }

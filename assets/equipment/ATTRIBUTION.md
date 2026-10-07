@@ -98,3 +98,33 @@ The older reference assets below are retained for reference.
 - `power_plugs_rear.png`: generated with the built-in image generation tool for
   this project. Two seated power connectors viewed from their cable-exit rear,
   with genuine alpha transparency. Final prompt: `power_plugs_rear_prompt.md`.
+
+## Optical hardware model references
+
+- `optics.json` uses generic 1G/10G module profiles. Reach, wavelengths and
+  Catalyst host family references are from Cisco's
+  [Gigabit Ethernet SFP data sheet](https://www.cisco.com/c/en/us/products/collateral/interfaces-modules/gigabit-ethernet-gbic-sfp-modules/datasheet-c78-366584.html),
+  [10G SFP+ data sheet](https://www.cisco.com/c/en/us/products/collateral/interfaces-modules/transceiver-modules/data_sheet_c78-455693.html),
+  and [Catalyst 1000 data sheet](https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-1000-series-switches/nb-06-cat1k-ser-switch-ds-cte-en.html).
+- Module electrical consumption, optical budget values, connector losses,
+  attenuation, and prices are representative simulation estimates rather than
+  specifications for a particular Cisco transceiver SKU.
+- LC adapters and inserted module/cable-end overlays are code-drawn shapes;
+  no new external image assets were added. The 10G switch profile reuses the
+  existing Catalyst chassis image and port layout.
+
+## Intel X520-DA2 PCIe adapter
+
+- `server_parts.json` models the retail Intel X520-DA2 (E10G42BTDA), using
+  Intel's [X520 product brief](https://www.intel.com/content/dam/doc/product-brief/ethernet-x520-server-adapters-brief.pdf)
+  and its [PCI-SIG certification](https://pcisig.com/intel%C2%AE-ethernet-server-adapter-x520-da2-0).
+  It has two SFP+ cages, an Intel 82599 controller, optical 1/10GbE modes,
+  10GbE direct attach, and a PCIe 2.0 x8 interface.
+- The simulator uses an estimated 6 W board load and adds installed module
+  loads separately. Intel publishes assembled-adapter typical/maximum power
+  by media; those totals must not be added again to the module load. Price
+  remains a game economy value. Vendor EEPROM qualification, drivers and
+  controller offloads are outside the current hardware simulation.
+- Existing `dual_sfpplus_10g` inventory and installed cards migrate to
+  `intel_x520_da2` when loading; saved interfaces, modules and cables retain
+  their identities. The existing code-drawn PCIe face remains in use.

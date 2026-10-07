@@ -55,7 +55,8 @@ configuration mode. `do write memory` also saves from configuration mode.
 | Device | Console names | Rack labels |
 | --- | --- | --- |
 | Catalyst C1000 | `Gi1/0/1`–`Gi1/0/24` | `Gi1/0/01`–`Gi1/0/24` |
-| Catalyst SFP cages | `Gi1/0/25`–`Gi1/0/28` | SFP ports, cabling unavailable |
+| Catalyst 1G SFP cages | `Gi1/0/25`–`Gi1/0/28` | Install a 1G module using the inspector |
+| Catalyst 10G profile uplinks | `Te1/0/25`–`Te1/0/28` | 1/10G SFP+ cages |
 | ISR C1111 WAN | `Gi0/0/0`, `Gi0/0/1` | WAN1, WAN2 |
 | ISR C1111 LAN | `Gi0/1/0`–`Gi0/1/7` | LAN1–LAN8 |
 
@@ -177,9 +178,15 @@ another interface using `interface NAME`.
   `ip route NETWORK MASK INTERFACE NEXT-HOP`, and their `no` forms.
 - Router interfaces: `ip address ADDRESS MASK`, `no ip address`;
   router subinterfaces additionally support `encapsulation dot1q ID`.
-- Physical interfaces support `speed 10`, `speed 100`, `speed 1000`, and
-  `speed auto` (the default). The configured advertisement is saved by
-  `write memory`; a link negotiates the lower rate advertised by its endpoints.
+- Physical interfaces support `speed 10`, `speed 100`, `speed 1000`,
+  `speed 10000`, `speed 25000`, and `speed auto` (the host maximum, default).
+  Unsupported host rates are rejected. The configured advertisement is saved
+  by `write memory`; optical links require a common host/module mode.
+- `show inventory`, `show interfaces transceiver`, and
+  `show interfaces Te1/0/25 transceiver` show installed modules, attached cable
+  ends, DOM TX/RX power when available, and the shared physical link fault.
+  Hardware installation is through the GUI and is independent of startup config.
+  Linux servers use `ethtool -m INTERFACE` for the same module diagnostics.
 
 VLAN IDs are 1–4094. Lists accept `20,30-35`, `all`, or `none`. Configure trunk
 mode before changing its allowed/native VLAN settings. Trunks initially allow

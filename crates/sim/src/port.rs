@@ -12,14 +12,28 @@ pub enum LinkSpeed {
     Mbps100,
     #[default]
     Gbps1,
+    Gbps10,
+    Gbps25,
 }
 
 impl LinkSpeed {
+    pub fn from_mbps(mbps: u32) -> Option<Self> {
+        match mbps {
+            10 => Some(Self::Mbps10),
+            100 => Some(Self::Mbps100),
+            1000 => Some(Self::Gbps1),
+            10000 => Some(Self::Gbps10),
+            25000 => Some(Self::Gbps25),
+            _ => None,
+        }
+    }
     pub const fn mbps(self) -> u32 {
         match self {
             Self::Mbps10 => 10,
             Self::Mbps100 => 100,
             Self::Gbps1 => 1_000,
+            Self::Gbps10 => 10_000,
+            Self::Gbps25 => 25_000,
         }
     }
 }
@@ -29,6 +43,7 @@ pub enum PortConnector {
     #[default]
     Rj45,
     Sfp,
+    Lc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -40,7 +55,7 @@ pub enum RackSide {
 
 impl PortConnector {
     pub fn supports_cabling(self) -> bool {
-        matches!(self, Self::Rj45)
+        true
     }
 }
 

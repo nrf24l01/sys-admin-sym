@@ -5,8 +5,8 @@
     "ru": "Cisco Catalyst C1000-24T-4G-L"
   },
   "desc": {
-    "en": "24 RJ45 ports · 4 SFP cages (not yet active)",
-    "ru": "24 порта RJ45 · 4 слота SFP (пока недоступны)"
+    "en": "24 RJ45 ports · 4 × 1G SFP cages · modules sold separately",
+    "ru": "24 порта RJ45 · 4 слота SFP 1G · модули приобретаются отдельно"
   },
   "type": "switch",
   "texture": "equipment/switch_front_clean.png",

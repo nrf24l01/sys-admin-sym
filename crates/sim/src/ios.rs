@@ -52,6 +52,9 @@ pub enum IosMode {
 
 const SHOW: &[&str] = &[
     "show version",
+    "show inventory",
+    "show interfaces transceiver",
+    "show interfaces <interface> transceiver",
     "show interfaces",
     "show interfaces status",
     "show interfaces <interface>",
@@ -140,7 +143,14 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                         commands.push("encapsulation dot1q <id>");
                     }
                 }
-                commands.extend(["speed 10", "speed 100", "speed 1000", "speed auto"]);
+                commands.extend([
+                    "speed 10",
+                    "speed 100",
+                    "speed 1000",
+                    "speed 10000",
+                    "speed 25000",
+                    "speed auto",
+                ]);
             }
         }
         IosMode::ReloadConfirm => {}
@@ -684,7 +694,15 @@ impl NetworkSim {
         let dev = &self.devices[&device];
         let index = dev.ports().iter().position(|p| *p == port).unwrap_or(0);
         match dev.kind {
-            DeviceKind::Switch(_) => format!("GigabitEthernet1/0/{}", index + 1),
+            DeviceKind::Switch(_) => format!(
+                "{}1/0/{}",
+                if self.ports[&port].max_speed == LinkSpeed::Gbps10 {
+                    "TenGigabitEthernet"
+                } else {
+                    "GigabitEthernet"
+                },
+                index + 1
+            ),
             DeviceKind::Router(_) if index < 2 => format!("GigabitEthernet0/0/{index}"),
             DeviceKind::Router(_) => format!("GigabitEthernet0/1/{}", index - 2),
             _ => self.ports[&port].name.clone(),
@@ -711,10 +729,18 @@ impl NetworkSim {
         };
         for port in self.devices[&device].ports() {
             let full = self.ios_interface_name(device, *port).to_ascii_lowercase();
-            let suffix = full.strip_prefix("gigabitethernet").unwrap_or(&full);
+            let (suffix, aliases): (&str, &[&str]) =
+                if let Some(suffix) = full.strip_prefix("tengigabitethernet") {
+                    (suffix, &["te", "ten"])
+                } else {
+                    (
+                        full.strip_prefix("gigabitethernet").unwrap_or(&full),
+                        &["gi", "gig", "g"],
+                    )
+                };
             let matched = base == self.ports[port].name.to_ascii_lowercase()
                 || base == full
-                || ["gi", "gig", "g"]
+                || aliases
                     .iter()
                     .any(|prefix| base.strip_prefix(prefix) == Some(suffix));
             if matched {
@@ -807,11 +833,15 @@ impl NetworkSim {
                 self.topology_revision += 1;
                 return Ok(());
             }
-            "speed 10" | "speed 100" | "speed 1000" | "speed auto" => {
+            "speed 10" | "speed 100" | "speed 1000" | "speed 10000" | "speed 25000"
+            | "speed auto" => {
                 let speed = match command {
                     "speed 10" => LinkSpeed::Mbps10,
                     "speed 100" => LinkSpeed::Mbps100,
-                    "speed 1000" | "speed auto" => LinkSpeed::Gbps1,
+                    "speed 1000" => LinkSpeed::Gbps1,
+                    "speed 10000" => LinkSpeed::Gbps10,
+                    "speed 25000" => LinkSpeed::Gbps25,
+                    "speed auto" => self.port(port).unwrap().max_speed,
                     _ => unreachable!(),
                 };
                 self.ios_execute(Command::SetPortSpeed { port, speed })?;
@@ -957,6 +987,27 @@ impl NetworkSim {
     ) -> Result<Vec<String>, String> {
         let dev = &self.devices[&device];
         match command {
+            "show inventory"
+            | "show interfaces transceiver"
+            | "show interfaces <interface> transceiver" => {
+                let ports = if let Some(interface) = args.first() {
+                    let (port, subinterface) = self.ios_find_interface(device, interface)?;
+                    if subinterface.is_some() {
+                        return Err("% Transceivers belong to physical interfaces.".into());
+                    }
+                    vec![port]
+                } else {
+                    dev.ports()
+                        .iter()
+                        .copied()
+                        .filter(|port| self.cage_profile(*port).is_some())
+                        .collect()
+                };
+                Ok(ports
+                    .into_iter()
+                    .flat_map(|port| self.transceiver_report(port))
+                    .collect())
+            }
             "show version" => Ok(vec![
                 "IOS-style network simulator (not Cisco IOS firmware)".into(),
                 format!("Hardware: {}", dev.name),

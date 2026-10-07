@@ -203,6 +203,7 @@ fn translate_ui_actions(
             }
             UiAction::SelectPowerCable(outlet) => {
                 state.pending_cable = None;
+                state.pending_assembly = None;
                 state.pending_cable_route.clear();
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
@@ -304,7 +305,37 @@ fn translate_ui_actions(
                     None
                 }
             },
+            UiAction::StartAssembly { port, assembly } => {
+                begin_ethernet_gesture(&mut state);
+                state.pending_cable = Some(*port);
+                state.pending_assembly = Some(*assembly);
+                state.pending_cable_route.clear();
+                state.notice = Some(("optics.choose-destination".into(), true));
+                None
+            }
             UiAction::CablePort(port) => {
+                if let Some(assembly) = state.pending_assembly {
+                    if let Some(first) = state.pending_cable
+                        && first != *port
+                    {
+                        commands.write(SimCommandMessage(Command::Optics(
+                            cloud_provider_sim::OpticsCommand::ConnectAssembly {
+                                assembly,
+                                a: first,
+                                b: *port,
+                                route: state.pending_cable_route.clone(),
+                            },
+                        )));
+                        state.pending_cable = None;
+                        state.pending_assembly = None;
+                        state.pending_cable_route.clear();
+                    }
+                    continue;
+                }
+                if !snapshot.0.port_is_copper(*port) {
+                    state.selected = Selection::Port(*port);
+                    continue;
+                }
                 begin_ethernet_gesture(&mut state);
                 if snapshot.0.link_for_port(*port).is_some() {
                     state.notice =
@@ -334,6 +365,7 @@ fn translate_ui_actions(
                                 }
                                 let route = std::mem::take(&mut state.pending_cable_route);
                                 state.pending_cable = None;
+                                state.pending_assembly = None;
                                 Some(Command::ConnectRoutedColoredCable {
                                     a: first,
                                     b: *port,
@@ -353,6 +385,7 @@ fn translate_ui_actions(
                         }
                     } else {
                         state.pending_cable = None;
+                        state.pending_assembly = None;
                         state.pending_cable_route.clear();
                         None
                     }
@@ -589,6 +622,7 @@ fn power_socket_action(
     socket: PowerSocket,
 ) -> Option<Command> {
     state.pending_cable = None;
+    state.pending_assembly = None;
     state.pending_cable_route.clear();
     match socket {
         PowerSocket::Outlet(outlet) => {
@@ -817,6 +851,7 @@ fn poll_worker(
                             | cloud_provider_sim::SimEvent::DeviceRemoved(_)
                     ) {
                         state.pending_cable = None;
+                        state.pending_assembly = None;
                         state.pending_cable_route.clear();
                         state.pending_power_outlet = None;
                         state.pending_power_inlet = None;
@@ -854,6 +889,7 @@ fn poll_worker(
                 state.range_uplink = None;
                 state.terminals.clear();
                 state.pending_cable = None;
+                state.pending_assembly = None;
                 state.pending_cable_route.clear();
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;

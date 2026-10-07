@@ -154,11 +154,15 @@ The room layout and manager positions are predefined.
    use the straight distance between sockets plus 5% slack, rounded up to a cm.
    Longer reusable leads can be selected explicitly in the shop. Switch link
    Port LEDs use separate link/status and activity indicators. Link/status shows
-   the negotiated 10/100/1000 Mbps connection; activity reflects simulated
+   the negotiated connection speed; activity reflects simulated
    traffic. Unplugging
    returns the finished lead for reuse. Right-click an RJ45 port to configure it
-   without starting a cable. The Catalyst SFP cages are shown for physical
-   accuracy but are intentionally inactive in the MVP.
+   without starting a cable. For optical links, buy modules and finished cables
+   under **Shop → Network → Optics & fiber**, select a cage, install a compatible
+   module, then choose a cable and click its destination. DAC/AOC assemblies
+   connect directly to empty SFP+ cages. The original switch supports 1G optics;
+   buy the 10G switch profile or Intel X520-DA2 PCIe NIC for 10G.
+   See [Optical networking](docs/OPTICAL_NETWORKING.md).
 5. Create VLANs on the switch, configure access/trunk ports, server IPv4, and
    router subinterfaces. Open each router's **Routing table…** to bind destination
    routes to its outgoing interfaces and next hops. Open **IP RANGES** to select

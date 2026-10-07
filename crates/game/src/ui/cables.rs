@@ -1,6 +1,6 @@
 use crate::app::CableVisibility;
 use crate::localization::tr;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use cloud_provider_sim::{CableRoutePoint, LinkId, NetworkSim, OutletId, PortId};
 use std::collections::HashMap;
 
@@ -447,6 +447,8 @@ pub(super) fn creation_anchor(
 #[derive(Clone, Copy)]
 pub(super) enum ConnectorKind {
     Rj45,
+    Optical,
+    Attached,
     Iec,
     CiscoFourPin,
 }
@@ -460,7 +462,9 @@ pub(super) struct CableConnector {
 impl CableConnector {
     fn uv(self) -> Rect {
         let (left, top, right, bottom) = match self.kind {
-            ConnectorKind::Rj45 => (0.10, 0.17, 0.90, 1.0),
+            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached => {
+                (0.10, 0.17, 0.90, 1.0)
+            }
             // End-on cable-exit faces, measured in the 1774 × 887 rear atlas.
             ConnectorKind::Iec => (98.0 / 1774.0, 164.0 / 887.0, 950.0 / 1774.0, 696.0 / 887.0),
             ConnectorKind::CiscoFourPin => (
@@ -475,14 +479,19 @@ impl CableConnector {
 
     fn cable_exit(self) -> Vec2 {
         match self.kind {
-            ConnectorKind::Rj45 => Vec2::splat(0.5),
+            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached => {
+                Vec2::splat(0.5)
+            }
             ConnectorKind::Iec => Vec2::new(0.495, 0.70),
             ConnectorKind::CiscoFourPin => Vec2::new(0.50, 0.745),
         }
     }
 
     fn rect(self) -> Rect {
-        if matches!(self.kind, ConnectorKind::Rj45) {
+        if matches!(
+            self.kind,
+            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached
+        ) {
             return plug_rect(self.socket);
         }
         let uv = self.uv();
@@ -683,8 +692,30 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
                 continue;
             }
             for connector in &cable.connectors {
-                ui.painter()
-                    .image(view.plug, connector.rect(), connector.uv(), Color32::WHITE);
+                if matches!(
+                    connector.kind,
+                    ConnectorKind::Optical | ConnectorKind::Attached
+                ) {
+                    let rect = connector.rect();
+                    ui.painter().rect_filled(
+                        rect,
+                        1.0,
+                        if matches!(connector.kind, ConnectorKind::Optical) {
+                            Color32::from_rgb(40, 120, 185)
+                        } else {
+                            Color32::from_gray(145)
+                        },
+                    );
+                    ui.painter().rect_stroke(
+                        rect,
+                        1.0,
+                        Stroke::new(1.0, Color32::from_gray(35)),
+                        egui::StrokeKind::Inside,
+                    );
+                } else {
+                    ui.painter()
+                        .image(view.plug, connector.rect(), connector.uv(), Color32::WHITE);
+                }
             }
         }
         for (key, cable, _, _) in &spans {
@@ -787,7 +818,24 @@ impl CableScene {
                         .filter_map(|id| {
                             ports.get(id).map(|socket| CableConnector {
                                 socket: *socket,
-                                kind: ConnectorKind::Rj45,
+                                kind: sim.connected_assembly(link.id).map_or(
+                                    ConnectorKind::Rj45,
+                                    |c| {
+                                        if cloud_provider_sim::optics_catalog()
+                                            .cable(&c.model_id)
+                                            .is_some_and(|m| {
+                                                matches!(
+                                                    m.medium,
+                                                    cloud_provider_sim::AssemblyMedium::Fiber { .. }
+                                                )
+                                            })
+                                        {
+                                            ConnectorKind::Optical
+                                        } else {
+                                            ConnectorKind::Attached
+                                        }
+                                    },
+                                ),
                             })
                         })
                         .collect(),

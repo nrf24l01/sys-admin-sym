@@ -6,6 +6,8 @@ use std::net::Ipv4Addr;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSim {
     #[serde(default)]
+    pub optics: OpticsState,
+    #[serde(default)]
     pub(crate) provider: ProviderNetwork,
     pub(crate) devices: HashMap<DeviceId, Device>,
     pub(crate) ports: HashMap<PortId, Port>,
@@ -40,10 +42,10 @@ pub struct NetworkSim {
     pub(crate) ssh_sessions: HashMap<DeviceId, DeviceId>,
     next_device_id: u64,
     next_port_id: u64,
-    next_link_id: u64,
+    pub(crate) next_link_id: u64,
     next_rack_id: u64,
     #[serde(skip)]
-    port_links: HashMap<PortId, LinkId>,
+    pub(crate) port_links: HashMap<PortId, LinkId>,
     #[serde(skip)]
     pub(crate) runtime: NetworkRuntime,
 }
@@ -57,6 +59,7 @@ impl Default for NetworkSim {
 impl NetworkSim {
     pub fn new() -> Self {
         let mut sim = Self {
+            optics: OpticsState::default(),
             provider: ProviderNetwork::default(),
             devices: HashMap::new(),
             ports: HashMap::new(),
@@ -91,6 +94,7 @@ impl NetworkSim {
     }
 
     pub fn rebuild_indexes(&mut self) {
+        self.migrate_legacy_sfp_nic();
         self.power
             .devices
             .retain(|id, _| self.devices.contains_key(id));
@@ -375,6 +379,7 @@ impl NetworkSim {
         self.ensure_network_outlets();
         self.reconcile_provider();
         self.migrate_provider_inventory();
+        self.normalize_optics();
     }
 
     fn ensure_network_outlets(&mut self) {
@@ -466,56 +471,11 @@ impl NetworkSim {
     }
 
     pub fn port_link_up(&self, id: PortId) -> bool {
-        if self.port(id).and_then(|p| p.paired_port).is_some()
-            || self
-                .link_for_port(id)
-                .and_then(|l| l.other(id))
-                .and_then(|p| self.port(p))
-                .and_then(|p| p.paired_port)
-                .is_some()
-        {
-            return self.physical_link_up(id);
-        }
-        self.link_for_port(id).is_some_and(|link| {
-            link.enabled
-                && link.length_cm <= 10_000
-                && [link.a, link.b].iter().all(|endpoint| {
-                    self.port(*endpoint).is_some_and(|port| {
-                        port.connector.supports_cabling()
-                            && port.enabled
-                            && (self.network_outlet(port.id).is_some()
-                                || self
-                                    .device(port.device)
-                                    .is_some_and(|device| device.powered && device.rack.is_some()))
-                    })
-                })
-        })
+        self.link_status(id).speed.is_some()
     }
-
-    /// Returns the negotiated physical rate when this port has an active link.
+    /// Returns the resolved physical rate from the shared L1 evaluator.
     pub fn port_link_speed(&self, id: PortId) -> Option<LinkSpeed> {
-        if self.port(id).and_then(|p| p.paired_port).is_some()
-            || self
-                .link_for_port(id)
-                .and_then(|l| l.other(id))
-                .and_then(|p| self.port(p))
-                .and_then(|p| p.paired_port)
-                .is_some()
-        {
-            return self.physical_link_speed(id);
-        }
-        let link = self.link_for_port(id)?;
-        if !self.port_link_up(id) {
-            return None;
-        }
-        let a = self.port(link.a)?;
-        let b = self.port(link.b)?;
-        Some(
-            a.advertised_speed
-                .min(a.max_speed)
-                .min(b.advertised_speed)
-                .min(b.max_speed),
-        )
+        self.link_status(id).speed
     }
 
     /// Advance the deterministic packet clock used for port activity LEDs.
@@ -619,6 +579,7 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::Optics(command) => self.configure_optics(command)?,
             Command::Provider(command) => {
                 let router = match &command {
                     crate::ProviderCommand::SetDomainRoute(route)
@@ -921,13 +882,19 @@ impl NetworkSim {
                     | SimEvent::LinkRemoved(_)
                     | SimEvent::PortConfigChanged(_)
                     | SimEvent::DevicePowerChanged { .. }
+                    | SimEvent::ConnectivityChanged
             )
         }) {
             self.topology_revision += 1;
             events.push(SimEvent::TopologyChanged {
                 revision: self.topology_revision,
             });
-            events.push(SimEvent::ConnectivityChanged);
+            if !events
+                .iter()
+                .any(|e| matches!(e, SimEvent::ConnectivityChanged))
+            {
+                events.push(SimEvent::ConnectivityChanged);
+            }
         }
         self.reconcile_provider();
         Ok(events)
@@ -960,8 +927,15 @@ impl NetworkSim {
         id
     }
 
-    fn buy_device(&mut self, template: DeviceTemplate) -> Result<DeviceId, SimError> {
-        let price = template.price();
+    pub(crate) fn buy_device(&mut self, template: DeviceTemplate) -> Result<DeviceId, SimError> {
+        self.buy_device_at_price(template, template.price())
+    }
+
+    pub(crate) fn buy_device_at_price(
+        &mut self,
+        template: DeviceTemplate,
+        price: i64,
+    ) -> Result<DeviceId, SimError> {
         if self.money < price {
             return Err(SimError::InsufficientFunds {
                 needed: price,
@@ -1368,7 +1342,7 @@ impl NetworkSim {
                         ..
                     },
             } => {
-                if !matches!(speed_mbps, 10 | 100 | 1000) {
+                if LinkSpeed::from_mbps(*speed_mbps).is_none() {
                     return Err(SimError::ServerHardware(
                         "NIC speed is unsupported by the network simulator".into(),
                     ));
@@ -1425,8 +1399,10 @@ impl NetworkSim {
         if let ServerPartKind::PciCard {
             card:
                 PciCard::Ethernet {
-                    rj45_ports,
+                    ports,
                     speed_mbps,
+                    connector,
+                    cage,
                     ..
                 },
         } = &part.kind
@@ -1438,20 +1414,23 @@ impl NetworkSim {
                 .filter_map(|port| port.name.strip_prefix("eth")?.parse::<usize>().ok())
                 .max()
                 .map_or(0, |index| index + 1);
-            let speed = match speed_mbps {
-                10 => LinkSpeed::Mbps10,
-                100 => LinkSpeed::Mbps100,
-                _ => LinkSpeed::Gbps1,
-            };
-            for index in 0..*rj45_ports {
+            let speed = LinkSpeed::from_mbps(*speed_mbps).expect("validated NIC speed");
+            for index in 0..*ports {
                 let port = self.alloc_port(
                     device,
                     format!("eth{}", start + usize::from(index)),
-                    PortConnector::Rj45,
+                    *connector,
                     PortConfig::Server(ServerPortConfig::default()),
                 );
                 self.ports.get_mut(&port).unwrap().max_speed = speed;
                 self.ports.get_mut(&port).unwrap().advertised_speed = speed;
+                if *connector == PortConnector::Sfp {
+                    self.optics.cages.insert(
+                        port,
+                        cage.clone()
+                            .unwrap_or_else(|| CageProfile::for_speed(speed)),
+                    );
+                }
                 new_ports.push(port);
             }
         }
@@ -1531,6 +1510,7 @@ impl NetworkSim {
             .map(|i| hardware.card_ports[i].clone())
             .unwrap_or_default();
         for port in &ports {
+            self.detach_module(*port);
             if let Some(link) = self.port_links.get(port).copied() {
                 self.disconnect(link)?;
             }
@@ -1569,6 +1549,7 @@ impl NetworkSim {
     }
 
     fn update_server_load(&mut self, device: DeviceId) {
+        let module_watts = self.module_load_watts(device);
         let Some(Device {
             kind: DeviceKind::Server(server),
             ..
@@ -1580,7 +1561,10 @@ impl NetworkSim {
             return;
         };
         if let Some(power) = self.power.devices.get_mut(&device) {
-            power.load = ElectricalLoad::from_watts_pf(hardware.load_watts(), 90);
+            power.load = ElectricalLoad::from_watts_pf(
+                hardware.load_watts().saturating_add(module_watts),
+                90,
+            );
             self.power.recompute_now();
         }
     }
@@ -1597,6 +1581,7 @@ impl NetworkSim {
             _ => None,
         };
         for port in &ports {
+            self.detach_module(*port);
             if let Some(link) = self.port_links.get(port).copied() {
                 self.disconnect(link)?;
             }
@@ -1652,7 +1637,13 @@ impl NetworkSim {
         for port in ports {
             self.ports.remove(&port);
         }
-        self.money += device.template().price() / 2;
+        let price = self
+            .optics
+            .device_models
+            .remove(&id)
+            .and_then(|model| optics_catalog().hardware(&model).map(|m| m.price))
+            .unwrap_or_else(|| device.template().price());
+        self.money += price / 2;
         Ok(())
     }
 
@@ -1852,7 +1843,7 @@ impl NetworkSim {
             return Err(SimError::PortAlreadyConnected(b));
         }
         for port in [pa, pb] {
-            if !port.connector.supports_cabling() {
+            if !self.port_is_copper(port.id) {
                 return Err(SimError::UnsupportedConnector {
                     port: port.id,
                     connector: port.connector,
@@ -1895,6 +1886,9 @@ impl NetworkSim {
         let link = self.links.remove(&id).ok_or(SimError::LinkNotFound)?;
         self.port_links.remove(&link.a);
         self.port_links.remove(&link.b);
+        if self.return_assembly(id) {
+            return Ok(());
+        }
         self.normalize_patch_cable_colors();
         self.cable_inventory.patch_cables_cm.push(link.length_cm);
         self.cable_inventory.patch_cable_colors.push(link.color);
@@ -1938,7 +1932,7 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn sync_effective_power(&mut self) {
+    pub(crate) fn sync_effective_power(&mut self) {
         self.power
             .cord_routes
             .retain(|outlet, _| self.power.connections.contains_key(outlet));
@@ -2259,7 +2253,7 @@ impl NetworkSim {
         }
         Ok(())
     }
-    fn validate_route_point(&self, point: &CableRoutePoint) -> Result<(), SimError> {
+    pub(crate) fn validate_route_point(&self, point: &CableRoutePoint) -> Result<(), SimError> {
         if let Some(id) = point.room_anchor_id() {
             return if self.room.cable_anchors.iter().any(|anchor| anchor.id == id) {
                 Ok(())
@@ -2281,25 +2275,27 @@ impl NetworkSim {
         link: LinkId,
         point: CableRoutePoint,
     ) -> Result<(), SimError> {
-        self.validate_route_point(&point)?;
-        self.links
-            .get_mut(&link)
+        let mut route = self
+            .links
+            .get(&link)
             .ok_or(SimError::LinkNotFound)?
             .route
-            .push(point);
-        Ok(())
+            .clone();
+        route.push(point);
+        self.reroute_cable(link, route)
     }
     fn remove_cable_route_point(&mut self, link: LinkId, index: usize) -> Result<(), SimError> {
-        let r = &mut self
+        let mut route = self
             .links
-            .get_mut(&link)
+            .get(&link)
             .ok_or(SimError::LinkNotFound)?
-            .route;
-        if index >= r.len() {
+            .route
+            .clone();
+        if index >= route.len() {
             return Err(SimError::LinkNotFound);
         }
-        r.remove(index);
-        Ok(())
+        route.remove(index);
+        self.reroute_cable(link, route)
     }
     fn move_cable_route_point(
         &mut self,
@@ -2307,26 +2303,30 @@ impl NetworkSim {
         index: usize,
         point: CableRoutePoint,
     ) -> Result<(), SimError> {
-        self.validate_route_point(&point)?;
-        let r = &mut self
+        let mut route = self
             .links
-            .get_mut(&link)
+            .get(&link)
             .ok_or(SimError::LinkNotFound)?
-            .route;
-        if index >= r.len() {
+            .route
+            .clone();
+        if index >= route.len() {
             return Err(SimError::LinkNotFound);
         }
-        r[index] = point;
-        Ok(())
+        route[index] = point;
+        self.reroute_cable(link, route)
     }
     fn reroute_cable(&mut self, link: LinkId, route: Vec<CableRoutePoint>) -> Result<(), SimError> {
-        for p in &route {
-            self.validate_route_point(p)?;
+        for point in &route {
+            self.validate_route_point(point)?;
         }
-        self.links
-            .get_mut(&link)
-            .ok_or(SimError::LinkNotFound)?
-            .route = route;
+        let cable = self.links.get(&link).ok_or(SimError::LinkNotFound)?;
+        if self.connected_assembly(link).is_some() {
+            let minimum_cm = self.minimum_routed_cable_length(cable.a, cable.b, &route)?;
+            if minimum_cm > cable.length_cm {
+                return Err(SimError::CableTooShort { minimum_cm });
+            }
+        }
+        self.links.get_mut(&link).unwrap().route = route;
         Ok(())
     }
 }

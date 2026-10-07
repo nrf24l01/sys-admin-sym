@@ -7,6 +7,7 @@ use std::collections::HashMap;
 mod cables;
 mod equipment;
 mod inventory;
+mod optics;
 mod rack;
 mod ranges;
 mod room;
@@ -216,6 +217,7 @@ pub fn main_ui(
     let ctx = contexts.ctx_mut()?;
     if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
         state.pending_cable = None;
+        state.pending_assembly = None;
         state.pending_cable_route.clear();
         state.pending_power_outlet = None;
         state.pending_power_inlet = None;
@@ -341,21 +343,29 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                 if state.pending_cable.is_some() {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 196, 64),
-                        crate::localization::tr_args(
-                            "ui.rj45-cable-anchor-select-port",
-                            &[
-                                (state.pending_cable_route.len()).to_string(),
-                                (if state.pending_cable_route.len() == 1 {
-                                    ""
-                                } else {
-                                    "S"
-                                })
-                                .to_string(),
-                            ],
-                        ),
+                        if state.pending_assembly.is_some() {
+                            crate::localization::tr_args(
+                                "optics.cable-anchor-select-port",
+                                &[state.pending_cable_route.len().to_string()],
+                            )
+                        } else {
+                            crate::localization::tr_args(
+                                "ui.rj45-cable-anchor-select-port",
+                                &[
+                                    (state.pending_cable_route.len()).to_string(),
+                                    (if state.pending_cable_route.len() == 1 {
+                                        ""
+                                    } else {
+                                        "S"
+                                    })
+                                    .to_string(),
+                                ],
+                            )
+                        },
                     );
                     if ui.small_button(tr("ui.cancel-cable")).clicked() {
                         state.pending_cable = None;
+                        state.pending_assembly = None;
                         state.pending_cable_route.clear();
                     }
                     ui.separator();
@@ -432,27 +442,6 @@ fn inspector_panel(
     drafts: &mut EditorDrafts,
     actions: &mut MessageWriter<UiAction>,
 ) {
-    let passive_selection = match state.selected {
-        Selection::Device(id) => sim.device(id).is_some_and(|device| {
-            matches!(
-                device.kind,
-                DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
-            )
-        }),
-        Selection::Port(id) => sim
-            .port(id)
-            .and_then(|port| sim.device(port.device))
-            .is_some_and(|device| {
-                matches!(
-                    device.kind,
-                    DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
-                )
-            }),
-        _ => false,
-    };
-    if passive_selection {
-        return;
-    }
     egui::Panel::right("inspector")
         .default_size(360.0)
         .show(viewport, |ui| {
@@ -606,25 +595,24 @@ fn device_inspector(
         .show(ui, |ui| {
             for port_id in device.ports() {
                 let port = sim.port(*port_id).expect("device port exists");
-                let link = sim.link_for_port(*port_id);
                 ui.colored_label(
-                    if link.is_some() && device.powered {
+                    if sim.port_link_up(*port_id) {
                         egui::Color32::GREEN
                     } else {
                         egui::Color32::GRAY
                     },
-                    tr(if link.is_some() { "●" } else { "○" }),
+                    tr(if sim.port_link_up(*port_id) {
+                        "●"
+                    } else {
+                        "○"
+                    }),
                 );
                 if ui
                     .add_enabled(
                         port.connector.supports_cabling(),
                         egui::Button::selectable(false, &port.name),
                     )
-                    .on_hover_text(tr(if port.connector.supports_cabling() {
-                        "ui.select-port"
-                    } else {
-                        "ui.sfp-cabling-is-not-implemented-yet"
-                    }))
+                    .on_hover_text(tr("ui.select-port"))
                     .clicked()
                 {
                     actions.write(UiAction::SelectPort(*port_id));
@@ -1108,22 +1096,28 @@ fn port_inspector(
         "ui.connector",
         &[tr(connector_label(port.connector))],
     ));
-    if !port.connector.supports_cabling() {
-        ui.colored_label(
-            egui::Color32::from_rgb(255, 196, 64),
-            tr("ui.sfp-is-visible-on-the-physical-device"),
-        );
-        return;
-    }
+    optics::port_controls(ui, sim, id, actions);
     let link = sim.link_for_port(id);
     ui.label(match link {
-        Some(link) => crate::localization::tr_args("ui.link-up-cable", &[(link.id.0).to_string()]),
+        Some(link) => crate::localization::tr_args(
+            if sim.port_link_up(id) {
+                "ui.link-up-cable"
+            } else {
+                "optics.link-down-cable"
+            },
+            &[(link.id.0).to_string()],
+        ),
         None => tr("ui.link-down"),
     });
-    if link.is_none() && ui.button(tr("ui.connect-rj45-cable")).clicked() {
+    if link.is_none() && sim.port_is_copper(id) && ui.button(tr("ui.connect-rj45-cable")).clicked()
+    {
         actions.write(UiAction::CablePort(id));
     }
-    ui.weak(tr("ui.select-the-other-socket-in-the-rack"));
+    ui.weak(tr(if sim.port_is_copper(id) {
+        "ui.select-the-other-socket-in-the-rack"
+    } else {
+        "optics.port-guide"
+    }));
     if let Some(link) = link
         && ui.button(tr("ui.disconnect-cable")).clicked()
     {
@@ -1349,14 +1343,36 @@ fn link_inspector(
         "ui.cable",
         &[(id.0).to_string()],
     ));
-    ui.label(crate::localization::tr_args(
-        "ui.m-ethernet-lead-2-rj45-plugs",
-        &[
-            format!("{:.2}", link.length_cm as f32 / 100.0),
-            crate::localization::cable_color(link.color),
-        ],
-    ));
-    ui.weak(tr("cable.description"));
+    if let Some(assembly) = sim.connected_assembly(id) {
+        ui.label(crate::localization::item_name(
+            &assembly.model_id,
+            &assembly.model_id,
+        ));
+        ui.weak(crate::localization::item_description(&assembly.model_id));
+        if optics_catalog()
+            .cable(&assembly.model_id)
+            .is_some_and(|m| matches!(m.medium, AssemblyMedium::Fiber { strands: 2, .. }))
+            && ui.button(tr("optics.flip-polarity")).clicked()
+        {
+            actions.write(UiAction::NetworkCommand(
+                cloud_provider_sim::Command::Optics(OpticsCommand::FlipPolarity {
+                    assembly: assembly.id,
+                }),
+            ));
+        }
+    } else {
+        ui.label(crate::localization::tr_args(
+            "ui.m-ethernet-lead-2-rj45-plugs",
+            &[
+                format!("{:.2}", link.length_cm as f32 / 100.0),
+                crate::localization::cable_color(link.color),
+            ],
+        ));
+        ui.weak(tr("cable.description"));
+    }
+    if let Some(fault) = sim.link_status(link.a).fault {
+        ui.weak(crate::localization::link_fault(fault));
+    }
     ui.label(endpoint(link.a));
     ui.label("↕");
     ui.label(endpoint(link.b));
@@ -2688,7 +2704,14 @@ fn rack_view(
                                     positions.get(&port).map(egui::Rect::center),
                                 ),
                                 state.pending_cable_route.clone(),
-                                cable_color_value(state.cable_color),
+                                state
+                                    .pending_assembly
+                                    .and_then(|id| sim.optics.assemblies.get(&id))
+                                    .and_then(|c| optics_catalog().cable(&c.model_id))
+                                    .map_or_else(
+                                        || cable_color_value(state.cable_color),
+                                        |c| cable_color_value(c.color),
+                                    ),
                             ),
                             PendingCableId::Power(socket) => (
                                 (
@@ -2720,15 +2743,24 @@ fn rack_view(
                                         location: cables::port_location(sim, *port)?,
                                         rect: *rect,
                                         same_socket: first == *port,
-                                        valid: sim
-                                            .quote_routed_colored_cable(
+                                        valid: if let Some(assembly) = state.pending_assembly {
+                                            sim.quote_assembly(
+                                                assembly,
+                                                first,
+                                                *port,
+                                                &state.pending_cable_route,
+                                            )
+                                            .is_ok()
+                                        } else {
+                                            sim.quote_routed_colored_cable(
                                                 first,
                                                 *port,
                                                 state.cable_length_cm,
                                                 state.cable_color,
                                                 &state.pending_cable_route,
                                             )
-                                            .is_ok(),
+                                            .is_ok()
+                                        },
                                     })
                                 })
                                 .collect(),
@@ -2888,7 +2920,9 @@ fn rack_view(
                     let status = sim
                         .port_link_speed(port_id)
                         .map(|speed| match speed {
-                            LinkSpeed::Gbps1 => egui::Color32::from_rgb(70, 235, 85),
+                            LinkSpeed::Gbps1 | LinkSpeed::Gbps10 | LinkSpeed::Gbps25 => {
+                                egui::Color32::from_rgb(70, 235, 85)
+                            }
                             LinkSpeed::Mbps100 | LinkSpeed::Mbps10 => {
                                 egui::Color32::from_rgb(235, 170, 45)
                             }
@@ -2911,6 +2945,7 @@ fn rack_view(
                 for (port_id, port_rect) in port_visuals {
                     let port = sim.port(port_id).expect("visualized port exists");
                     let link = sim.link_for_port(port_id);
+                    optics::paint_socket(ui.painter(), port_rect, sim, port_id);
                     let paired_selected = sim
                         .port(port_id)
                         .and_then(|port| port.paired_port)
@@ -2964,7 +2999,11 @@ fn rack_view(
                     }
                     let quote = state
                         .pending_cable
-                        .filter(|first| *first != port_id)
+                        .filter(|first| {
+                            *first != port_id
+                                && state.pending_assembly.is_none()
+                                && sim.port_is_copper(port_id)
+                        })
                         .map(|first| {
                             match sim.quote_routed_colored_cable(
                                 first,
@@ -2997,14 +3036,16 @@ fn rack_view(
                             .to_string(),
                             (port.name).to_string(),
                             tr(connector_label(port.connector)),
-                            if supported {
+                            if port.connector != PortConnector::Rj45 {
+                                tr("optics.port-guide")
+                            } else if supported {
                                 if link.is_some() {
                                     tr("port.connected-guide")
                                 } else {
                                     tr("port.connect-guide")
                                 }
                             } else {
-                                tr("port.sfp-unavailable")
+                                tr("optics.port-guide")
                             },
                             (quote).to_string(),
                         ],
@@ -3016,7 +3057,9 @@ fn rack_view(
                                 actions.write(UiAction::Disconnect(link.id));
                                 menu.close();
                             }
-                        } else if supported && menu.button(tr("ui.connect-rj45-cable")).clicked() {
+                        } else if sim.port_is_copper(port_id)
+                            && menu.button(tr("ui.connect-rj45-cable")).clicked()
+                        {
                             actions.write(UiAction::CablePort(port_id));
                             menu.close();
                         }
@@ -3265,7 +3308,7 @@ fn rack_port_rect(
         (DeviceKind::Router(_), PortConnector::Rj45) => egui::vec2(0.041, 0.27),
         (DeviceKind::Server(_), PortConnector::Rj45) => egui::vec2(0.036, 0.25),
         (_, PortConnector::Rj45) => egui::vec2(0.029, 0.27),
-        (_, PortConnector::Sfp) => egui::vec2(0.034, 0.36),
+        (_, PortConnector::Sfp | PortConnector::Lc) => egui::vec2(0.034, 0.36),
     };
     egui::Rect::from_center_size(
         center,
@@ -3409,7 +3452,8 @@ fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &Device
 fn connector_label(connector: PortConnector) -> &'static str {
     match connector {
         PortConnector::Rj45 => "ui.rj45",
-        PortConnector::Sfp => "ui.sfp-not-implemented",
+        PortConnector::Sfp => "optics.cage",
+        PortConnector::Lc => "optics.lc",
     }
 }
 
@@ -3420,6 +3464,8 @@ fn cable_color_value(color: CableColor) -> egui::Color32 {
         CableColor::Blue => egui::Color32::from_rgb(45, 125, 225),
         CableColor::Orange => egui::Color32::from_rgb(232, 125, 35),
         CableColor::Red => egui::Color32::from_rgb(205, 48, 52),
+        CableColor::Aqua => egui::Color32::from_rgb(58, 202, 198),
+        CableColor::Yellow => egui::Color32::from_rgb(245, 205, 40),
     }
 }
 
@@ -3615,7 +3661,7 @@ fn topology_view(viewport: &mut egui::Ui, sim: &NetworkSim, actions: &mut Messag
                 [*a, *b],
                 egui::Stroke::new(
                     3.0,
-                    if link.enabled {
+                    if sim.port_link_up(link.a) {
                         cable_color_value(link.color)
                     } else {
                         egui::Color32::DARK_GRAY

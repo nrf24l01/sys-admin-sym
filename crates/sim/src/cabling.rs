@@ -1,7 +1,7 @@
 use crate::*;
 use serde::{Deserialize, Serialize};
 
-/// Common RJ45 jacket colors available for patch leads.
+/// Jacket colors for copper leads and catalog cable assemblies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CableColor {
     #[default]
@@ -10,6 +10,8 @@ pub enum CableColor {
     Blue,
     Orange,
     Red,
+    Aqua,
+    Yellow,
 }
 
 /// Game economy prices, not a live supplier price list.

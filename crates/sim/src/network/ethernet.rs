@@ -17,7 +17,7 @@ impl NetworkSim {
     /// Resolve a physical route through passive patch-panel pairs. The
     /// returned ports include both cable ends and panel sides in traversal
     /// order, which is useful for highlighting a complete cable path.
-    pub fn physical_path(&self, start: PortId) -> Vec<PortId> {
+    pub(crate) fn mechanical_path(&self, start: PortId) -> Vec<PortId> {
         fn walk(
             sim: &NetworkSim,
             current: PortId,
@@ -52,7 +52,7 @@ impl NetworkSim {
             }
             next.sort();
             for neighbor in next {
-                if sim.direct_segment_active(current, neighbor)
+                if sim.segment_connected(current, neighbor)
                     && walk(sim, neighbor, start, path, seen)
                 {
                     return true;
@@ -62,74 +62,54 @@ impl NetworkSim {
             seen.remove(&current);
             false
         }
-        let terminals: Vec<_> = self
-            .ports
-            .values()
-            .filter(|p| !matches!(p.config, PortConfig::PatchPanel | PortConfig::CableManager))
-            .map(|p| p.id)
-            .collect();
-        let mut terminals = terminals;
-        terminals.sort();
-        for terminal in terminals {
-            let mut path = Vec::new();
-            if walk(self, terminal, terminal, &mut path, &mut HashSet::new())
-                && path.contains(&start)
-            {
-                return path;
+        // A cable component has degree at most two: external lead plus passive pair.
+        // Find an endpoint in this component instead of scanning every port in the datacenter.
+        let mut queue = VecDeque::from([start]);
+        let mut visited = HashSet::new();
+        while let Some(id) = queue.pop_front() {
+            if visited.len() >= 128 || !visited.insert(id) {
+                continue;
+            }
+            let Some(port) = self.port(id) else { continue };
+            if !matches!(
+                port.config,
+                PortConfig::PatchPanel | PortConfig::CableManager
+            ) {
+                let mut path = Vec::new();
+                if walk(self, id, id, &mut path, &mut HashSet::new()) && path.contains(&start) {
+                    return path;
+                }
+                return Vec::new();
+            }
+            if let Some(other) = self.link_for_port(id).and_then(|link| link.other(id)) {
+                queue.push_back(other);
+            }
+            if let Some(pair) = port.paired_port {
+                queue.push_back(pair);
             }
         }
         Vec::new()
     }
 
-    pub fn physical_link_up(&self, start: PortId) -> bool {
-        let path = self.physical_path(start);
-        !path.is_empty()
-            && path
-                .windows(2)
-                .all(|pair| self.direct_segment_active(pair[0], pair[1]))
-    }
-
-    pub fn physical_link_speed(&self, start: PortId) -> Option<crate::LinkSpeed> {
-        if !self.physical_link_up(start) {
-            return None;
+    pub fn physical_path(&self, start: PortId) -> Vec<PortId> {
+        let status = self.link_status(start);
+        if status.speed.is_some() {
+            status.path
+        } else {
+            Vec::new()
         }
-        self.physical_path(start)
-            .windows(2)
-            .filter_map(|pair| {
-                let a = self.port(pair[0])?;
-                let b = self.port(pair[1])?;
-                Some(
-                    a.advertised_speed
-                        .min(a.max_speed)
-                        .min(b.advertised_speed)
-                        .min(b.max_speed),
-                )
-            })
-            .min()
     }
-
-    fn direct_segment_active(&self, a: PortId, b: PortId) -> bool {
-        let (Some(pa), Some(pb)) = (self.port(a), self.port(b)) else {
-            return false;
-        };
-        let active = |p: &crate::Port| {
-            p.enabled
-                && p.connector.supports_cabling()
-                && (self.network_outlet(p.id).is_some()
-                    || self.device(p.device).is_some_and(|d| {
-                        d.rack.is_some()
-                            && (matches!(
-                                p.config,
-                                PortConfig::PatchPanel
-                                    | PortConfig::CableManager
-                                    | PortConfig::Infrastructure
-                            ) || d.powered)
-                    }))
-        };
-        let cable = self.links.values().any(|l| {
-            l.enabled && l.length_cm <= 10_000 && ((l.a == a && l.b == b) || (l.a == b && l.b == a))
-        });
-        (pa.paired_port == Some(b) || cable) && active(pa) && active(pb)
+    pub fn physical_link_up(&self, start: PortId) -> bool {
+        self.link_status(start).speed.is_some()
+    }
+    pub fn physical_link_speed(&self, start: PortId) -> Option<crate::LinkSpeed> {
+        self.link_status(start).speed
+    }
+    fn segment_connected(&self, a: PortId, b: PortId) -> bool {
+        self.port(a).is_some_and(|p| p.paired_port == Some(b))
+            || self
+                .link_for_port(a)
+                .is_some_and(|link| link.other(a) == Some(b))
     }
 
     pub(crate) fn prepare_runtime(&mut self) {

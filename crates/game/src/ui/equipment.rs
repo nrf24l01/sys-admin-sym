@@ -63,7 +63,7 @@ pub(super) fn equipment_port_position(
         DeviceKind::CableManager(_) => "cable_manager",
     };
     let connector_name = match connector {
-        PortConnector::Rj45 => "rj-45",
+        PortConnector::Rj45 | PortConnector::Lc => "rj-45",
         PortConnector::Sfp => "sfp",
     };
     let side_name = match side {

@@ -29,6 +29,17 @@ interoperability with physical equipment or full IOS compatibility.
 Regression coverage is in `crates/sim/tests/provider.rs`; existing IOS tests
 cover command-mode handling and startup configuration.
 
+## Optical physical layer
+
+SFP/SFP+ modules, fiber cords, DAC/AOC, LC patch panels and the 10G hardware
+profiles are now available from the shop and port inspectors. The GUI and
+Cisco/Linux diagnostics consume the same physical evaluator as packet
+forwarding and resource availability. Reach, polarity, wavelength, fiber,
+mode and optical loss faults can disable carrier. See
+[Optical networking](OPTICAL_NETWORKING.md) for supported equipment and limits.
+Regression coverage is in `crates/sim/tests/optics.rs`; localized UI actions
+have focused tests in `crates/game/src/ui/optics.rs`.
+
 ## Existing features with incomplete player access
 
 | Feature | Current access | Missing work |

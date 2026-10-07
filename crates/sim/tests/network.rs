@@ -163,7 +163,7 @@ fn real_device_templates_expose_expected_network_panels() {
 }
 
 #[test]
-fn sfp_cabling_is_explicitly_outside_the_mvp() {
+fn empty_sfp_cages_reject_copper_cables_but_allow_interface_configuration() {
     let mut sim = NetworkSim::new();
     sim.execute(Command::BuyCableSupply {
         supply: CableSupply::CableBox305m,
@@ -188,17 +188,15 @@ fn sfp_cabling_is_explicitly_outside_the_mvp() {
             connector: PortConnector::Sfp,
         })
     );
-    assert_eq!(
-        sim.execute(Command::SetSwitchPortMode {
-            port: sfp,
-            mode: SwitchPortMode::Access {
-                vlan: Some(VlanId(1))
-            },
-        }),
-        Err(SimError::UnsupportedConnector {
-            port: sfp,
-            connector: PortConnector::Sfp,
-        })
+    sim.execute(Command::SetSwitchPortMode {
+        port: sfp,
+        mode: SwitchPortMode::Access {
+            vlan: Some(VlanId(1)),
+        },
+    })
+    .unwrap();
+    assert!(
+        matches!(&sim.port(sfp).unwrap().config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: Some(VlanId(1)) })
     );
 }
 

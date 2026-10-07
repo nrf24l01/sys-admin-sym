@@ -121,7 +121,12 @@ pub enum PciCard {
         lanes: u8,
         generation: u8,
         width: u8,
-        rj45_ports: u8,
+        #[serde(alias = "rj45_ports")]
+        ports: u8,
+        #[serde(default)]
+        connector: crate::PortConnector,
+        #[serde(default)]
+        cage: Option<crate::CageProfile>,
         speed_mbps: u32,
         power_w: u16,
     },
@@ -260,5 +265,27 @@ impl ServerHardware {
 impl ServerChassis {
     fn default_integrated_psu_watts() -> u16 {
         600
+    }
+}
+
+impl crate::NetworkSim {
+    /// Replace the prototype NIC identity without recreating its saved interfaces.
+    pub(crate) fn migrate_legacy_sfp_nic(&mut self) {
+        const LEGACY: &str = "dual_sfpplus_10g";
+        const CURRENT: &str = "intel_x520_da2";
+        if let Some(count) = self.server_parts.remove(LEGACY) {
+            *self.server_parts.entry(CURRENT.into()).or_default() += count;
+        }
+        for device in self.devices.values_mut() {
+            if let crate::DeviceKind::Server(server) = &mut device.kind
+                && let Some(hardware) = &mut server.hardware
+            {
+                for part in hardware.pcie.iter_mut().flatten() {
+                    if part == LEGACY {
+                        *part = CURRENT.into();
+                    }
+                }
+            }
+        }
     }
 }

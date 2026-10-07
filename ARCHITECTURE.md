@@ -98,17 +98,30 @@ owns slack allocation, rope simulation, dragging, hit testing, connector placeme
 and jacket/highlight rendering. Visible sections share the available cable length
 proportionally; automatic lengths use the same 5% slack rule for both families.
 
-`PortConnector` records physical media independently from VLAN/IP
-configuration. This milestone permits cable creation only between RJ45 ports;
-the Catalyst SFP cages exist in the domain and rack projection but reject links
-until SFP transceivers and fiber media are implemented.
+`PortConnector` records the socket independently from VLAN/IP configuration.
+`optics` owns cage capabilities, separate transceiver and finished assembly
+inventories, typed installation commands, and the shared `link_status` evaluator.
+The original Catalyst has four 1G SFP cages; a separate JSON hardware profile
+provides 1/10G SFP+ uplinks, and the PCIe catalog includes an Intel X520-DA2
+(two SFP+ cages, PCIe 2.0 x8). Generic prototype NIC IDs migrate on load without
+recreating their interfaces.
+LC patch panels reuse passive paired-port forwarding without regenerating signals.
+Cages validate physical form, supported speed/lane/FEC modes, and module power.
+The evaluator checks installation, power, enablement, complete cable paths,
+module/fiber/wavelength compatibility, total reach, polarity, and optical loss.
+GUI LEDs, diagnostics, packet forwarding, counters and server resource availability
+consume that result. Component traversal is bounded and searches the connected
+cable component instead of scanning all datacenter ports.
 
-RJ45 links negotiate the lower of the endpoints' advertised and hardware
-maximum rates (10, 100, or 1000 Mbps), and copper links over 100 m remain down.
-Link/status checks connector, power, placement, enablement, cable length, and
-negotiated rate. Activity uses runtime transmit/receive timestamps. Inventory
-models shared bulk stock, finished leads, and five common jacket colors rather
-than separate supplier SKUs.
+Fiber cords and DAC/AOC assemblies are purchased whole; disconnecting returns
+the same saved instance rather than generating RJ45 stock. Rerouting validates
+the purchased length before mutation. Hot swapping drops carrier while retaining
+port configuration; a cable's logical endpoint remains reserved for replacement.
+Saved defaults preserve existing copper-only worlds; loading normalizes stale
+hardware attachments and restores inventory ID counters. Module power contributes
+to electrical load. RJ45 stock, five jacket colors and the existing 100 m copper
+channel limit remain available. See [optical networking](docs/OPTICAL_NETWORKING.md)
+for the catalog, player workflow, units and current physical-model limits.
 
 `RoomCableLayout` defines 220 fixed cable managers: 40 on vertical trays,
 100 above and below racks, and 80 at horizontal/vertical tray intersections.

@@ -1,0 +1,739 @@
+{
+  "modules": [
+    {
+      "id": "sfp_1g_sx",
+      "display_name": {
+        "en": "1G SFP SX · 850 nm · duplex LC",
+        "ru": "1G SFP SX · 850 нм · дуплекс LC"
+      },
+      "desc": {
+        "en": "1G SFP SX · 850 nm · duplex LC · hot-swappable Ethernet module",
+        "ru": "1G SFP SX · 850 нм · дуплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1000,
+      "dom": true,
+      "price": 35,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 850,
+      "rx_nm": 850,
+      "tx_mdbm": -5000,
+      "sensitivity_mdbm": -17000,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "om3",
+          "max_length_cm": 55000,
+          "attenuation_mdb_per_km": 3500
+        },
+        {
+          "fiber": "om4",
+          "max_length_cm": 55000,
+          "attenuation_mdb_per_km": 3500
+        }
+      ]
+    },
+    {
+      "id": "sfp_1g_lx10",
+      "display_name": {
+        "en": "1G SFP LX10 · 1310 nm · duplex LC",
+        "ru": "1G SFP LX10 · 1310 нм · дуплекс LC"
+      },
+      "desc": {
+        "en": "1G SFP LX10 · 1310 nm · duplex LC · hot-swappable Ethernet module",
+        "ru": "1G SFP LX10 · 1310 нм · дуплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1000,
+      "dom": true,
+      "price": 45,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 1310,
+      "rx_nm": 1310,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -20000,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ]
+    },
+    {
+      "id": "sfp_1g_copper",
+      "display_name": {
+        "en": "1G SFP copper · RJ45",
+        "ru": "1G SFP медный · RJ45"
+      },
+      "desc": {
+        "en": "1G SFP copper · RJ45 · hot-swappable Ethernet module",
+        "ru": "1G SFP медный · RJ45 · сменный Ethernet-модуль"
+      },
+      "cage": "sfp",
+      "modes": [
+        {
+          "speed": "Mbps10",
+          "lanes": 1,
+          "fec": "none"
+        },
+        {
+          "speed": "Mbps100",
+          "lanes": 1,
+          "fec": "none"
+        },
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1000,
+      "dom": false,
+      "price": 40,
+      "kind": "copper"
+    },
+    {
+      "id": "sfpplus_10g_sr",
+      "display_name": {
+        "en": "10G SFP+ SR · 850 nm · duplex LC",
+        "ru": "10G SFP+ SR · 850 нм · дуплекс LC"
+      },
+      "desc": {
+        "en": "10G SFP+ SR · 850 nm · duplex LC · hot-swappable Ethernet module",
+        "ru": "10G SFP+ SR · 850 нм · дуплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps10",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1500,
+      "dom": true,
+      "price": 60,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 850,
+      "rx_nm": 850,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -9900,
+      "overload_mdbm": -1000,
+      "reaches": [
+        {
+          "fiber": "om3",
+          "max_length_cm": 30000,
+          "attenuation_mdb_per_km": 3500
+        },
+        {
+          "fiber": "om4",
+          "max_length_cm": 40000,
+          "attenuation_mdb_per_km": 3500
+        }
+      ]
+    },
+    {
+      "id": "sfpplus_10g_lr",
+      "display_name": {
+        "en": "10G SFP+ LR · 1310 nm · duplex LC",
+        "ru": "10G SFP+ LR · 1310 нм · дуплекс LC"
+      },
+      "desc": {
+        "en": "10G SFP+ LR · 1310 nm · duplex LC · hot-swappable Ethernet module",
+        "ru": "10G SFP+ LR · 1310 нм · дуплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps10",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1500,
+      "dom": true,
+      "price": 90,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 1310,
+      "rx_nm": 1310,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -14400,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ]
+    },
+    {
+      "id": "sfp_1g_bidi_u",
+      "display_name": {
+        "en": "1G SFP BX10-U · simplex LC",
+        "ru": "1G SFP BX10-U · симплекс LC"
+      },
+      "desc": {
+        "en": "1G SFP BX10-U · simplex LC · hot-swappable Ethernet module",
+        "ru": "1G SFP BX10-U · симплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1000,
+      "dom": true,
+      "price": 60,
+      "kind": "optical",
+      "strands": 1,
+      "tx_nm": 1310,
+      "rx_nm": 1490,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -19000,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ]
+    },
+    {
+      "id": "sfp_1g_bidi_d",
+      "display_name": {
+        "en": "1G SFP BX10-D · simplex LC",
+        "ru": "1G SFP BX10-D · симплекс LC"
+      },
+      "desc": {
+        "en": "1G SFP BX10-D · simplex LC · hot-swappable Ethernet module",
+        "ru": "1G SFP BX10-D · симплекс LC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1000,
+      "dom": true,
+      "price": 60,
+      "kind": "optical",
+      "strands": 1,
+      "tx_nm": 1490,
+      "rx_nm": 1310,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -19000,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ]
+    },
+    {
+      "id": "dac_10g_end",
+      "display_name": {
+        "en": "10G DAC attached end",
+        "ru": "Встроенный разъём 10G DAC"
+      },
+      "desc": {
+        "en": "10G DAC attached end · hot-swappable Ethernet module",
+        "ru": "Встроенный разъём 10G DAC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps10",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 100,
+      "dom": false,
+      "price": 0,
+      "kind": "direct_attach"
+    },
+    {
+      "id": "aoc_10g_end",
+      "display_name": {
+        "en": "10G AOC attached end",
+        "ru": "Встроенный разъём 10G AOC"
+      },
+      "desc": {
+        "en": "10G AOC attached end · hot-swappable Ethernet module",
+        "ru": "Встроенный разъём 10G AOC · сменный Ethernet-модуль"
+      },
+      "cage": "sfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps10",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "power_mw": 1500,
+      "dom": false,
+      "price": 0,
+      "kind": "direct_attach"
+    }
+  ],
+  "cables": [
+    {
+      "id": "fiber_om3_2_3m",
+      "display_name": {
+        "en": "OM3 LC–LC duplex · 3 m",
+        "ru": "OM3 LC–LC дуплекс · 3 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 10,
+      "length_cm": 300,
+      "kind": "fiber",
+      "fiber": "om3",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_om3_2_30m",
+      "display_name": {
+        "en": "OM3 LC–LC duplex · 30 m",
+        "ru": "OM3 LC–LC дуплекс · 30 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 16,
+      "length_cm": 3000,
+      "kind": "fiber",
+      "fiber": "om3",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_om3_2_100m",
+      "display_name": {
+        "en": "OM3 LC–LC duplex · 100 m",
+        "ru": "OM3 LC–LC дуплекс · 100 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 30,
+      "length_cm": 10000,
+      "kind": "fiber",
+      "fiber": "om3",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_om4_2_3m",
+      "display_name": {
+        "en": "OM4 LC–LC duplex · 3 m",
+        "ru": "OM4 LC–LC дуплекс · 3 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 10,
+      "length_cm": 300,
+      "kind": "fiber",
+      "fiber": "om4",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_om4_2_30m",
+      "display_name": {
+        "en": "OM4 LC–LC duplex · 30 m",
+        "ru": "OM4 LC–LC дуплекс · 30 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 16,
+      "length_cm": 3000,
+      "kind": "fiber",
+      "fiber": "om4",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_om4_2_100m",
+      "display_name": {
+        "en": "OM4 LC–LC duplex · 100 m",
+        "ru": "OM4 LC–LC дуплекс · 100 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 30,
+      "length_cm": 10000,
+      "kind": "fiber",
+      "fiber": "om4",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Aqua"
+    },
+    {
+      "id": "fiber_os2_1_3m",
+      "display_name": {
+        "en": "OS2 LC–LC simplex · 3 m",
+        "ru": "OS2 LC–LC симплекс · 3 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 10,
+      "length_cm": 300,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 1,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_1_30m",
+      "display_name": {
+        "en": "OS2 LC–LC simplex · 30 m",
+        "ru": "OS2 LC–LC симплекс · 30 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 16,
+      "length_cm": 3000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 1,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_1_100m",
+      "display_name": {
+        "en": "OS2 LC–LC simplex · 100 m",
+        "ru": "OS2 LC–LC симплекс · 100 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 30,
+      "length_cm": 10000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 1,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_1_1000m",
+      "display_name": {
+        "en": "OS2 LC–LC simplex · 1000 m",
+        "ru": "OS2 LC–LC симплекс · 1000 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 210,
+      "length_cm": 100000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 1,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_1_10000m",
+      "display_name": {
+        "en": "OS2 LC–LC simplex · 10000 m",
+        "ru": "OS2 LC–LC симплекс · 10000 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 2010,
+      "length_cm": 1000000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 1,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_2_3m",
+      "display_name": {
+        "en": "OS2 LC–LC duplex · 3 m",
+        "ru": "OS2 LC–LC дуплекс · 3 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 10,
+      "length_cm": 300,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_2_30m",
+      "display_name": {
+        "en": "OS2 LC–LC duplex · 30 m",
+        "ru": "OS2 LC–LC дуплекс · 30 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 16,
+      "length_cm": 3000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_2_100m",
+      "display_name": {
+        "en": "OS2 LC–LC duplex · 100 m",
+        "ru": "OS2 LC–LC дуплекс · 100 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 30,
+      "length_cm": 10000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_2_1000m",
+      "display_name": {
+        "en": "OS2 LC–LC duplex · 1000 m",
+        "ru": "OS2 LC–LC дуплекс · 1000 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 210,
+      "length_cm": 100000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "fiber_os2_2_10000m",
+      "display_name": {
+        "en": "OS2 LC–LC duplex · 10000 m",
+        "ru": "OS2 LC–LC дуплекс · 10000 м"
+      },
+      "desc": {
+        "en": "Finished fiber cable; detachable from its transceivers.",
+        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+      },
+      "price": 2010,
+      "length_cm": 1000000,
+      "kind": "fiber",
+      "fiber": "os2",
+      "strands": 2,
+      "connector_loss_mdb": 400,
+      "color": "Yellow"
+    },
+    {
+      "id": "dac_10g_1m",
+      "display_name": {
+        "en": "10G SFP+ DAC · 1 m",
+        "ru": "10G SFP+ DAC · 1 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 22,
+      "length_cm": 100,
+      "kind": "dac",
+      "transceiver": "dac_10g_end",
+      "color": "Gray"
+    },
+    {
+      "id": "dac_10g_3m",
+      "display_name": {
+        "en": "10G SFP+ DAC · 3 m",
+        "ru": "10G SFP+ DAC · 3 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 26,
+      "length_cm": 300,
+      "kind": "dac",
+      "transceiver": "dac_10g_end",
+      "color": "Gray"
+    },
+    {
+      "id": "dac_10g_5m",
+      "display_name": {
+        "en": "10G SFP+ DAC · 5 m",
+        "ru": "10G SFP+ DAC · 5 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 30,
+      "length_cm": 500,
+      "kind": "dac",
+      "transceiver": "dac_10g_end",
+      "color": "Gray"
+    },
+    {
+      "id": "aoc_10g_3m",
+      "display_name": {
+        "en": "10G SFP+ AOC · 3 m",
+        "ru": "10G SFP+ AOC · 3 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 26,
+      "length_cm": 300,
+      "kind": "aoc",
+      "transceiver": "aoc_10g_end",
+      "color": "Aqua"
+    },
+    {
+      "id": "aoc_10g_10m",
+      "display_name": {
+        "en": "10G SFP+ AOC · 10 m",
+        "ru": "10G SFP+ AOC · 10 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 40,
+      "length_cm": 1000,
+      "kind": "aoc",
+      "transceiver": "aoc_10g_end",
+      "color": "Aqua"
+    },
+    {
+      "id": "aoc_10g_30m",
+      "display_name": {
+        "en": "10G SFP+ AOC · 30 m",
+        "ru": "10G SFP+ AOC · 30 м"
+      },
+      "desc": {
+        "en": "Fixed assembly with permanently attached ends; no separate modules required.",
+        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+      },
+      "price": 80,
+      "length_cm": 3000,
+      "kind": "aoc",
+      "transceiver": "aoc_10g_end",
+      "color": "Aqua"
+    }
+  ],
+  "hardware": [
+    {
+      "id": "switch_10g",
+      "display_name": {
+        "en": "Catalyst C1000-24T-4X-L",
+        "ru": "Catalyst C1000-24T-4X-L"
+      },
+      "desc": {
+        "en": "24 × 1G RJ45 + 4 × 1/10G SFP+ cages",
+        "ru": "24 × 1G RJ45 + 4 × слота SFP+ 1/10G"
+      },
+      "price": 900,
+      "kind": "switch",
+      "cage": {
+        "kind": "sfp_plus",
+        "modes": [
+          {
+            "speed": "Gbps1",
+            "lanes": 1,
+            "fec": "none"
+          },
+          {
+            "speed": "Gbps10",
+            "lanes": 1,
+            "fec": "none"
+          }
+        ],
+        "max_power_mw": 2000
+      }
+    },
+    {
+      "id": "fiber_panel",
+      "display_name": {
+        "en": "24-port LC fiber patch panel",
+        "ru": "Оптическая патч-панель LC на 24 порта"
+      },
+      "desc": {
+        "en": "24 passive duplex LC front/rear adapters; no regeneration or speed negotiation.",
+        "ru": "24 пассивных дуплексных адаптера LC; без регенерации сигнала и согласования скорости."
+      },
+      "price": 200,
+      "kind": "fiber_panel"
+    }
+  ]
+}

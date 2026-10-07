@@ -12,6 +12,20 @@ pub fn device_name(device: &Device) -> String {
         DeviceTemplate::Ups => ("apc_smt1500", "APC Smart-UPS SMT1500RMI2U"),
         DeviceTemplate::Pdu => ("rack_pdu", "Rack PDU 8x C13"),
     };
+    // Profile models retain their own item translations; only default names are translated.
+    for model in &cloud_provider_sim::optics_catalog().hardware {
+        if let Some(number) = device
+            .name
+            .strip_prefix(model.display_name.get("en"))
+            .and_then(|name| name.strip_prefix(" #"))
+            && number.chars().all(|c| c.is_ascii_digit())
+        {
+            return tr_args(
+                "device.numbered-name",
+                &[item_name(&model.id, &device.name), number.into()],
+            );
+        }
+    }
     if let Some(number) = device
         .name
         .strip_prefix(original)

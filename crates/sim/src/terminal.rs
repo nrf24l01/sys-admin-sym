@@ -40,6 +40,9 @@ pub enum TerminalCommand {
         interface: String,
         driver: bool,
     },
+    EthtoolModule {
+        interface: String,
+    },
     NetstatInterfaces,
     Lsblk,
     Smartctl {
@@ -69,6 +72,9 @@ pub fn parse_terminal_command(input: &str) -> Result<TerminalCommand, String> {
         ["ethtool", iface] => Ok(TerminalCommand::Ethtool {
             interface: (*iface).into(),
             driver: false,
+        }),
+        ["ethtool", "-m", iface] => Ok(TerminalCommand::EthtoolModule {
+            interface: (*iface).into(),
         }),
         ["ethtool", "-i", iface] => Ok(TerminalCommand::Ethtool {
             interface: (*iface).into(),
@@ -504,6 +510,18 @@ impl NetworkSim {
                     ],
                 }
             }
+            TerminalCommand::EthtoolModule { interface: name } => {
+                let Some(port) = interface(&name) else {
+                    return output(false, format!("Cannot find device \"{name}\""));
+                };
+                if self.cage_profile(port).is_none() {
+                    return output(false, "Operation not supported: fixed copper interface");
+                }
+                TerminalOutput {
+                    success: true,
+                    lines: self.transceiver_report(port),
+                }
+            }
             TerminalCommand::Ethtool {
                 interface: name,
                 driver,
@@ -552,7 +570,7 @@ impl NetworkSim {
                         format!("Settings for {name}:"),
                         format!(
                             "    Supported ports: [{}]",
-                            if port.connector.supports_cabling() {
+                            if self.port_is_copper(port_id) {
                                 "TP"
                             } else {
                                 "FIBRE"
@@ -572,7 +590,14 @@ impl NetworkSim {
                                 .map_or("Unknown!".into(), |speed| format!("{}Mb/s", speed.mbps()))
                         ),
                         "    Duplex: Full".into(),
-                        "    Auto-negotiation: on".into(),
+                        format!(
+                            "    Auto-negotiation: {}",
+                            if self.port_is_copper(port_id) {
+                                "on"
+                            } else {
+                                "off"
+                            }
+                        ),
                         format!("    Link detected: {}", if detected { "yes" } else { "no" }),
                     ],
                 }

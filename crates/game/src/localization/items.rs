@@ -13,10 +13,20 @@ pub(super) struct Item {
 struct ItemFile {
     #[serde(default, alias = "drives", alias = "parts")]
     items: Vec<Item>,
+    #[serde(default)]
+    modules: Vec<Item>,
+    #[serde(default)]
+    cables: Vec<Item>,
+    #[serde(default)]
+    hardware: Vec<Item>,
 }
 pub(super) fn load(directory: Option<&Path>) -> BTreeMap<String, Item> {
     let mut items = BTreeMap::new();
     for (file, bundled) in [
+        (
+            "optics.json",
+            include_str!("../../../../assets/equipment/optics.json"),
+        ),
         (
             "supplies.json",
             include_str!("../../../../assets/equipment/supplies.json"),
@@ -35,15 +45,24 @@ pub(super) fn load(directory: Option<&Path>) -> BTreeMap<String, Item> {
             fallback
                 .items
                 .into_iter()
+                .chain(fallback.modules)
+                .chain(fallback.cables)
+                .chain(fallback.hardware)
                 .map(|item| (item.id.clone(), item)),
         );
         if let Some(directory) = directory {
             let path = directory.join(file);
             match std::fs::read(&path) {
                 Ok(bytes) => match serde_json::from_slice::<ItemFile>(&bytes) {
-                    Ok(config) => {
-                        items.extend(config.items.into_iter().map(|item| (item.id.clone(), item)))
-                    }
+                    Ok(config) => items.extend(
+                        config
+                            .items
+                            .into_iter()
+                            .chain(config.modules)
+                            .chain(config.cables)
+                            .chain(config.hardware)
+                            .map(|item| (item.id.clone(), item)),
+                    ),
                     Err(error) => {
                         bevy::log::warn!("Invalid item translations {}: {error}", path.display())
                     }

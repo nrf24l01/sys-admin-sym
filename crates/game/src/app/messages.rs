@@ -62,6 +62,10 @@ pub enum UiAction {
     ResetPower(SourceId),
     RackMains(RackId, bool),
     CablePort(PortId),
+    StartAssembly {
+        port: PortId,
+        assembly: cloud_provider_sim::CableAssemblyId,
+    },
     AddPendingCableRoutePoint(CableRoutePoint),
     Disconnect(LinkId),
     CreateVlan(DeviceId),

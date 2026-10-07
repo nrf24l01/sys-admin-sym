@@ -3,6 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SimError {
+    #[error("optical hardware: {0}")]
+    Optics(#[from] crate::OpticsError),
     #[error("provider network: {0}")]
     Provider(String),
     #[error("install both devices in a rack before connecting a cable")]
