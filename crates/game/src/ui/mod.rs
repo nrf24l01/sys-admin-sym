@@ -148,6 +148,8 @@ pub struct EquipmentImages {
     plug: Handle<Image>,
     power_connectors: Handle<Image>,
     power_plugs_rear: Handle<Image>,
+    optical_connectors: Handle<Image>,
+    shop_connectors: Handle<Image>,
     cables: CableScene,
     textures: Option<EquipmentTextures>,
 }
@@ -166,6 +168,8 @@ struct EquipmentTextures {
     plug: egui::TextureId,
     power_connectors: egui::TextureId,
     power_plugs_rear: egui::TextureId,
+    optical_connectors: egui::TextureId,
+    shop_connectors: egui::TextureId,
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
@@ -179,6 +183,8 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.pdu_faces = assets.load("equipment/pdu_faces.png");
     images.jacket = assets.load("cables/pvc_jacket.png");
     images.plug = assets.load("cables/rj45_plug.png");
+    images.optical_connectors = assets.load("equipment/optical_connectors.png");
+    images.shop_connectors = assets.load("cables/optical_shop_connectors.png");
     images.power_connectors = assets.load("equipment/power_connectors.png");
     images.power_plugs_rear = assets.load("equipment/power_plugs_rear.png");
 }
@@ -206,6 +212,10 @@ pub fn main_ui(
             router_rear: contexts.add_image(EguiTextureHandle::Strong(images.router_rear.clone())),
             ups_faces: contexts.add_image(EguiTextureHandle::Strong(images.ups_faces.clone())),
             pdu_faces: contexts.add_image(EguiTextureHandle::Strong(images.pdu_faces.clone())),
+            shop_connectors: contexts
+                .add_image(EguiTextureHandle::Strong(images.shop_connectors.clone())),
+            optical_connectors: contexts
+                .add_image(EguiTextureHandle::Strong(images.optical_connectors.clone())),
             jacket: contexts.add_image(EguiTextureHandle::Strong(images.jacket.clone())),
             plug: contexts.add_image(EguiTextureHandle::Strong(images.plug.clone())),
             power_connectors: contexts
@@ -276,7 +286,16 @@ pub fn main_ui(
         &mut actions,
     );
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
-    shop::show(&mut viewport_ui, &snapshot.0, &mut state.shop, &mut actions);
+    shop::show(
+        &mut viewport_ui,
+        &snapshot.0,
+        &mut state.shop,
+        optics::ShopTextures {
+            modules: textures.optical_connectors,
+            cables: textures.shop_connectors,
+        },
+        &mut actions,
+    );
     settings::show(
         &mut viewport_ui,
         &mut state.settings,
@@ -2879,6 +2898,16 @@ fn rack_view(
                 }
                 // Space below the rack is the floor for hanging service loops.
                 ui.allocate_space(egui::vec2(rack_width, 120.0));
+                for (port_id, port_rect) in &port_visuals {
+                    optics::paint_socket(
+                        ui.painter(),
+                        textures.optical_connectors,
+                        *port_rect,
+                        sim,
+                        *port_id,
+                    );
+                }
+                cables.optical_texture = Some(textures.optical_connectors);
                 if let Some(link) = cables.show(
                     ui,
                     sim,
@@ -2945,7 +2974,6 @@ fn rack_view(
                 for (port_id, port_rect) in port_visuals {
                     let port = sim.port(port_id).expect("visualized port exists");
                     let link = sim.link_for_port(port_id);
-                    optics::paint_socket(ui.painter(), port_rect, sim, port_id);
                     let paired_selected = sim
                         .port(port_id)
                         .and_then(|port| port.paired_port)
@@ -3064,11 +3092,23 @@ fn rack_view(
                             menu.close();
                         }
                     });
-                    if supported && link.is_some() && response.clicked() {
+                    let optical_picker = supported
+                        && !sim.port_is_copper(port_id)
+                        && state.pending_cable.is_none()
+                        && link.is_none();
+                    if optical_picker {
+                        optics::socket_picker(&response, sim, port_id, actions);
+                    }
+                    if supported && state.pending_cable.is_some() && response.clicked() {
+                        actions.write(UiAction::SelectPort(port_id));
+                        actions.write(UiAction::CablePort(port_id));
+                    } else if supported && link.is_some() && response.clicked() {
                         actions.write(UiAction::SelectPort(port_id));
                     } else if supported && response.clicked() {
                         actions.write(UiAction::SelectPort(port_id));
-                        actions.write(UiAction::CablePort(port_id));
+                        if !optical_picker {
+                            actions.write(UiAction::CablePort(port_id));
+                        }
                     } else if supported && response.secondary_clicked() {
                         actions.write(UiAction::SelectPort(port_id));
                     }

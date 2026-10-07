@@ -647,3 +647,61 @@ fn loading_prototype_nics_migrates_inventory_and_preserves_live_interfaces() {
         assert_eq!(loaded.port_link_speed(port), Some(LinkSpeed::Gbps10));
     }
 }
+
+#[test]
+fn inventory_picker_filters_media_strands_host_support_and_ownership() {
+    let (mut sim, _, _, ap, bp) = pair();
+    let mut stock = std::collections::BTreeMap::new();
+    for model in [
+        "fiber_om3_2_3m",
+        "fiber_om4_2_3m",
+        "fiber_os2_2_3m",
+        "fiber_os2_1_3m",
+        "dac_10g_3m",
+        "aoc_10g_3m",
+    ] {
+        optics(
+            &mut sim,
+            OpticsCommand::BuyAssembly {
+                model: model.into(),
+            },
+        );
+        stock.insert(model, *sim.optics.assemblies.keys().next_back().unwrap());
+    }
+    assert!(sim.assembly_supported_at_port(stock["dac_10g_3m"], ap));
+    assert!(sim.assembly_supported_at_port(stock["aoc_10g_3m"], ap));
+    assert!(!sim.assembly_supported_at_port(stock["fiber_om3_2_3m"], ap));
+    module(&mut sim, ap, "sfpplus_10g_sr");
+    for model in stock.keys() {
+        assert_eq!(
+            sim.assembly_supported_at_port(stock[model], ap),
+            matches!(*model, "fiber_om3_2_3m" | "fiber_om4_2_3m"),
+            "{model}"
+        );
+    }
+    module(&mut sim, bp, "sfp_1g_bidi_d");
+    for model in stock.keys() {
+        assert_eq!(
+            sim.assembly_supported_at_port(stock[model], bp),
+            *model == "fiber_os2_1_3m",
+            "{model}"
+        );
+    }
+    optics(&mut sim, OpticsCommand::RemoveTransceiver { port: bp });
+    module(&mut sim, bp, "sfpplus_10g_sr");
+    optics(
+        &mut sim,
+        OpticsCommand::ConnectAssembly {
+            assembly: stock["fiber_om3_2_3m"],
+            a: ap,
+            b: bp,
+            route: vec![],
+        },
+    );
+    assert!(!sim.assembly_supported_at_port(stock["fiber_om4_2_3m"], ap));
+    let spare_port = sim.device(sim.port(ap).unwrap().device).unwrap().ports()[25];
+    module(&mut sim, spare_port, "sfpplus_10g_sr");
+    assert!(!sim.assembly_supported_at_port(stock["fiber_om3_2_3m"], spare_port));
+    assert!(sim.assembly_supported_at_port(stock["fiber_om4_2_3m"], spare_port));
+    assert!(!sim.assembly_supported_at_port(CableAssemblyId(u64::MAX), spare_port));
+}

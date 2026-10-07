@@ -191,6 +191,7 @@ pub(super) fn show(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
     state: &mut ShopState,
+    optical_textures: super::optics::ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     if !state.open {
@@ -276,7 +277,13 @@ pub(super) fn show(
                                     state.clear_filters();
                                 }
                             }
-                            super::optics::shop_offers(ui, &optical_offers, sim.money, actions);
+                            super::optics::shop_offers(
+                                ui,
+                                &optical_offers,
+                                sim.money,
+                                optical_textures,
+                                actions,
+                            );
                             for product in products {
                                 ui.group(|ui| {
                                     ui.set_min_width(ui.available_width());
@@ -587,6 +594,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     );
                 },
@@ -621,6 +632,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     );
                 },
@@ -664,6 +679,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     )
                 },
@@ -699,6 +718,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     )
                 },
@@ -730,6 +753,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     )
                 },
@@ -764,6 +791,10 @@ mod tests {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     )
                 },
@@ -779,6 +810,10 @@ mod tests {
                 ui,
                 &sim,
                 &mut state,
+                crate::ui::optics::ShopTextures {
+                    modules: egui::TextureId::User(3),
+                    cables: egui::TextureId::User(4),
+                },
                 &mut system.get_mut(&mut world).unwrap(),
             );
         });
@@ -1015,6 +1050,10 @@ fn shop_renders_item_owned_drive_descriptions_in_both_languages() {
                         ui,
                         &sim,
                         &mut state,
+                        crate::ui::optics::ShopTextures {
+                            modules: egui::TextureId::User(3),
+                            cables: egui::TextureId::User(4),
+                        },
                         &mut system.get_mut(&mut world).unwrap(),
                     )
                 },

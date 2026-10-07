@@ -318,6 +318,15 @@ fn translate_ui_actions(
                     if let Some(first) = state.pending_cable
                         && first != *port
                     {
+                        if let Err(error) = snapshot.0.quote_assembly(
+                            assembly,
+                            first,
+                            *port,
+                            &state.pending_cable_route,
+                        ) {
+                            set_error(&mut state, error);
+                            continue;
+                        }
                         commands.write(SimCommandMessage(Command::Optics(
                             cloud_provider_sim::OpticsCommand::ConnectAssembly {
                                 assembly,
@@ -802,9 +811,7 @@ fn poll_worker(
                         cloud_provider_sim::SimEvent::CableSuppliesPurchased(_) => {
                             "ui.cable-supplies-purchased".into()
                         }
-                        cloud_provider_sim::SimEvent::LinkCreated(_) => {
-                            "ui.rj45-lead-connected".into()
-                        }
+                        cloud_provider_sim::SimEvent::LinkCreated(_) => "ui.cable-connected".into(),
                         cloud_provider_sim::SimEvent::LinkRemoved(_) => {
                             "ui.lead-unplugged-and-returned-to-cable-inventory".into()
                         }

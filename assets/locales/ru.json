@@ -244,7 +244,6 @@
     "ui.rj45": "RJ45",
     "ui.rj45-cable-anchor-select-port": "КАБЕЛЬ RJ45: {0} ТОЧЕК{1} → ВЫБЕРИТЕ ПОРТ",
     "ui.rj45-connectors": "Разъёмы RJ45: {0}",
-    "ui.rj45-lead-connected": "Кабель RJ45 подключён",
     "ui.rj45-port": "Порт RJ45 {0}",
     "ui.rj45-ports": "Порты RJ45",
     "ui.room": "ЗАЛ",
@@ -477,6 +476,9 @@
     "optics.link-down-cable": "Связь отсутствует · кабель №{0} подключён",
     "cable.color.aqua": "Бирюзовый",
     "cable.color.yellow": "Жёлтый",
-    "optics.error.missing-transceiver": "Перед подключением оптического кабеля установите трансивер."
+    "optics.error.missing-transceiver": "Перед подключением оптического кабеля установите трансивер.",
+    "optics.socket-menu": "Оптический разъём · инвентарь",
+    "optics.no-compatible-cables": "В инвентаре нет совместимых кабелей. Купите кабель: Магазин → Сеть → Оптика и волокно.",
+    "ui.cable-connected": "Кабель подключён"
   }
 }

@@ -57,16 +57,30 @@ pub(super) fn offers(state: &ShopState, money: i64) -> Vec<(&'static str, i64, O
     })
     .collect()
 }
+#[derive(Clone, Copy)]
+pub(super) struct ShopTextures {
+    pub modules: egui::TextureId,
+    pub cables: egui::TextureId,
+}
+
 pub(super) fn shop_offers(
     ui: &mut egui::Ui,
     offers: &[(&str, i64, OpticsCommand)],
     money: i64,
+    textures: ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     for (id, price, command) in offers {
         ui.push_id(id, |ui| {
             ui.group(|ui| {
-                ui.strong(item_name(id, id));
+                ui.horizontal(|ui| {
+                    if let Some((texture, uv)) = shop_artwork(id, textures) {
+                        let aspect = uv.width() / uv.height();
+                        let size = egui::vec2(64.0 * aspect.min(1.0), 64.0 / aspect.max(1.0));
+                        ui.add(egui::Image::new((texture, size)).uv(uv));
+                    }
+                    ui.strong(item_name(id, id));
+                });
                 ui.weak(item_description(id));
                 if ui
                     .add_enabled(
@@ -119,6 +133,7 @@ pub(super) fn port_controls(
             ui.weak(tr("optics.attached-ends"));
         } else {
             ui.label(tr("optics.empty-cage"));
+            let mut modules = std::collections::BTreeMap::new();
             for module in sim
                 .optics
                 .transceivers
@@ -129,23 +144,27 @@ pub(super) fn port_controls(
                     .module(&module.model_id)
                     .is_some_and(|m| cage.supports(m))
                 {
-                    ui.push_id(module.id.0, |ui| {
-                        if ui
-                            .button(tr_args(
-                                "hardware.install-item",
-                                &[item_name(&module.model_id, &module.model_id)],
-                            ))
-                            .clicked()
-                        {
-                            actions.write(UiAction::NetworkCommand(Command::Optics(
-                                OpticsCommand::InstallTransceiver {
-                                    port,
-                                    module: module.id,
-                                },
-                            )));
-                        }
-                    });
+                    let (_, count) = modules
+                        .entry(module.model_id.as_str())
+                        .or_insert((module.id, 0));
+                    *count += 1;
                 }
+            }
+            for (model, (module, count)) in modules {
+                ui.push_id(("module-stock", model), |ui| {
+                    let label = tr_args(
+                        "optics.inventory-count",
+                        &[item_name(model, model), count.to_string()],
+                    );
+                    if ui
+                        .button(tr_args("hardware.install-item", &[label]))
+                        .clicked()
+                    {
+                        actions.write(UiAction::NetworkCommand(Command::Optics(
+                            OpticsCommand::InstallTransceiver { port, module },
+                        )));
+                    }
+                });
             }
         }
     }
@@ -181,68 +200,139 @@ pub(super) fn port_controls(
         }
     } else {
         ui.weak(tr("optics.select-cable"));
-        for assembly in sim.optics.assemblies.values().filter(|a| a.link.is_none()) {
-            let Some(model) = optics_catalog().cable(&assembly.model_id) else {
-                continue;
-            };
-            let fits = match &model.medium {
-                AssemblyMedium::Fiber { .. } => {
-                    p.connector == PortConnector::Lc
-                        || p.connector == PortConnector::Sfp
-                            && sim
-                                .endpoint_module(port)
-                                .is_some_and(|m| matches!(m.medium, ModuleMedium::Optical { .. }))
+        let mut cables = std::collections::BTreeMap::new();
+        for assembly in sim
+            .optics
+            .assemblies
+            .values()
+            .filter(|a| sim.assembly_supported_at_port(a.id, port))
+        {
+            let (_, count) = cables
+                .entry(assembly.model_id.as_str())
+                .or_insert((assembly.id, 0));
+            *count += 1;
+        }
+        if cables.is_empty() {
+            ui.weak(tr("optics.no-compatible-cables"));
+        }
+        for (model, (assembly, count)) in cables {
+            ui.push_id(("cable-stock", model), |ui| {
+                if ui
+                    .button(tr_args(
+                        "optics.inventory-count",
+                        &[item_name(model, model), count.to_string()],
+                    ))
+                    .on_hover_text(item_description(model))
+                    .clicked()
+                {
+                    actions.write(UiAction::StartAssembly { port, assembly });
                 }
-                AssemblyMedium::Dac { transceiver } | AssemblyMedium::Aoc { transceiver } => {
-                    sim.endpoint_module(port).is_none()
-                        && sim.cage_profile(port).is_some_and(|c| {
-                            optics_catalog()
-                                .module(transceiver)
-                                .is_some_and(|m| c.supports(m))
-                        })
-                }
-            };
-            if fits {
-                ui.push_id(("assembly", assembly.id.0), |ui| {
-                    if ui
-                        .button(tr_args(
-                            "optics.connect-assembly",
-                            &[item_name(&model.id, &model.id)],
-                        ))
-                        .clicked()
-                    {
-                        actions.write(UiAction::StartAssembly {
-                            port,
-                            assembly: assembly.id,
-                        });
-                    }
-                });
-            }
+            });
         }
     }
 }
+/// Keep cable selection next to the socket; the inspector uses the same controls.
+pub(super) fn socket_picker(
+    response: &egui::Response,
+    sim: &NetworkSim,
+    port: PortId,
+    actions: &mut MessageWriter<UiAction>,
+) {
+    egui::Popup::from_toggle_button_response(response)
+        .width(320.0)
+        .show(|ui| {
+            ui.strong(tr("optics.socket-menu"));
+            egui::ScrollArea::vertical()
+                .max_height(360.0)
+                .show(ui, |ui| {
+                    port_controls(ui, sim, port, actions);
+                });
+        });
+}
+
+/// Crops of the unmodified 1254×1254 connector atlas. Keep these in one place
+/// so rack sockets and seated cable ends use the same hardware presentation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum OpticalSprite {
+    EmptyCage,
+    DuplexModule,
+    SimplexModule,
+    CopperModule,
+    DuplexPlug,
+    SimplexPlug,
+    DacPlug,
+    AocPlug,
+}
+impl OpticalSprite {
+    pub(super) fn uv(self) -> egui::Rect {
+        let (left, top, right, bottom) = match self {
+            Self::EmptyCage => (132.0, 42.0, 522.0, 266.0),
+            Self::DuplexModule => (735.0, 40.0, 1128.0, 281.0),
+            Self::SimplexModule => (139.0, 314.0, 518.0, 554.0),
+            Self::CopperModule => (737.0, 312.0, 1131.0, 561.0),
+            Self::DuplexPlug => (182.0, 600.0, 506.0, 886.0),
+            Self::SimplexPlug => (782.0, 600.0, 1094.0, 888.0),
+            Self::DacPlug => (154.0, 896.0, 527.0, 1238.0),
+            Self::AocPlug => (733.0, 896.0, 1135.0, 1240.0),
+        };
+        egui::Rect::from_min_max(
+            egui::pos2(left / 1254.0, top / 1254.0),
+            egui::pos2(right / 1254.0, bottom / 1254.0),
+        )
+    }
+}
+
+fn shop_artwork(id: &str, textures: ShopTextures) -> Option<(egui::TextureId, egui::Rect)> {
+    if let Some(module) = optics_catalog().module(id) {
+        let sprite = match module.medium {
+            ModuleMedium::Optical { strands: 1, .. } => OpticalSprite::SimplexModule,
+            ModuleMedium::Optical { .. } => OpticalSprite::DuplexModule,
+            ModuleMedium::Copper => OpticalSprite::CopperModule,
+            ModuleMedium::DirectAttach => return None,
+        };
+        return Some((textures.modules, sprite.uv()));
+    }
+    optics_catalog().cable(id).map(|model| {
+        // Dedicated connector sprites include the entire housing and tip,
+        // with transparent padding. Never crop connectors out of cable coils.
+        let (column, row) = match model.medium {
+            AssemblyMedium::Fiber { strands: 1, .. } => (1.0, 0.0),
+            AssemblyMedium::Fiber { .. } => (0.0, 0.0),
+            AssemblyMedium::Dac { .. } => (0.0, 1.0),
+            AssemblyMedium::Aoc { .. } => (1.0, 1.0),
+        };
+        (
+            textures.cables,
+            egui::Rect::from_min_size(egui::pos2(column * 0.5, row * 0.5), egui::vec2(0.5, 0.5)),
+        )
+    })
+}
+
+fn socket_sprite(sim: &NetworkSim, port: PortId) -> Option<OpticalSprite> {
+    let p = sim.port(port)?;
+    if p.connector == PortConnector::Lc {
+        return Some(OpticalSprite::DuplexModule);
+    }
+    if p.connector != PortConnector::Sfp {
+        return None;
+    }
+    Some(match sim.endpoint_module(port).map(|m| &m.medium) {
+        Some(ModuleMedium::Optical { strands: 1, .. }) => OpticalSprite::SimplexModule,
+        Some(ModuleMedium::Optical { .. }) => OpticalSprite::DuplexModule,
+        Some(ModuleMedium::Copper) => OpticalSprite::CopperModule,
+        _ => OpticalSprite::EmptyCage,
+    })
+}
+
 pub(super) fn paint_socket(
     painter: &egui::Painter,
+    texture: egui::TextureId,
     rect: egui::Rect,
     sim: &NetworkSim,
     port: PortId,
 ) {
-    let Some(p) = sim.port(port) else { return };
-    if p.connector == PortConnector::Lc {
-        painter.rect_filled(rect, 1.0, egui::Color32::from_rgb(45, 90, 165));
-        for offset in [-0.2, 0.2] {
-            painter.rect_filled(
-                egui::Rect::from_center_size(
-                    rect.center() + egui::vec2(rect.width() * offset, 0.0),
-                    egui::vec2(rect.width() * 0.3, rect.height() * 0.65),
-                ),
-                1.0,
-                egui::Color32::from_gray(15),
-            );
-        }
-    } else if p.connector == PortConnector::Sfp && sim.endpoint_module(port).is_some() {
-        painter.rect_filled(rect.shrink(1.0), 1.0, egui::Color32::from_gray(145));
-        painter.rect_filled(rect.shrink(3.0), 1.0, egui::Color32::from_rgb(25, 75, 105));
+    if let Some(sprite) = socket_sprite(sim, port) {
+        painter.image(texture, rect, sprite.uv(), egui::Color32::WHITE);
     }
 }
 
@@ -304,7 +394,13 @@ mod tests {
             world.init_resource::<Messages<UiAction>>();
             let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
             let ctx = egui::Context::default();
-            let expected = tr_args("hardware.install-item", &[item_name("sfp_1g_sx", "")]);
+            let expected = tr_args(
+                "hardware.install-item",
+                &[tr_args(
+                    "optics.inventory-count",
+                    &[item_name("sfp_1g_sx", ""), "1".into()],
+                )],
+            );
             let mut position = None;
             for _ in 0..2 {
                 let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -400,13 +496,202 @@ mod tests {
                 output.textures_delta.clear();
             }
             let fiber = tr_args(
-                "optics.connect-assembly",
-                &[item_name("fiber_om3_2_3m", "")],
+                "optics.inventory-count",
+                &[item_name("fiber_om3_2_3m", ""), "1".into()],
             );
-            let dac = tr_args("optics.connect-assembly", &[item_name("dac_10g_3m", "")]);
+            let dac = tr_args(
+                "optics.inventory-count",
+                &[item_name("dac_10g_3m", ""), "1".into()],
+            );
             assert_eq!(labels.contains(&fiber), installed);
             assert_eq!(labels.contains(&dac), !installed);
         }
+    }
+
+    #[test]
+    fn socket_click_opens_inventory_and_cable_click_starts_connection() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(device) = sim
+            .execute(Command::Optics(OpticsCommand::BuyHardware {
+                model: "switch_10g".into(),
+            }))
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        let port = sim.device(device).unwrap().ports()[24];
+        sim.execute(Command::Optics(OpticsCommand::BuyTransceiver {
+            model: "sfpplus_10g_sr".into(),
+        }))
+        .unwrap();
+        let module = *sim.optics.transceivers.keys().next().unwrap();
+        sim.execute(Command::Optics(OpticsCommand::InstallTransceiver {
+            port,
+            module,
+        }))
+        .unwrap();
+        for model in [
+            "fiber_om3_2_3m",
+            "fiber_om3_2_3m",
+            "fiber_om3_2_3m",
+            "fiber_os2_2_3m",
+        ] {
+            sim.execute(Command::Optics(OpticsCommand::BuyAssembly {
+                model: model.into(),
+            }))
+            .unwrap();
+        }
+        let assembly = *sim.optics.assemblies.keys().next().unwrap();
+        let ctx = egui::Context::default();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let socket = egui::Rect::from_min_size(egui::pos2(40.0, 40.0), egui::vec2(30.0, 20.0));
+        let expected = tr_args(
+            "optics.inventory-count",
+            &[item_name("fiber_om3_2_3m", ""), "3".into()],
+        );
+        let unsupported = tr_args(
+            "optics.inventory-count",
+            &[item_name("fiber_os2_2_3m", ""), "1".into()],
+        );
+        let mut cable_position = None;
+        // Warm up the UI, click the socket, and allow the popup its sizing pass.
+        for event in [None, Some(true), Some(false), None, None] {
+            let mut input = egui::RawInput::default();
+            if let Some(pressed) = event {
+                input.events = vec![
+                    egui::Event::PointerMoved(socket.center()),
+                    egui::Event::PointerButton {
+                        pos: socket.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ];
+            }
+            let mut output = ctx.run_ui(input, |ui| {
+                let response = ui.interact(
+                    socket,
+                    egui::Id::new("test-optical-socket"),
+                    egui::Sense::click(),
+                );
+                socket_picker(
+                    &response,
+                    &sim,
+                    port,
+                    &mut system.get_mut(&mut world).unwrap(),
+                );
+            });
+            let mut matching_rows = 0;
+            for shape in &output.shapes {
+                if let egui::Shape::Text(text) = &shape.shape {
+                    assert_ne!(text.galley.text(), unsupported);
+                    if text.galley.text() == expected {
+                        matching_rows += 1;
+                        cable_position =
+                            Some(egui::Rect::from_min_size(text.pos, text.galley.size()).center());
+                    }
+                }
+            }
+            assert!(matching_rows <= 1, "identical stock has a single row");
+            output.textures_delta.clear();
+        }
+        let position = cable_position.expect("socket click opens the compatible inventory list");
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::PointerMoved(position),
+                        egui::Event::PointerButton {
+                            pos: position,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = ui.interact(
+                        socket,
+                        egui::Id::new("test-optical-socket"),
+                        egui::Sense::click(),
+                    );
+                    socket_picker(
+                        &response,
+                        &sim,
+                        port,
+                        &mut system.get_mut(&mut world).unwrap(),
+                    );
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let actions: Vec<_> = world.resource_mut::<Messages<UiAction>>().drain().collect();
+        assert!(
+            matches!(actions.as_slice(), [UiAction::StartAssembly { port: p, assembly: a }] if *p == port && *a == assembly)
+        );
+    }
+
+    #[test]
+    fn connector_shop_atlas_decodes_with_transparent_cell_boundaries() {
+        use bevy::{
+            asset::RenderAssetUsages,
+            image::{CompressedImageFormats, Image, ImageSampler, ImageType},
+        };
+        let image = Image::from_buffer(
+            include_bytes!("../../../../assets/cables/optical_shop_connectors.png"),
+            ImageType::Extension("png"),
+            CompressedImageFormats::NONE,
+            true,
+            ImageSampler::default(),
+            RenderAssetUsages::default(),
+        )
+        .unwrap();
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        assert_eq!(width % 2, 0);
+        assert_eq!(height % 2, 0);
+        let data = image.data.as_ref().unwrap();
+        assert_eq!(data.len(), width * height * 4);
+        let alpha = |x, y| data[(y * width + x) * 4 + 3];
+        // Visible pixels touching cell edges would clip a housing or bleed into
+        // its neighbor at the actual shop UV boundaries.
+        for x in [0, width / 2, width - 1] {
+            assert!((0..height).all(|y| alpha(x, y) <= 1));
+        }
+        for y in [0, height / 2, height - 1] {
+            assert!((0..width).all(|x| alpha(x, y) <= 1));
+        }
+        for (column, row) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            let visible = (row * height / 2..(row + 1) * height / 2)
+                .step_by(8)
+                .any(|y| {
+                    (column * width / 2..(column + 1) * width / 2)
+                        .step_by(8)
+                        .any(|x| alpha(x, y) > 200)
+                });
+            assert!(visible, "every connector cell contains artwork");
+        }
+    }
+
+    #[test]
+    fn shop_cables_show_only_free_connectors_instead_of_coils_or_seated_modules() {
+        let textures = ShopTextures {
+            modules: egui::TextureId::User(1),
+            cables: egui::TextureId::User(2),
+        };
+        for model in &optics_catalog().cables {
+            let (texture, uv) = shop_artwork(&model.id, textures).unwrap();
+            assert_eq!(texture, textures.cables);
+            assert_eq!(uv.size(), egui::vec2(0.5, 0.5));
+            assert!(uv.min.x >= 0.0 && uv.min.y >= 0.0 && uv.max.x <= 1.0 && uv.max.y <= 1.0);
+        }
+        assert_eq!(
+            shop_artwork("sfpplus_10g_sr", textures).unwrap().0,
+            textures.modules
+        );
+        assert!(shop_artwork("switch_10g", textures).is_none());
     }
 
     #[test]

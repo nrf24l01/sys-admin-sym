@@ -8,11 +8,18 @@
    has 1G cages.
 2. Install and power the devices. A server needs a CPU and RAM, and its SFP+
    adapter needs an available x8-or-wider slot with eight PCIe lanes.
-3. Click a cage in the rack. Its inspector lists compatible spare modules.
-   Install one at each active end, then choose an owned cable in the inspector
-   and click the destination socket. Both active endpoints require installed
+3. Click a cage in the rack to open its socket menu. Install a compatible spare
+   module at each active end. Click an optical connector to see supported cables
+   from inventory, then click a cable to start connecting and click the
+   destination socket to finish. The inspector provides the same controls.
+   Fiber choices match the installed module's fiber class, strand count and
+   nominal reach; installed/connected inventory is excluded. Identical spare
+   cables and modules appear once per model with a count; choosing a row uses
+   one available instance. Both active
+   endpoints require installed
    optical modules before a fiber connection is accepted. Routing anchors can
-   be selected in between.
+   be selected in between. An invalid destination keeps the cable and anchors
+   selected so you can retry; Escape cancels the gesture.
 4. For a passive LC panel, connect both its front and rear. It does not need
    power and does not regenerate the signal. Configure the total duplex path
    so that each transmitter reaches the opposite receiver; flip a cord's

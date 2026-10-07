@@ -42,6 +42,50 @@ impl NetworkSim {
                 .endpoint_module(port)
                 .is_some_and(|m| matches!(m.medium, ModuleMedium::Copper))
     }
+    /// Inventory choices supported by this endpoint. Unlike physical connector
+    /// validation, this excludes fiber that fits an LC socket but cannot carry
+    /// the installed optic's signal. The other endpoint and route are checked
+    /// by `quote_assembly` when the player finishes the connection.
+    pub fn assembly_supported_at_port(&self, assembly: CableAssemblyId, port: PortId) -> bool {
+        let Some(p) = self.port(port) else {
+            return false;
+        };
+        if self.link_for_port(port).is_some() {
+            return false;
+        }
+        let Some(spec) = self
+            .optics
+            .assemblies
+            .get(&assembly)
+            .filter(|c| c.link.is_none())
+            .and_then(|c| optics_catalog().cable(&c.model_id))
+        else {
+            return false;
+        };
+        match &spec.medium {
+            AssemblyMedium::Fiber { fiber, strands, .. } => {
+                if p.connector == PortConnector::Lc {
+                    return true;
+                }
+                if p.connector != PortConnector::Sfp {
+                    return false;
+                }
+                self.endpoint_module(port).is_some_and(|module| {
+                    matches!(&module.medium, ModuleMedium::Optical { strands: count, reaches, .. }
+                        if count == strands && reaches.iter().any(|reach| reach.fiber == *fiber
+                            && spec.length_cm <= reach.max_length_cm))
+                })
+            }
+            AssemblyMedium::Dac { transceiver } | AssemblyMedium::Aoc { transceiver } => {
+                self.endpoint_module(port).is_none()
+                    && self.cage_profile(port).is_some_and(|cage| {
+                        optics_catalog()
+                            .module(transceiver)
+                            .is_some_and(|module| cage.supports(module))
+                    })
+            }
+        }
+    }
     pub(crate) fn detach_module(&mut self, port: PortId) {
         for module in self.optics.transceivers.values_mut() {
             if module.port == Some(port) {

@@ -1,6 +1,6 @@
 use crate::app::CableVisibility;
 use crate::localization::tr;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
 use cloud_provider_sim::{CableRoutePoint, LinkId, NetworkSim, OutletId, PortId};
 use std::collections::HashMap;
 
@@ -161,6 +161,7 @@ impl<Id> Default for CableLayer<Id> {
 pub(super) struct CableScene {
     ethernet: CableLayer<(LinkId, usize)>,
     power: CableLayer<(OutletId, usize)>,
+    pub optical_texture: Option<egui::TextureId>,
 }
 
 pub(super) struct CableView {
@@ -447,8 +448,8 @@ pub(super) fn creation_anchor(
 #[derive(Clone, Copy)]
 pub(super) enum ConnectorKind {
     Rj45,
-    Optical,
-    Attached,
+    Optical { strands: u8 },
+    Attached { active: bool },
     Iec,
     CiscoFourPin,
 }
@@ -460,11 +461,22 @@ pub(super) struct CableConnector {
 }
 
 impl CableConnector {
+    fn optical_sprite(self) -> Option<super::optics::OpticalSprite> {
+        use super::optics::OpticalSprite;
+        match self.kind {
+            ConnectorKind::Optical { strands: 1 } => Some(OpticalSprite::SimplexPlug),
+            ConnectorKind::Optical { .. } => Some(OpticalSprite::DuplexPlug),
+            ConnectorKind::Attached { active: false } => Some(OpticalSprite::DacPlug),
+            ConnectorKind::Attached { active: true } => Some(OpticalSprite::AocPlug),
+            _ => None,
+        }
+    }
+
     fn uv(self) -> Rect {
         let (left, top, right, bottom) = match self.kind {
-            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached => {
-                (0.10, 0.17, 0.90, 1.0)
-            }
+            ConnectorKind::Rj45
+            | ConnectorKind::Optical { .. }
+            | ConnectorKind::Attached { .. } => (0.10, 0.17, 0.90, 1.0),
             // End-on cable-exit faces, measured in the 1774 × 887 rear atlas.
             ConnectorKind::Iec => (98.0 / 1774.0, 164.0 / 887.0, 950.0 / 1774.0, 696.0 / 887.0),
             ConnectorKind::CiscoFourPin => (
@@ -479,18 +491,26 @@ impl CableConnector {
 
     fn cable_exit(self) -> Vec2 {
         match self.kind {
-            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached => {
-                Vec2::splat(0.5)
-            }
+            ConnectorKind::Rj45
+            | ConnectorKind::Optical { .. }
+            | ConnectorKind::Attached { .. } => Vec2::splat(0.5),
             ConnectorKind::Iec => Vec2::new(0.495, 0.70),
             ConnectorKind::CiscoFourPin => Vec2::new(0.50, 0.745),
         }
     }
 
     fn rect(self) -> Rect {
+        if let Some(sprite) = self.optical_sprite() {
+            let uv = sprite.uv();
+            let width = self.socket.width().clamp(12.0, 28.0);
+            return Rect::from_center_size(
+                self.socket.center(),
+                Vec2::new(width, width * uv.height() / uv.width()),
+            );
+        }
         if matches!(
             self.kind,
-            ConnectorKind::Rj45 | ConnectorKind::Optical | ConnectorKind::Attached
+            ConnectorKind::Rj45 | ConnectorKind::Optical { .. } | ConnectorKind::Attached { .. }
         ) {
             return plug_rect(self.socket);
         }
@@ -523,6 +543,7 @@ struct LayerView {
     plug: egui::TextureId,
     visibility: CableVisibility,
     selection_active: bool,
+    optical_texture: Option<egui::TextureId>,
     socket_rects: Vec<Rect>,
     interaction_enabled: bool,
 }
@@ -685,33 +706,17 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
             }
             self.accumulator -= STEP;
         }
-        let width = (view.pixels_per_cm * 0.55).clamp(4.0, 7.5);
         let mut painted = std::collections::HashSet::new();
         for (_, cable, _, _) in &spans {
             if !painted.insert(cable.id) {
                 continue;
             }
             for connector in &cable.connectors {
-                if matches!(
-                    connector.kind,
-                    ConnectorKind::Optical | ConnectorKind::Attached
-                ) {
-                    let rect = connector.rect();
-                    ui.painter().rect_filled(
-                        rect,
-                        1.0,
-                        if matches!(connector.kind, ConnectorKind::Optical) {
-                            Color32::from_rgb(40, 120, 185)
-                        } else {
-                            Color32::from_gray(145)
-                        },
-                    );
-                    ui.painter().rect_stroke(
-                        rect,
-                        1.0,
-                        Stroke::new(1.0, Color32::from_gray(35)),
-                        egui::StrokeKind::Inside,
-                    );
+                if let Some(sprite) = connector.optical_sprite() {
+                    if let Some(texture) = view.optical_texture {
+                        ui.painter()
+                            .image(texture, connector.rect(), sprite.uv(), Color32::WHITE);
+                    }
                 } else {
                     ui.painter()
                         .image(view.plug, connector.rect(), connector.uv(), Color32::WHITE);
@@ -725,6 +730,15 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
             } else {
                 cable.color
             };
+            let diameter_cm = match cable.connectors.first().map(|c| c.kind) {
+                Some(ConnectorKind::Optical { strands: 1 }) => 0.25,
+                Some(ConnectorKind::Optical { .. } | ConnectorKind::Attached { active: true }) => {
+                    0.35
+                }
+                Some(ConnectorKind::Attached { active: false }) => 0.65,
+                _ => 0.55,
+            };
+            let width = (view.pixels_per_cm * diameter_cm).clamp(2.5, 7.5);
             paint_cable(ui, &path, width, color, cable.selected, view.jacket);
         }
         if self.grab.is_some() {
@@ -775,6 +789,7 @@ impl CableScene {
                 plug: view.plug,
                 visibility: view.visibility,
                 selection_active: view.selected.is_some(),
+                optical_texture: self.optical_texture,
                 socket_rects: view.socket_rects,
                 interaction_enabled: view.interaction_enabled && self.ethernet.grab.is_none(),
             },
@@ -818,24 +833,23 @@ impl CableScene {
                         .filter_map(|id| {
                             ports.get(id).map(|socket| CableConnector {
                                 socket: *socket,
-                                kind: sim.connected_assembly(link.id).map_or(
-                                    ConnectorKind::Rj45,
-                                    |c| {
-                                        if cloud_provider_sim::optics_catalog()
-                                            .cable(&c.model_id)
-                                            .is_some_and(|m| {
-                                                matches!(
-                                                    m.medium,
-                                                    cloud_provider_sim::AssemblyMedium::Fiber { .. }
-                                                )
-                                            })
-                                        {
-                                            ConnectorKind::Optical
-                                        } else {
-                                            ConnectorKind::Attached
+                                kind: sim
+                                    .connected_assembly(link.id)
+                                    .and_then(|c| {
+                                        cloud_provider_sim::optics_catalog().cable(&c.model_id)
+                                    })
+                                    .map_or(ConnectorKind::Rj45, |model| match model.medium {
+                                        cloud_provider_sim::AssemblyMedium::Fiber {
+                                            strands,
+                                            ..
+                                        } => ConnectorKind::Optical { strands },
+                                        cloud_provider_sim::AssemblyMedium::Dac { .. } => {
+                                            ConnectorKind::Attached { active: false }
                                         }
-                                    },
-                                ),
+                                        cloud_provider_sim::AssemblyMedium::Aoc { .. } => {
+                                            ConnectorKind::Attached { active: true }
+                                        }
+                                    }),
                             })
                         })
                         .collect(),
@@ -870,6 +884,7 @@ impl CableScene {
                 plug: view.plug,
                 visibility: view.visibility,
                 selection_active: view.selected.is_some(),
+                optical_texture: self.optical_texture,
                 socket_rects: sockets,
                 interaction_enabled: view.interaction_enabled && self.power.grab.is_none(),
             },
@@ -1044,6 +1059,27 @@ mod tests {
         let location = port_location(&sim, outlet.port).unwrap();
         assert_eq!(location.rack, RackId(1));
         assert_eq!(location.unit, sim.rack(RackId(1)).unwrap().units);
+    }
+
+    #[test]
+    fn optical_connectors_use_distinct_atlas_faces_and_preserve_aspect_ratio() {
+        let socket = Rect::from_center_size(egui::pos2(100.0, 40.0), Vec2::new(24.0, 16.0));
+        let mut faces = vec![];
+        for kind in [
+            ConnectorKind::Optical { strands: 1 },
+            ConnectorKind::Optical { strands: 2 },
+            ConnectorKind::Attached { active: false },
+            ConnectorKind::Attached { active: true },
+        ] {
+            let connector = CableConnector { socket, kind };
+            let uv = connector.optical_sprite().unwrap().uv();
+            assert!(uv.min.x >= 0.0 && uv.min.y >= 0.0 && uv.max.x <= 1.0 && uv.max.y <= 1.0);
+            assert!(!faces.contains(&uv));
+            faces.push(uv);
+            let rect = connector.rect();
+            assert_eq!(rect.center(), socket.center());
+            assert!((rect.width() / rect.height() - uv.width() / uv.height()).abs() < 0.001);
+        }
     }
 
     #[test]
@@ -1252,6 +1288,7 @@ mod tests {
                 plug: egui::TextureId::User(2),
                 visibility: CableVisibility::All,
                 selection_active: true,
+                optical_texture: None,
                 socket_rects: sockets.clone(),
                 interaction_enabled: true,
             };

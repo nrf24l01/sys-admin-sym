@@ -109,9 +109,11 @@ The older reference assets below are retained for reference.
 - Module electrical consumption, optical budget values, connector losses,
   attenuation, and prices are representative simulation estimates rather than
   specifications for a particular Cisco transceiver SKU.
-- LC adapters and inserted module/cable-end overlays are code-drawn shapes;
-  no new external image assets were added. The 10G switch profile reuses the
-  existing Catalyst chassis image and port layout.
+- `optical_connectors.png`: generated for this project with the built-in imagegen
+  tool and alpha transparency. Includes empty cages, duplex/simplex/copper SFP
+  faces, and seated LC/DAC/AOC ends. Final prompt: `optical_connectors_prompt.md`.
+  No third-party product photograph was used in this atlas. The 10G switch
+  profile reuses the existing Catalyst chassis image and port layout.
 
 ## Intel X520-DA2 PCIe adapter
 
@@ -128,3 +130,11 @@ The older reference assets below are retained for reference.
 - Existing `dual_sfpplus_10g` inventory and installed cards migrate to
   `intel_x520_da2` when loading; saved interfaces, modules and cables retain
   their identities. The existing code-drawn PCIe face remains in use.
+
+## Connector shop artwork
+
+- `../cables/optical_shop_connectors.png`: generated for this project with the
+  built-in imagegen tool and alpha transparency. Four complete loose connector
+  sprites (duplex LC, simplex LC, DAC and AOC) use full padded cells. Shop icons
+  do not crop plugs from coiled cables or show seated module faces.
+  Final prompt: `../cables/optical_shop_connectors_prompt.md`.

@@ -244,7 +244,6 @@
     "ui.rj45": "RJ45",
     "ui.rj45-cable-anchor-select-port": "RJ45 CABLE: {0} ANCHOR{1} → SELECT PORT",
     "ui.rj45-connectors": "RJ45 connectors: {0}",
-    "ui.rj45-lead-connected": "RJ45 lead connected",
     "ui.rj45-port": "RJ45 port {0}",
     "ui.rj45-ports": "RJ45 ports",
     "ui.room": "ROOM",
@@ -477,6 +476,9 @@
     "optics.link-down-cable": "Link down · cable #{0} connected",
     "cable.color.aqua": "Aqua",
     "cable.color.yellow": "Yellow",
-    "optics.error.missing-transceiver": "Install an optical transceiver before connecting a fiber cable."
+    "optics.error.missing-transceiver": "Install an optical transceiver before connecting a fiber cable.",
+    "optics.socket-menu": "Optical socket · inventory",
+    "optics.no-compatible-cables": "No compatible cables in inventory. Buy a cable in Shop → Network → Optics & fiber.",
+    "ui.cable-connected": "Cable connected"
   }
 }

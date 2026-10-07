@@ -1,0 +1,8 @@
+# Optical connector sprite atlas
+
+Generated using the built-in imagegen tool with alpha transparency. The original
+image is kept as the runtime atlas; UV rectangles are measured in `ui/optics.rs`.
+
+```text
+Use case: product-mockup. Asset type: transparent game sprite atlas for realistic rack networking hardware. Create ONE precise 2-column by 4-row sprite sheet on transparent background, equal cells, objects fully isolated with generous clear margins, no shadows outside objects. Orthographic straight-on view facing the outward connector face on a rack, no perspective, consistent scale, photorealistic polished hardware. Row 1 left: empty rectangular silver SFP cage dark opening, right: inserted silver SFP optical module face with TWO blue LC receptacles side by side and metal bail latch. Row 2 left: inserted silver SFP optical module with ONE blue LC receptacle (BiDi), right: inserted silver copper SFP face with black RJ45 jack and visible gold contacts. Row 3 left: DUPLEX LC fiber cable plug viewed from its cable-exit rear when seated in a rack, two small aqua plastic square housings joined side by side, short ribbed aqua strain relief pointing downward, no exposed white ferrules; right: SIMPLEX LC fiber cable plug rear, one blue housing and ribbed boot pointing down. Row 4 left: silver SFP+ DAC permanently attached plug viewed from its cable-exit rear, black pull tab and black ribbed boot pointing downward; right: silver SFP+ AOC permanently attached plug rear with orange pull tab and orange ribbed boot downward. Objects centered in each cell, front faces wide rectangular shapes horizontally. No labels, no text, no cables spanning cells, no background, no watermark. Output 1024x1024.
+```
