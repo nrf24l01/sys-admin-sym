@@ -1,22 +1,29 @@
 use cloud_provider_sim::{DeviceId, PortId, PurchaseReceipt, SimError};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum ShopCategory {
     #[default]
     Network,
     Compute,
+    Connectivity,
+    Rack,
     Power,
+    Services,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ShopSection {
     Routers,
     Switches,
-    Cabling,
-    Optics,
+    CopperSupplies,
+    Transceivers,
+    FiberCables,
+    DirectAttach,
+    PatchPanels,
+    CableManagers,
     PublicIp,
-    DellServers,
+    Servers,
     Cpu,
     Ram,
     PciCards,
@@ -28,13 +35,16 @@ pub enum ShopSection {
 impl ShopSection {
     pub fn category(self) -> ShopCategory {
         match self {
-            Self::Routers | Self::Switches | Self::Cabling | Self::Optics | Self::PublicIp => {
-                ShopCategory::Network
-            }
-            Self::DellServers | Self::Cpu | Self::Ram | Self::PciCards | Self::Storage => {
+            Self::Routers | Self::Switches => ShopCategory::Network,
+            Self::Servers | Self::Cpu | Self::Ram | Self::PciCards | Self::Storage => {
                 ShopCategory::Compute
             }
+            Self::CopperSupplies | Self::Transceivers | Self::FiberCables | Self::DirectAttach => {
+                ShopCategory::Connectivity
+            }
+            Self::PatchPanels | Self::CableManagers => ShopCategory::Rack,
             Self::Ups | Self::Pdu => ShopCategory::Power,
+            Self::PublicIp => ShopCategory::Services,
         }
     }
 }
@@ -49,6 +59,35 @@ pub enum ShopSort {
     CapacityDescending,
     SpeedDescending,
     LengthAscending,
+    CpuSocket,
+    MemoryType,
+    RamSlotsDescending,
+    CpuSocketsDescending,
+    DriveBaysDescending,
+    PcieSlotsDescending,
+}
+
+impl ShopSort {
+    pub fn applies_to(self, section: Option<ShopSection>) -> bool {
+        use ShopSection::*;
+        match self {
+            Self::CapacityDescending => matches!(section, Some(Ram | Storage)),
+            Self::SpeedDescending => {
+                matches!(
+                    section,
+                    Some(Routers | Switches | PciCards | Transceivers | DirectAttach)
+                )
+            }
+            Self::LengthAscending => matches!(section, Some(FiberCables | DirectAttach)),
+            Self::CpuSocket => matches!(section, Some(Servers | Cpu)),
+            Self::MemoryType => matches!(section, Some(Servers | Ram)),
+            Self::RamSlotsDescending
+            | Self::CpuSocketsDescending
+            | Self::DriveBaysDescending
+            | Self::PcieSlotsDescending => section == Some(Servers),
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +142,7 @@ pub struct ShopState {
 
 impl ShopState {
     pub fn select(&mut self, category: ShopCategory, section: Option<ShopSection>) {
+        let category = section.map_or(category, ShopSection::category);
         if self.category != category || self.section != section || self.all_categories {
             if !self.all_categories {
                 self.saved_facets.insert(
@@ -123,6 +163,9 @@ impl ShopState {
         self.all_categories = false;
         self.category = category;
         self.section = section;
+        if !self.sort.applies_to(section) {
+            self.sort = ShopSort::Category;
+        }
     }
 
     pub fn select_all(&mut self) {
@@ -138,6 +181,9 @@ impl ShopState {
         self.ports = None;
         self.outlets = None;
         self.compatible_only = false;
+        if !self.sort.applies_to(None) {
+            self.sort = ShopSort::Category;
+        }
     }
 
     pub fn clear_filters(&mut self) {

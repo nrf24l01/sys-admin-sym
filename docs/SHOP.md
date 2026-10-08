@@ -1,17 +1,46 @@
 # Equipment shop
 
-Open **Shop** to browse Network, Compute, Power or All products. The sidebar
-expands the active category so its filters stay within reach. The catalog
+Open **Shop** to browse All products or choose a category:
+
+| Category | Product types |
+| --- | --- |
+| Network devices | Routers, switches |
+| Servers & parts | Server systems, processors, memory, network cards, storage drives |
+| Cables & modules | SFP modules, fiber cables, DAC/AOC cables, copper supplies |
+| Rack accessories | Patch panels, cable management |
+| Power | UPS, PDU |
+| IP resources | Public IPv4 pools |
+
+The sidebar shows the active category's product types and a category switcher.
+Overview buttons and breadcrumbs also work with the sidebar collapsed in a
+small window. Each category/type keeps its own scroll position. The catalog
 contains every purchasable built-in model. Server chassis and full pack are
 separately priced configurations; cable families expose concrete length variants.
 The product and offer counts distinguish families from purchasable variants.
+
+All products and category overviews show budget filters only. Choose a product
+type for its relevant technical filters: RAM capacity and memory type, fiber
+grade/arrangement/length for fiber cables, cage/speed/medium for SFP modules,
+and so on. Relevant filters remain visible even when the catalog currently
+has only one value, such as a single CPU socket or RAM type. Sorting by capacity,
+speed or length is offered only for applicable product types. Changing types resets an
+inapplicable sort while retaining general price/name sorting.
+
+Servers expose RAM type, CPU socket, RAM slot count, configuration, CPU socket
+count, PCIe slot count/generation/width, drive bay count/interface, rack size,
+included RJ45 ports and integrated PSU power. Physical capacity comes directly
+from the simulation's chassis catalog and is the same for bare/full-pack offers.
+RAM type, CPU socket and RAM slots appear first. Server sorting also supports
+socket and RAM type alphabetically and RAM/PCIe slots, CPU sockets and drive
+bays by count.
 
 Search matches localized names, descriptions, IDs and specifications. Every
 space-separated search term must match. Price limits are inclusive. Filters
 within one attribute use OR; different attributes use AND. Counts show matching
 product families with the current attribute temporarily excluded, so another
-value remains selectable. Selected values with no results remain visible and
-removable. Category/section changes save and deactivate technical filters;
+value remains selectable. Other choices stay visible with disabled zero counts
+as results narrow, and selected values with no results remain removable.
+Category/section changes save and deactivate technical filters;
 returning restores them. Search and price limits apply across categories.
 
 Use Grid or List and sort by category, name, price, capacity, speed or length. Details
@@ -20,7 +49,8 @@ products of the same type. Small windows collapse the category/filter sidebar;
 details use a separate window, while wider windows can show an inline inspector.
 All controls and product descriptions support English and Russian.
 
-Select a configurable server or an optical endpoint as a compatibility target.
+Within a compatible product type, select a configurable server or an optical
+endpoint as a compatibility target.
 **Compatible only** checks a currently available installation position or cable
 endpoint. It does not guarantee an operational end-to-end link: the other
 endpoint, installed modules, route, reach, optical budget, power and interface
@@ -102,3 +132,10 @@ the current integration turns delayed blink requests into immediate redraws.
 - [Russian list view and committed purchase](images/shop-cached-list-ru.png)
 - [Cached full-resolution item details](images/shop-cached-details.png)
 - [Cached thumbnails after resizing](images/shop-cached-resize.png)
+- [New categories and budget-only overview filters](images/shop-categories.png)
+- [Fiber filters restored after switching product types](images/shop-fiber-filters.png)
+- [SFP module filters](images/shop-module-filters.png)
+- [Russian memory category and its relevant filters](images/shop-memory-category-ru.png)
+- [Selected server RAM type, socket and RAM slot filters](images/shop-server-filters.png)
+- [Server specification sorting](images/shop-server-sort.png)
+- [Russian server specifications and filters](images/shop-server-filters-ru.png)

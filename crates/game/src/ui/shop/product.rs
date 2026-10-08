@@ -114,9 +114,13 @@ fn summary(ui: &mut egui::Ui, offer: &Offer) {
     use crate::app::ShopSection;
     let preferred: &[&str] = match offer.section {
         ShopSection::Routers | ShopSection::Switches => &["ports", "cages", "speed", "rack"],
-        ShopSection::Cabling => &["type", "ports", "lc-pairs", "rack"],
-        ShopSection::Optics => &["type", "cage", "speed", "fiber", "strands", "length"],
-        ShopSection::DellServers => &["configuration", "rack", "ports"],
+        ShopSection::PatchPanels | ShopSection::CableManagers | ShopSection::CopperSupplies => {
+            &["type", "ports", "lc-pairs", "rack"]
+        }
+        ShopSection::Transceivers | ShopSection::FiberCables | ShopSection::DirectAttach => {
+            &["type", "cage", "speed", "fiber", "strands", "length"]
+        }
+        ShopSection::Servers => &["socket", "memory-type", "ram-slots"],
         ShopSection::Cpu => &["cores", "frequency", "socket"],
         ShopSection::Ram => &["capacity", "memory-type"],
         ShopSection::PciCards => &["ports", "cages", "speed", "pcie-generation"],
@@ -140,6 +144,7 @@ fn summary(ui: &mut egui::Ui, offer: &Offer) {
                         | "outlets"
                         | "addresses"
                         | "pcie-generation"
+                        | "ram-slots"
                 ) {
                     tr_args(&format!("shop.summary.{}", a.key), &[a.display()])
                 } else {

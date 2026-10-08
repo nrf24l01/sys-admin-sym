@@ -1,5 +1,44 @@
 use super::*;
 
+fn server_attributes(offer: &mut Offer, chassis: &ServerChassis) {
+    offer.attributes.extend([
+        Attribute::text("socket", chassis.cpu_socket.clone()),
+        Attribute::text("memory-type", chassis.memory_type.clone()),
+        Attribute::number("cpu-sockets", chassis.cpu_sockets as u64),
+        Attribute::number("ram-slots", chassis.dimm_slots as u64),
+        Attribute::number("drive-bays", chassis.drive_bays.len() as u64),
+        Attribute::number("pcie-slots", chassis.pcie_slots.len() as u64),
+        Attribute::number("psu-watts", chassis.integrated_psu_watts),
+    ]);
+    let interfaces: std::collections::BTreeSet<_> = chassis
+        .drive_bays
+        .iter()
+        .map(|bay| &bay.interface)
+        .collect();
+    offer.attributes.extend(
+        interfaces
+            .into_iter()
+            .map(|interface| Attribute::text("drive-interface", interface.clone())),
+    );
+    let generations: std::collections::BTreeSet<_> = chassis
+        .pcie_slots
+        .iter()
+        .map(|slot| slot.generation)
+        .collect();
+    offer.attributes.extend(
+        generations
+            .into_iter()
+            .map(|generation| Attribute::number("pcie-generation", generation)),
+    );
+    let widths: std::collections::BTreeSet<_> =
+        chassis.pcie_slots.iter().map(|slot| slot.width).collect();
+    offer.attributes.extend(
+        widths
+            .into_iter()
+            .map(|width| Attribute::number("pcie-width", width)),
+    );
+}
+
 fn rack_attributes(offer: &mut Offer, command: Command) {
     // Derive connector counts/cage modes from a domain-created device, not UI constants.
     let mut preview = NetworkSim::new();
@@ -117,12 +156,12 @@ pub(super) fn offers() -> Vec<Offer> {
         ("rack_pdu", ShopSection::Pdu, DeviceTemplate::Pdu),
         (
             "patch_panel",
-            ShopSection::Cabling,
+            ShopSection::PatchPanels,
             DeviceTemplate::PatchPanel,
         ),
         (
             "cable_manager",
-            ShopSection::Cabling,
+            ShopSection::CableManagers,
             DeviceTemplate::CableManager,
         ),
     ] {
@@ -167,7 +206,7 @@ pub(super) fn offers() -> Vec<Offer> {
             } else {
                 "dell_r360"
             },
-            ShopSection::DellServers,
+            ShopSection::Servers,
             item,
         );
         offer.attributes.push(Attribute::text("type", "server"));
@@ -181,12 +220,11 @@ pub(super) fn offers() -> Vec<Offer> {
                 Command::BuyServerChassis
             },
         );
-        offer.attributes.extend([
-            Attribute::text("configuration", if full { "full-pack" } else { "chassis" }),
-            Attribute::text("socket", server_catalog().chassis.cpu_socket.clone()),
-            Attribute::text("memory-type", server_catalog().chassis.memory_type.clone()),
-            Attribute::number("watts", server_catalog().chassis.integrated_psu_watts),
-        ]);
+        offer.attributes.push(Attribute::text(
+            "configuration",
+            if full { "full-pack" } else { "chassis" },
+        ));
+        server_attributes(&mut offer, &server_catalog().chassis);
         offer.guidance.push(if full {
             "shop.guide.full-pack"
         } else {
@@ -202,7 +240,11 @@ pub(super) fn offers() -> Vec<Offer> {
         ),
         ("rj45_connectors", CableSupply::Rj45Pack20, "connector-pack"),
     ] {
-        let mut offer = Offer::new(id, ShopSection::Cabling, PurchaseItem::Supply(supply));
+        let mut offer = Offer::new(
+            id,
+            ShopSection::CopperSupplies,
+            PurchaseItem::Supply(supply),
+        );
         offer.attributes.push(Attribute::text("type", kind));
         offer.guidance.push("shop.guide.copper");
         offers.push(offer);
@@ -211,7 +253,7 @@ pub(super) fn offers() -> Vec<Offer> {
         let section = if matches!(hardware.profile, OpticalHardwareProfile::Switch { .. }) {
             ShopSection::Switches
         } else {
-            ShopSection::Cabling
+            ShopSection::PatchPanels
         };
         let mut offer = Offer::new(
             &hardware.id,

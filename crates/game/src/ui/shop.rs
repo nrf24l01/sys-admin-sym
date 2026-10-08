@@ -4,8 +4,13 @@ mod catalog;
 mod details;
 mod filters;
 mod layout;
+mod navigation;
+#[cfg(test)]
+mod navigation_tests;
 mod product;
 mod query;
+#[cfg(test)]
+mod server_tests;
 #[cfg(test)]
 mod tests;
 
@@ -68,7 +73,7 @@ pub(super) fn show(
             } else {
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
-                        ui.set_width(185.0);
+                        ui.set_width(210.0);
                         egui::ScrollArea::vertical()
                             .id_salt("shop-sidebar")
                             .max_height(ui.available_height())
@@ -147,6 +152,7 @@ fn products(
     textures: ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
+    navigation::shortcuts(ui, state, sim);
     filters::toolbar(ui, state);
     filters::compatibility_target(ui, state, sim, selected);
     let offers = query::filtered(state, sim);
@@ -159,7 +165,7 @@ fn products(
         )
     });
     ui.horizontal(|ui| {
-        ui.strong(filters::category_label(state));
+        ui.strong(navigation::category_label(state));
         ui.weak(tr_args(
             "shop.results",
             &[groups.len().to_string(), offers.len().to_string()],
@@ -167,7 +173,10 @@ fn products(
     });
     ui.separator();
     let scroll = egui::ScrollArea::vertical()
-        .id_salt("shop-products")
+        .id_salt((
+            "shop-products",
+            (!state.all_categories).then_some((state.category, state.section)),
+        ))
         .max_height(ui.available_height().max(80.0))
         .auto_shrink([false, false]);
     if groups.is_empty() {

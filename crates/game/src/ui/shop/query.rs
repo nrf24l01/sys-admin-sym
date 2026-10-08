@@ -1,5 +1,5 @@
 use super::catalog::{Offer, catalog};
-use crate::app::{ShopSort, ShopState};
+use crate::app::{ShopSection, ShopSort, ShopState};
 use crate::localization::{TranslationSnapshot, translation_snapshot};
 use cloud_provider_sim::NetworkSim;
 use std::cell::RefCell;
@@ -96,6 +96,15 @@ pub(super) fn order(a: &Offer, b: &Offer, sort: ShopSort) -> std::cmp::Ordering 
         ShopSort::CapacityDescending => b.numeric("capacity").cmp(&a.numeric("capacity")),
         ShopSort::SpeedDescending => b.numeric("speed").cmp(&a.numeric("speed")),
         ShopSort::LengthAscending => a.numeric("length").cmp(&b.numeric("length")),
+        ShopSort::CpuSocket => a.values("socket").next().cmp(&b.values("socket").next()),
+        ShopSort::MemoryType => a
+            .values("memory-type")
+            .next()
+            .cmp(&b.values("memory-type").next()),
+        ShopSort::RamSlotsDescending => b.numeric("ram-slots").cmp(&a.numeric("ram-slots")),
+        ShopSort::CpuSocketsDescending => b.numeric("cpu-sockets").cmp(&a.numeric("cpu-sockets")),
+        ShopSort::DriveBaysDescending => b.numeric("drive-bays").cmp(&a.numeric("drive-bays")),
+        ShopSort::PcieSlotsDescending => b.numeric("pcie-slots").cmp(&a.numeric("pcie-slots")),
     };
     ordering
         .then_with(|| a.name().to_lowercase().cmp(&b.name().to_lowercase()))
@@ -125,72 +134,65 @@ pub(super) fn grouped(offers: &[&'static Offer]) -> Vec<Vec<&'static Offer>> {
     groups
 }
 
-pub(super) fn facet_keys(state: &ShopState) -> Vec<&'static str> {
-    let keys: BTreeSet<_> = catalog()
-        .iter()
-        .filter(|offer| {
-            state.all_categories
-                || (offer.section.category() == state.category
-                    && state.section.is_none_or(|s| s == offer.section))
-        })
-        .flat_map(|offer| offer.attributes.iter().map(|a| a.key))
-        .filter(|key| {
-            !matches!(
-                *key,
-                "frequency"
-                    | "write"
-                    | "write-iops"
-                    | "power"
-                    | "tx"
-                    | "rx"
-                    | "battery"
-                    | "addresses"
-                    | "prefix"
-                    | "lanes"
-            )
-        })
-        .collect();
-    let priority = [
-        "type",
-        "configuration",
-        "rack",
-        "ports",
-        "cages",
-        "lc-pairs",
-        "cage",
-        "speed",
-        "capacity",
-        "interface",
-        "socket",
-        "cores",
-        "memory-type",
-        "pcie-generation",
-        "pcie-width",
-        "fiber",
-        "strands",
-        "length",
-        "reach",
-        "medium",
-        "dom",
-        "watts",
-        "va",
-        "outlets",
-        "outlet-type",
-        "read",
-        "read-iops",
-    ];
-    let mut keys: Vec<_> = keys.into_iter().collect();
-    keys.sort_by_key(|key| {
-        priority
-            .iter()
-            .position(|candidate| candidate == key)
-            .unwrap_or(usize::MAX)
-    });
-    keys
+/// Explicit per-product filters prevent unrelated specifications leaking into browsing.
+pub(super) fn facet_keys(state: &ShopState) -> &'static [&'static str] {
+    if state.all_categories {
+        return &[];
+    }
+    match state.section {
+        None => &[],
+        Some(ShopSection::Routers) => &["speed", "ports", "rack"],
+        Some(ShopSection::Switches) => &["speed", "ports", "cages", "cage", "rack"],
+        Some(ShopSection::Servers) => &[
+            "memory-type",
+            "socket",
+            "ram-slots",
+            "configuration",
+            "cpu-sockets",
+            "pcie-slots",
+            "pcie-generation",
+            "pcie-width",
+            "drive-bays",
+            "drive-interface",
+            "rack",
+            "ports",
+            "psu-watts",
+        ],
+        Some(ShopSection::Cpu) => &["socket", "cores", "frequency", "watts"],
+        Some(ShopSection::Ram) => &["capacity", "memory-type"],
+        Some(ShopSection::PciCards) => &[
+            "speed",
+            "ports",
+            "cages",
+            "cage",
+            "pcie-generation",
+            "pcie-width",
+        ],
+        Some(ShopSection::Storage) => &["type", "capacity", "interface", "read"],
+        Some(ShopSection::Transceivers) => &[
+            "cage", "speed", "medium", "fiber", "strands", "reach", "dom",
+        ],
+        Some(ShopSection::FiberCables) => &["fiber", "strands", "length", "medium"],
+        Some(ShopSection::DirectAttach) => &["type", "cage", "speed", "length"],
+        Some(ShopSection::CopperSupplies) => &["type"],
+        Some(ShopSection::PatchPanels) => &["type", "ports", "lc-pairs", "rack"],
+        Some(ShopSection::CableManagers) => &["rack"],
+        Some(ShopSection::Ups) => &["watts", "va", "battery", "outlets", "outlet-type", "rack"],
+        Some(ShopSection::Pdu) => &["outlets", "outlet-type", "watts", "rack"],
+        Some(ShopSection::PublicIp) => &["prefix", "addresses"],
+    }
 }
 
 pub(super) fn facet_values(key: &str, state: &ShopState, sim: &NetworkSim) -> Vec<(String, usize)> {
-    let mut counts: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+    // Keep the section's choices stable as other filters narrow the results.
+    // Unavailable values remain visible with zero counts. Single-value
+    // specifications are useful filters too, especially for small catalogs.
+    let mut counts: BTreeMap<String, BTreeSet<&str>> = catalog()
+        .iter()
+        .filter(|offer| !state.all_categories && state.section == Some(offer.section))
+        .flat_map(|offer| offer.values(key))
+        .map(|value| (value.to_owned(), BTreeSet::new()))
+        .collect();
     for offer in catalog()
         .iter()
         .filter(|o| matches(o, state, sim, Some(key)))

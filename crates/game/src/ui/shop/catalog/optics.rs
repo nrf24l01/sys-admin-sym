@@ -8,7 +8,7 @@ pub(super) fn offers() -> Vec<Offer> {
         }
         let mut offer = Offer::new(
             &module.id,
-            ShopSection::Optics,
+            ShopSection::Transceivers,
             PurchaseItem::Transceiver(module.id.clone()),
         );
         offer.attributes = vec![
@@ -33,6 +33,7 @@ pub(super) fn offers() -> Vec<Offer> {
                 ..
             } => {
                 offer.attributes.extend([
+                    Attribute::text("medium", "LC"),
                     Attribute::text("strands", if *strands == 1 { "simplex" } else { "duplex" }),
                     Attribute::number("tx", *tx_nm),
                     Attribute::number("rx", *rx_nm),
@@ -56,7 +57,11 @@ pub(super) fn offers() -> Vec<Offer> {
     for cable in &optics_catalog().cables {
         let mut offer = Offer::new(
             &cable.id,
-            ShopSection::Optics,
+            if matches!(cable.medium, AssemblyMedium::Fiber { .. }) {
+                ShopSection::FiberCables
+            } else {
+                ShopSection::DirectAttach
+            },
             PurchaseItem::Assembly(cable.id.clone()),
         );
         offer.family = cable.id.rsplit_once('_').unwrap().0.into();

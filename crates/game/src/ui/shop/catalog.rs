@@ -43,7 +43,7 @@ pub(super) fn display_value(key: &str, value: &str) -> String {
         "capacity" => " GB",
         "speed" => " Mb/s",
         "length" | "reach" => " cm",
-        "watts" => " W",
+        "watts" | "psu-watts" => " W",
         "va" => " VA",
         "battery" => " Wh",
         "frequency" => " MHz",
@@ -121,13 +121,19 @@ impl Offer {
     }
     fn comparison_kind(&self) -> &'static str {
         match (&self.section, &self.item) {
-            (ShopSection::Optics, PurchaseItem::Transceiver(_)) => "module",
-            (ShopSection::Optics, PurchaseItem::Assembly(_)) => "assembly",
-            (ShopSection::Cabling, PurchaseItem::Device(DeviceTemplate::PatchPanel))
-            | (ShopSection::Cabling, PurchaseItem::OpticalHardware(_)) => "panel",
-            (ShopSection::Cabling, PurchaseItem::Device(DeviceTemplate::CableManager)) => "manager",
-            (ShopSection::Cabling, PurchaseItem::Supply(CableSupply::CableBox305m)) => "bulk",
-            (ShopSection::Cabling, PurchaseItem::Supply(CableSupply::Rj45Pack20)) => "plugs",
+            (ShopSection::Transceivers, PurchaseItem::Transceiver(_)) => "module",
+            (ShopSection::FiberCables | ShopSection::DirectAttach, PurchaseItem::Assembly(_)) => {
+                "assembly"
+            }
+            (ShopSection::PatchPanels, PurchaseItem::Device(DeviceTemplate::PatchPanel))
+            | (ShopSection::PatchPanels, PurchaseItem::OpticalHardware(_)) => "panel",
+            (ShopSection::CableManagers, PurchaseItem::Device(DeviceTemplate::CableManager)) => {
+                "manager"
+            }
+            (ShopSection::CopperSupplies, PurchaseItem::Supply(CableSupply::CableBox305m)) => {
+                "bulk"
+            }
+            (ShopSection::CopperSupplies, PurchaseItem::Supply(CableSupply::Rj45Pack20)) => "plugs",
             _ => "equipment",
         }
     }

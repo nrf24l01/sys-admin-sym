@@ -1,156 +1,36 @@
 use super::{
     catalog::{catalog, display_value},
-    query,
+    navigation, query,
 };
-use crate::app::{Selection, ShopCategory, ShopSection, ShopSort, ShopState, ShopTarget};
+use crate::app::{Selection, ShopSort, ShopState, ShopTarget};
 use crate::localization::{tr, tr_args};
 use bevy_egui::egui;
 use cloud_provider_sim::{DeviceKind, NetworkSim, PortConnector, PurchaseItem};
-use std::collections::BTreeSet;
-
-type CategoryEntry = (
-    ShopCategory,
-    &'static str,
-    &'static [(ShopSection, &'static str)],
-);
-pub(super) const CATEGORIES: &[CategoryEntry] = &[
-    (
-        ShopCategory::Network,
-        "ui.network",
-        &[
-            (ShopSection::Routers, "ui.routers"),
-            (ShopSection::Switches, "ui.switches"),
-            (ShopSection::Cabling, "ui.cabling"),
-            (ShopSection::Optics, "optics.shop"),
-            (ShopSection::PublicIp, "ui.public-ipv4"),
-        ],
-    ),
-    (
-        ShopCategory::Compute,
-        "ui.compute",
-        &[
-            (ShopSection::DellServers, "shop.servers"),
-            (ShopSection::Cpu, "ui.cpu"),
-            (ShopSection::Ram, "ui.ram"),
-            (ShopSection::PciCards, "ui.pcie-cards"),
-            (ShopSection::Storage, "ui.storage-drives"),
-        ],
-    ),
-    (
-        ShopCategory::Power,
-        "ui.power",
-        &[(ShopSection::Ups, "ui.ups"), (ShopSection::Pdu, "ui.pdu")],
-    ),
-];
-
-pub(super) fn category_label(state: &ShopState) -> String {
-    if state.all_categories {
-        return tr("shop.all-products");
-    }
-    for &(category, label, sections) in CATEGORIES {
-        if category == state.category {
-            return tr(state
-                .section
-                .and_then(|s| {
-                    sections
-                        .iter()
-                        .find(|(section, _)| *section == s)
-                        .map(|(_, label)| *label)
-                })
-                .unwrap_or(label));
-        }
-    }
-    tr("shop.all-products")
-}
 
 pub(super) fn sidebar(ui: &mut egui::Ui, state: &mut ShopState, sim: &NetworkSim) {
-    ui.strong(tr("shop.browse"));
-    let count = |category: Option<ShopCategory>, section: Option<ShopSection>| {
-        catalog()
-            .iter()
-            .filter(|offer| {
-                category.is_none_or(|c| offer.section.category() == c)
-                    && section.is_none_or(|s| offer.section == s)
-                    && query::global_matches(offer, state, sim)
-            })
-            .map(|o| o.family.as_str())
-            .collect::<BTreeSet<_>>()
-            .len()
-    };
-    let all = count(None, None);
-    let category_counts: Vec<_> = CATEGORIES
-        .iter()
-        .map(|&(category, _, sections)| {
-            (
-                count(Some(category), None),
-                sections
-                    .iter()
-                    .map(|&(section, _)| count(Some(category), Some(section)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    if ui
-        .selectable_label(
-            state.all_categories,
-            format!("{}  {all}", tr("shop.all-products")),
-        )
-        .clicked()
-    {
-        state.select_all();
-    }
-    for (index, &(category, label, sections)) in CATEGORIES.iter().enumerate() {
-        ui.add_space(8.0);
-        if ui
-            .selectable_label(
-                !state.all_categories && state.category == category && state.section.is_none(),
-                format!("{}  {}", tr(label), category_counts[index].0),
-            )
-            .clicked()
-        {
-            state.select(category, None);
-        }
-        if !state.all_categories && state.category == category {
-            ui.indent(label, |ui| {
-                for (i, &(section, label)) in sections.iter().enumerate() {
-                    if ui
-                        .selectable_label(
-                            !state.all_categories && state.section == Some(section),
-                            format!("{}  {}", tr(label), category_counts[index].1[i]),
-                        )
-                        .clicked()
-                    {
-                        state.select(category, Some(section));
-                    }
-                }
-            });
-        }
-    }
+    navigation::sidebar(ui, state, sim);
     ui.add_space(12.0);
     ui.separator();
     ui.strong(tr("shop.filters"));
     ui.checkbox(&mut state.affordable_only, tr("ui.affordable-only"));
-    price_range(ui, state);
+    price_range(ui, state, sim.money);
     if ui.small_button(tr("ui.clear-filters")).clicked() {
         state.clear_filters();
     }
     ui.add_space(8.0);
-    for key in query::facet_keys(state) {
+    if state.all_categories || state.section.is_none() {
+        ui.weak(tr("shop.choose-type-filters"));
+        return;
+    }
+    for &key in query::facet_keys(state) {
         let values = query::facet_values(key, state, sim);
         let selected = state.facets.get(key).is_some_and(|v| !v.is_empty());
-        if values.len() < 2 && !selected {
+        if values.is_empty() {
             continue;
         }
-        egui::CollapsingHeader::new(tr(&format!("shop.spec.{key}")))
-            .id_salt(("shop-facet", key))
-            .default_open(
-                selected
-                    || (!state.all_categories
-                        && matches!(
-                            key,
-                            "type" | "speed" | "capacity" | "fiber" | "length" | "rack"
-                        )),
-            )
+        egui::CollapsingHeader::new(facet_label(state, key))
+            .id_salt(("shop-facet", state.section, key))
+            .default_open(selected || query::facet_keys(state).iter().take(3).any(|k| *k == key))
             .show(ui, |ui| {
                 for (value, count) in values {
                     let mut checked = state.facets.get(key).is_some_and(|v| v.contains(&value));
@@ -159,7 +39,7 @@ pub(super) fn sidebar(ui: &mut egui::Ui, state: &mut ShopState, sim: &NetworkSim
                             count > 0 || checked,
                             egui::Checkbox::new(
                                 &mut checked,
-                                format!("{}  {count}", display_value(key, &value)),
+                                format!("{} ({count})", display_value(key, &value)),
                             ),
                         )
                         .changed()
@@ -176,18 +56,18 @@ pub(super) fn sidebar(ui: &mut egui::Ui, state: &mut ShopState, sim: &NetworkSim
     }
 }
 
-fn price_range(ui: &mut egui::Ui, state: &mut ShopState) {
+fn price_range(ui: &mut egui::Ui, state: &mut ShopState, balance: i64) {
     egui::CollapsingHeader::new(tr("shop.price-range"))
-        .default_open(true)
+        .default_open(state.min_price.is_some() || state.max_price.is_some())
         .show(ui, |ui| {
-            for (label, value) in [
-                ("shop.minimum", &mut state.min_price),
-                ("shop.maximum", &mut state.max_price),
+            for (label, value, initial) in [
+                ("shop.minimum", &mut state.min_price, 0),
+                ("shop.maximum", &mut state.max_price, balance.max(0)),
             ] {
                 ui.horizontal(|ui| {
                     let mut enabled = value.is_some();
                     if ui.checkbox(&mut enabled, tr(label)).changed() {
-                        *value = enabled.then_some(0);
+                        *value = enabled.then_some(initial);
                     }
                     if let Some(value) = value {
                         ui.add(
@@ -203,14 +83,23 @@ fn price_range(ui: &mut egui::Ui, state: &mut ShopState) {
 }
 
 pub(super) fn toolbar(ui: &mut egui::Ui, state: &mut ShopState) {
+    let section = (!state.all_categories).then_some(state.section).flatten();
+    if !state.sort.applies_to(section) {
+        state.sort = ShopSort::Category;
+    }
     ui.horizontal(|ui| {
+        let sort_width = (ui.available_width() * 0.4).clamp(130.0, 240.0);
+        let search_width =
+            (ui.available_width() - sort_width - ui.spacing().item_spacing.x).max(80.0);
         ui.add(
             egui::TextEdit::singleline(&mut state.search)
-                .desired_width((ui.available_width() - 240.0).max(140.0))
+                .desired_width(search_width)
                 .hint_text(tr("ui.search-products")),
         );
         egui::ComboBox::from_id_salt("shop-sort")
-            .width(130.0)
+            .width(sort_width)
+            .height(280.0)
+            .truncate()
             .selected_text(sort_label(state.sort))
             .show_ui(ui, |ui| {
                 for sort in [
@@ -221,10 +110,20 @@ pub(super) fn toolbar(ui: &mut egui::Ui, state: &mut ShopState) {
                     ShopSort::CapacityDescending,
                     ShopSort::SpeedDescending,
                     ShopSort::LengthAscending,
+                    ShopSort::CpuSocket,
+                    ShopSort::MemoryType,
+                    ShopSort::RamSlotsDescending,
+                    ShopSort::CpuSocketsDescending,
+                    ShopSort::DriveBaysDescending,
+                    ShopSort::PcieSlotsDescending,
                 ] {
-                    ui.selectable_value(&mut state.sort, sort, sort_label(sort));
+                    if sort.applies_to(section) {
+                        ui.selectable_value(&mut state.sort, sort, sort_label(sort));
+                    }
                 }
-            });
+            })
+            .response
+            .on_hover_text(sort_label(state.sort));
     });
     ui.horizontal(|ui| {
         ui.selectable_value(&mut state.list_view, false, tr("shop.grid"));
@@ -270,7 +169,7 @@ pub(super) fn toolbar(ui: &mut egui::Ui, state: &mut ShopState) {
             if ui
                 .small_button(format!(
                     "{}: {} ×",
-                    tr(&format!("shop.spec.{key}")),
+                    facet_label(state, &key),
                     display_value(&key, &value)
                 ))
                 .clicked()
@@ -289,6 +188,12 @@ fn sort_label(sort: ShopSort) -> String {
         ShopSort::CapacityDescending => "shop.sort.capacity",
         ShopSort::SpeedDescending => "shop.sort.speed",
         ShopSort::LengthAscending => "shop.sort.length",
+        ShopSort::CpuSocket => "shop.sort.socket",
+        ShopSort::MemoryType => "shop.sort.memory-type",
+        ShopSort::RamSlotsDescending => "shop.sort.ram-slots",
+        ShopSort::CpuSocketsDescending => "shop.sort.cpu-sockets",
+        ShopSort::DriveBaysDescending => "shop.sort.drive-bays",
+        ShopSort::PcieSlotsDescending => "shop.sort.pcie-slots",
     })
 }
 
@@ -304,6 +209,10 @@ pub(super) fn compatibility_target(
     }) {
         state.target = None;
         state.compatible_only = false;
+    }
+    if state.all_categories || state.section.is_none() {
+        state.compatible_only = false;
+        return;
     }
     let scope = |offer: &&super::catalog::Offer| {
         state.all_categories
@@ -402,4 +311,16 @@ pub(super) fn compatibility_target(
         )
         .on_hover_text(tr("shop.compatibility-hint"));
     });
+}
+
+fn facet_label(state: &ShopState, key: &str) -> String {
+    use crate::app::ShopSection;
+    let label = match (state.section, key) {
+        (Some(ShopSection::Storage), "type") => "shop.filter.drive-type",
+        (Some(ShopSection::DirectAttach), "type") => "shop.filter.cable-type",
+        (Some(ShopSection::CopperSupplies), "type") => "shop.filter.supply-type",
+        (Some(ShopSection::PatchPanels), "type") => "shop.filter.panel-type",
+        _ => return tr(&format!("shop.spec.{key}")),
+    };
+    tr(label)
 }

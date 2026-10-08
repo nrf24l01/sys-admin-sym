@@ -78,7 +78,7 @@ fn filters_combine_and_variants_respect_their_individual_prices() {
     let sim = NetworkSim::new();
     let mut state = ShopState {
         category: ShopCategory::Compute,
-        section: Some(ShopSection::DellServers),
+        section: Some(ShopSection::Servers),
         max_price: Some(1000),
         ..Default::default()
     };
@@ -96,7 +96,7 @@ fn filters_combine_and_variants_respect_their_individual_prices() {
             .collect::<Vec<_>>(),
         ["dell_r360_full_pack"]
     );
-    state.select(ShopCategory::Network, Some(ShopSection::Optics));
+    state.select(ShopCategory::Connectivity, Some(ShopSection::FiberCables));
     state.clear_filters();
     state
         .facets
@@ -139,7 +139,8 @@ fn category_changes_deactivate_irrelevant_filters_and_restore_section_facets() {
 fn facet_counts_preserve_selected_zero_results_and_offer_other_choices() {
     let sim = NetworkSim::new();
     let mut state = ShopState {
-        section: Some(ShopSection::Optics),
+        category: ShopCategory::Connectivity,
+        section: Some(ShopSection::FiberCables),
         ..Default::default()
     };
     state
@@ -159,7 +160,8 @@ fn facet_counts_preserve_selected_zero_results_and_offer_other_choices() {
 fn sorting_and_cable_grouping_keep_selected_variants_concrete() {
     let sim = NetworkSim::new();
     let state = ShopState {
-        section: Some(ShopSection::Optics),
+        category: ShopCategory::Connectivity,
+        section: Some(ShopSection::FiberCables),
         sort: ShopSort::PriceDescending,
         ..Default::default()
     };
@@ -235,7 +237,7 @@ fn stale_purchase_replies_do_not_unlock_a_pending_order() {
     assert!(state.feedback.as_ref().unwrap().result.is_err());
 }
 
-fn frame(
+pub(super) fn frame(
     ctx: &egui::Context,
     state: &mut ShopState,
     sim: &NetworkSim,
@@ -274,7 +276,8 @@ fn buying_emits_one_correlated_order_with_the_selected_quantity_and_variant() {
     let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
     let mut state = ShopState {
         open: true,
-        section: Some(ShopSection::Optics),
+        category: ShopCategory::Connectivity,
+        section: Some(ShopSection::DirectAttach),
         search: "dac".into(),
         ..Default::default()
     };
@@ -427,7 +430,8 @@ fn comparison_groups_equivalent_products_across_catalog_sources() {
 fn shown_variant_controls_sorting_without_discarding_filtered_preferences() {
     let sim = NetworkSim::new();
     let mut state = ShopState {
-        section: Some(ShopSection::Optics),
+        category: ShopCategory::Connectivity,
+        section: Some(ShopSection::FiberCables),
         sort: ShopSort::PriceAscending,
         ..Default::default()
     };
