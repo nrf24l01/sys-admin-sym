@@ -165,6 +165,10 @@ pub struct Server {
 pub struct Switch {
     pub ports: Vec<PortId>,
     pub vlans: Vec<Vlan>,
+    #[serde(default)]
+    pub model: crate::SwitchModel,
+    #[serde(default)]
+    pub services: crate::SwitchServices,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

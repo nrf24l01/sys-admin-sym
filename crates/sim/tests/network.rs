@@ -145,10 +145,7 @@ fn real_device_templates_expose_expected_network_panels() {
         sim.port(ports(&sim, switch)[0]).unwrap().connector,
         PortConnector::Rj45
     );
-    assert_eq!(
-        sim.port(ports(&sim, switch)[27]).unwrap().name,
-        "SFP Gi1/0/28"
-    );
+    assert_eq!(sim.port(ports(&sim, switch)[27]).unwrap().name, "Gi1/0/28");
     assert_eq!(
         sim.port(ports(&sim, switch)[27]).unwrap().connector,
         PortConnector::Sfp

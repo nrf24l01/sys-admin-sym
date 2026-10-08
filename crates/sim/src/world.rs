@@ -23,6 +23,8 @@ pub struct NetworkSim {
     pub(crate) server_operating_systems: HashMap<DeviceId, ServerOs>,
     #[serde(default)]
     pub power: PowerSystem,
+    #[serde(default)]
+    pub(crate) device_workloads: HashMap<DeviceId, DeviceWorkload>,
     pub money: i64,
     #[serde(default)]
     pub(crate) cable_inventory: CableInventory,
@@ -70,6 +72,7 @@ impl NetworkSim {
             public_ipv4_blocks: Vec::new(),
             server_operating_systems: HashMap::new(),
             power: PowerSystem::new(),
+            device_workloads: HashMap::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
             server_parts: HashMap::new(),
@@ -94,6 +97,14 @@ impl NetworkSim {
     }
 
     pub fn rebuild_indexes(&mut self) {
+        self.device_workloads
+            .retain(|id, _| self.devices.contains_key(id));
+        for workload in self.device_workloads.values_mut() {
+            workload.cpu = workload.cpu.min(1000);
+            workload.memory = workload.memory.min(1000);
+            workload.storage = workload.storage.min(1000);
+        }
+        self.normalize_switch_models();
         self.migrate_legacy_sfp_nic();
         self.power
             .devices
@@ -146,13 +157,7 @@ impl NetworkSim {
                 continue;
             }
             if !self.power.devices.contains_key(id) {
-                let watts = match device.kind {
-                    DeviceKind::Server(_) => 180,
-                    DeviceKind::Switch(_) => 80,
-                    DeviceKind::Router(_) => 60,
-                    _ => 0,
-                };
-                self.power.add_device(*id, watts, 90);
+                self.power.add_device(*id, 0, self.device_power_factor(*id));
                 if let Some(p) = self.power.devices.get_mut(id) {
                     p.requested = device.powered;
                 }
@@ -184,10 +189,33 @@ impl NetworkSim {
                     _ => {}
                 }
             }
+            match &self.devices[&id].kind {
+                DeviceKind::Ups(ups) => {
+                    if let Some(SourceId::Ups(source)) = ups.source
+                        && let Some(state) = self.power.ups.get_mut(&source)
+                    {
+                        state.spec = UpsSpec::default();
+                        state.battery_mwh = state
+                            .battery_mwh
+                            .min(u64::from(state.spec.battery_wh) * 1000);
+                        state.battery_wh = (state.battery_mwh / 1000) as u32;
+                    }
+                }
+                DeviceKind::Pdu(pdu) => {
+                    if let Some(SourceId::Pdu(source)) = pdu.source
+                        && let Some(state) = self.power.pdus.get_mut(&source)
+                    {
+                        *state = PduState {
+                            enabled: state.enabled,
+                            tripped: state.tripped,
+                            ..PduState::default()
+                        };
+                    }
+                }
+                _ => {}
+            }
         }
-        for id in self.devices.keys().copied().collect::<Vec<_>>() {
-            self.update_server_load(id);
-        }
+        self.refresh_device_loads();
         self.power.recompute_now();
         self.sync_effective_power();
         // Migrate legacy servers that predate the dedicated management NIC.
@@ -480,8 +508,21 @@ impl NetworkSim {
 
     /// Advance the deterministic packet clock used for port activity LEDs.
     pub fn advance_time(&mut self, ms: u64) {
-        self.runtime.advance_time(ms);
-        self.power.tick_ms(ms);
+        let mut remaining = ms;
+        while remaining > 0 {
+            self.refresh_device_loads();
+            self.sync_effective_power();
+            let step = if self.runtime.power_activity.pending() {
+                remaining.min(100 - self.simulation_time_ms() % 100)
+            } else {
+                remaining
+            };
+            self.power.tick_ms(step);
+            self.runtime.advance_time(step);
+            self.sync_effective_power();
+            remaining -= step;
+        }
+        self.refresh_device_loads();
         self.sync_effective_power();
     }
 
@@ -795,6 +836,10 @@ impl NetworkSim {
                 self.set_hostname(device, hostname)?;
                 vec![SimEvent::ConnectivityChanged]
             }
+            Command::SetDeviceWorkload { device, workload } => {
+                self.set_device_workload(device, workload)?;
+                vec![SimEvent::PowerChanged]
+            }
             Command::SetPower { device, powered } => {
                 self.set_power(device, powered)?;
                 let effective = self.device(device).is_some_and(|d| d.powered);
@@ -898,6 +943,8 @@ impl NetworkSim {
             }
         }
         self.reconcile_provider();
+        self.refresh_device_loads();
+        self.sync_effective_power();
         Ok(events)
     }
 
@@ -937,6 +984,15 @@ impl NetworkSim {
         template: DeviceTemplate,
         price: i64,
     ) -> Result<DeviceId, SimError> {
+        self.buy_device_with_switch_model(template, price, SwitchModel::default())
+    }
+
+    pub(crate) fn buy_device_with_switch_model(
+        &mut self,
+        template: DeviceTemplate,
+        price: i64,
+        switch_model: SwitchModel,
+    ) -> Result<DeviceId, SimError> {
         if self.money < price {
             return Err(SimError::InsufficientFunds {
                 needed: price,
@@ -975,7 +1031,8 @@ impl NetworkSim {
                 )
             }
             DeviceTemplate::Switch => {
-                let mut ports: Vec<_> = (1..=24)
+                let spec = switch_model.spec();
+                let mut ports: Vec<_> = (1..=spec.copper_ports)
                     .map(|n| {
                         self.alloc_port(
                             id,
@@ -990,10 +1047,16 @@ impl NetworkSim {
                 for port in &ports {
                     self.ports.get_mut(port).unwrap().side = RackSide::Front;
                 }
-                ports.extend((25..=28).map(|n| {
-                    self.alloc_port(
+                ports.extend((1..=spec.uplinks).map(|n| {
+                    let speed = spec.cage.modes.iter().map(|mode| mode.speed).max().unwrap();
+                    let name = if speed == LinkSpeed::Gbps10 {
+                        format!("Te1/0/{n:02}")
+                    } else {
+                        format!("Gi1/0/{:02}", spec.copper_ports + n)
+                    };
+                    let port = self.alloc_port(
                         id,
-                        format!("SFP Gi1/0/{n:02}"),
+                        name,
                         PortConnector::Sfp,
                         PortConfig::Switch(SwitchPortConfig {
                             mode: SwitchPortMode::Trunk {
@@ -1001,11 +1064,19 @@ impl NetworkSim {
                                 allowed: vec![VlanId(1)],
                             },
                         }),
-                    )
+                    );
+                    let p = self.ports.get_mut(&port).unwrap();
+                    p.max_speed = speed;
+                    p.advertised_speed = speed;
+                    p.side = RackSide::Front;
+                    self.optics.cages.insert(port, spec.cage.clone());
+                    port
                 }));
                 (
-                    format!("Cisco Catalyst C1000-24T-4G-L #{index:02}"),
+                    format!("{} #{index:02}", spec.name),
                     DeviceKind::Switch(Switch {
+                        model: switch_model,
+                        services: SwitchServices::default(),
                         ports,
                         vlans: vec![Vlan {
                             id: VlanId(1),
@@ -1102,12 +1173,6 @@ impl NetworkSim {
                 kind,
             },
         );
-        let watts = match template {
-            DeviceTemplate::Server => 180,
-            DeviceTemplate::Switch => 80,
-            DeviceTemplate::Router => 60,
-            _ => 0,
-        };
         match template {
             DeviceTemplate::Ups => {
                 let source = self.power.add_ups(UpsSpec::default());
@@ -1122,7 +1187,7 @@ impl NetworkSim {
                 }
             }
             _ => {
-                self.power.add_device(id, watts, 90);
+                self.power.add_device(id, 0, self.device_power_factor(id));
             }
         }
         Ok(id)
@@ -1421,25 +1486,8 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn update_server_load(&mut self, device: DeviceId) {
-        let module_watts = self.module_load_watts(device);
-        let Some(Device {
-            kind: DeviceKind::Server(server),
-            ..
-        }) = self.devices.get(&device)
-        else {
-            return;
-        };
-        let Some(hardware) = &server.hardware else {
-            return;
-        };
-        if let Some(power) = self.power.devices.get_mut(&device) {
-            power.load = ElectricalLoad::from_watts_pf(
-                hardware.load_watts().saturating_add(module_watts),
-                90,
-            );
-            self.power.recompute_now();
-        }
+    fn update_server_load(&mut self, _device: DeviceId) {
+        self.refresh_device_loads();
     }
 
     fn sell_device(&mut self, id: DeviceId) -> Result<(), SimError> {
@@ -1506,6 +1554,7 @@ impl NetworkSim {
             .retain(|source, target| *source != id && *target != id);
         self.ios_configs.remove(&id);
         self.startup_configs.remove(&id);
+        self.device_workloads.remove(&id);
         self.console_modes.remove(&id);
         for port in ports {
             self.ports.remove(&port);
@@ -1829,6 +1878,14 @@ impl NetworkSim {
             if let Some(status) = self.power.device_status(*id) {
                 let assembled = !matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()));
                 let next = device.rack.is_some() && status.effective && assembled;
+                if next {
+                    self.runtime
+                        .device_started
+                        .entry(*id)
+                        .or_insert(self.runtime.now_ms);
+                } else {
+                    self.runtime.device_started.remove(id);
+                }
                 changed |= device.powered != next;
                 device.powered = next;
             }

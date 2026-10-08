@@ -411,6 +411,7 @@ fn optical_uplink_forwards_frames_and_cli_uses_same_carrier() {
     module(&mut sim, bp, "sfpplus_10g_sr");
     let assembly = cable(&mut sim, ap, bp, "fiber_om4_2_3m");
     let frame = EthernetFrame {
+        qos: FrameQos::default(),
         source: MacAddress([2, 0, 0, 0, 0, 1]),
         destination: MacAddress([255; 6]),
         vlan: None,
@@ -425,7 +426,7 @@ fn optical_uplink_forwards_frames_and_cli_uses_same_carrier() {
             .contains("10000 Mb/s")
     );
     assert!(
-        sim.execute_console(b, "show interfaces Te1/0/25 transceiver")
+        sim.execute_console(b, "show interfaces Te1/0/1 transceiver")
             .success
     );
     assert!(
@@ -441,7 +442,7 @@ fn optical_uplink_forwards_frames_and_cli_uses_same_carrier() {
     sim.transmit_frame(ap, frame);
     assert_eq!(sim.port_telemetry(ap).tx_frames, before);
     assert!(
-        sim.execute_console(a, "show interfaces Te1/0/25 transceiver")
+        sim.execute_console(a, "show interfaces Te1/0/1 transceiver")
             .lines
             .join("\n")
             .contains("PolarityMismatch")
@@ -509,6 +510,7 @@ fn server_sfpplus_nic_adds_real_interfaces_and_removal_returns_modules_and_cable
     let deliveries = sim.transmit_frame(
         ap,
         EthernetFrame {
+            qos: FrameQos::default(),
             source: MacAddress::for_port(ap),
             destination: MacAddress([255; 6]),
             vlan: None,

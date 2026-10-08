@@ -27,5 +27,18 @@
     "c14": [
       { "left_down": [0.925, 0.385], "right_up": [0.965, 0.655], "side": "back" }
     ]
+  },
+  "power": {
+    "idle_mw": 8000,
+    "peak_mw": 40000,
+    "link_share_permille": 250,
+    "power_factor_percent": 90,
+    "adapter": {
+      "output_watts": 66,
+      "output_volts": 12,
+      "output_current_ma": 5500,
+      "efficiency_percent": 90,
+      "power_factor_percent": 90
+    }
   }
 }

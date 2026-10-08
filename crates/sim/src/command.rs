@@ -150,6 +150,10 @@ pub enum Command {
         device: DeviceId,
         hostname: String,
     },
+    SetDeviceWorkload {
+        device: DeviceId,
+        workload: crate::DeviceWorkload,
+    },
     SetPower {
         device: DeviceId,
         powered: bool,

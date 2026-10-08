@@ -572,3 +572,37 @@ fn virtual_product_rows_skip_offscreen_cards_and_keep_scrolling_interactive() {
         );
     }
 }
+
+#[test]
+fn catalyst_artwork_and_catalog_specs_are_model_specific() {
+    let mut textures = artwork::test_textures();
+    textures.switch = egui::TextureId::User(40);
+    textures.switch_10g = egui::TextureId::User(41);
+    let g = offer("cisco_catalyst_c1000");
+    let x = offer("switch_10g");
+    let g_art = artwork::artwork(g, textures).unwrap();
+    let x_art = artwork::artwork(x, textures).unwrap();
+    assert_ne!(g_art.texture, x_art.texture);
+    assert_ne!(g_art.uv, x_art.uv);
+    assert!((x_art.aspect - 487.0 / 48.0).abs() < 0.001);
+    for (offer, capacity, power) in [(g, 56_000, 15_840), (x, 128_000, 18_000)] {
+        assert_eq!(
+            offer
+                .attributes
+                .iter()
+                .find(|a| a.key == "switching-capacity")
+                .unwrap()
+                .number,
+            Some(capacity)
+        );
+        assert_eq!(
+            offer
+                .attributes
+                .iter()
+                .find(|a| a.key == "switch-idle-power")
+                .unwrap()
+                .number,
+            Some(power)
+        );
+    }
+}

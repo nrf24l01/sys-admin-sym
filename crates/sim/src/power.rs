@@ -1,5 +1,13 @@
 //! Deterministic rack power model.
 #![allow(clippy::possible_missing_else, clippy::collapsible_if)]
+mod activity;
+mod components;
+mod consumption;
+mod profiles;
+pub(crate) use activity::PowerActivity;
+pub use consumption::*;
+pub use profiles::*;
+
 use crate::{CableRoutePoint, DeviceId, RackId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -22,22 +30,31 @@ pub enum PowerCordKind {
 }
 
 impl PowerCordKind {
-    pub const CISCO_OUTPUT_WATTS: u32 = 66;
-    pub const CISCO_OUTPUT_VOLTS: u32 = 12;
-    pub const CISCO_OUTPUT_CURRENT_MA: u32 = 5_500;
-    pub const CISCO_EFFICIENCY_PERCENT: u32 = 90;
-    pub const CISCO_POWER_FACTOR_PERCENT: u16 = 90;
-
+    pub fn allows_load(self, load: ElectricalLoad) -> bool {
+        match self {
+            Self::IecC13C14 => true,
+            Self::Cisco66WAdapter => {
+                let adapter = &router_power_profile().adapter;
+                load.watts <= adapter.output_watts
+                    && u64::from(load.watts) * 1000
+                        <= u64::from(adapter.output_volts) * u64::from(adapter.output_current_ma)
+            }
+        }
+    }
     /// AC load presented to the upstream outlet for a DC device load.
     pub fn input_load(self, load: ElectricalLoad) -> ElectricalLoad {
+        if !self.allows_load(load) {
+            return ElectricalLoad::default();
+        }
         match self {
             Self::IecC13C14 => load,
             Self::Cisco66WAdapter => {
+                let adapter = &router_power_profile().adapter;
                 let watts = ceil(
                     u64::from(load.watts) * 100,
-                    u64::from(Self::CISCO_EFFICIENCY_PERCENT),
+                    u64::from(adapter.efficiency_percent),
                 );
-                ElectricalLoad::from_watts_pf(s32(watts), Self::CISCO_POWER_FACTOR_PERCENT)
+                ElectricalLoad::from_watts_pf(s32(watts), adapter.power_factor_percent)
             }
         }
     }
@@ -101,12 +118,13 @@ pub struct UpsSpec {
 }
 impl Default for UpsSpec {
     fn default() -> Self {
+        let power = ups_power_profile();
         Self {
-            watts: 1000,
-            va: 1500,
-            battery_wh: 900,
-            efficiency_percent: 90,
-            charge_watts: 120,
+            watts: power.capacity_watts,
+            va: power.capacity_va,
+            battery_wh: power.battery_wh,
+            efficiency_percent: power.efficiency_percent,
+            charge_watts: power.charge_watts,
         }
     }
 }
@@ -156,12 +174,13 @@ pub struct PduState {
 }
 impl Default for PduState {
     fn default() -> Self {
+        let power = pdu_power_profile();
         Self {
-            watts: 2300,
-            va: 2300,
-            current_ma: 10_000,
-            outlets: 8,
-            overhead_watts: 5,
+            watts: power.capacity_watts,
+            va: power.capacity_va,
+            current_ma: power.current_ma,
+            outlets: power.outlets,
+            overhead_watts: power.self_watts,
             tripped: false,
             enabled: true,
         }
@@ -181,6 +200,8 @@ pub struct PowerTelemetry {
     pub input_available: bool,
     pub battery_mwh: u64,
     pub runtime_seconds: Option<u64>,
+    #[serde(default)]
+    pub self_consumption_watts: u32,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PowerSystem {
@@ -269,7 +290,10 @@ impl PowerSystem {
     pub fn outlets(&self, s: SourceId) -> usize {
         match s {
             SourceId::Rack(i) => self.racks.get(&i).map_or(0, |_| 4),
-            SourceId::Ups(i) => self.ups.get(&i).map_or(0, |_| 4),
+            SourceId::Ups(i) => self
+                .ups
+                .get(&i)
+                .map_or(0, |_| usize::from(ups_power_profile().outlets)),
             SourceId::Pdu(i) => self
                 .pdus
                 .get(&i)
@@ -306,7 +330,7 @@ impl PowerSystem {
                     && self
                         .devices
                         .get(&d)
-                        .is_some_and(|x| x.load.watts > PowerCordKind::CISCO_OUTPUT_WATTS) =>
+                        .is_some_and(|x| !kind.allows_load(x.load)) =>
             {
                 return Err(PowerError::AdapterOverload);
             }
@@ -425,7 +449,22 @@ impl PowerSystem {
                 .map_or((0, None), |u| (u.battery_mwh, self.runtime(i, output))),
             _ => (0, None),
         };
+        let self_consumption_watts = match s {
+            SourceId::Rack(_) => 0,
+            SourceId::Pdu(_) => input.watts.saturating_sub(output.watts),
+            SourceId::Ups(_) if input_available => input.watts.saturating_sub(output.watts),
+            SourceId::Ups(id) if available => {
+                let watts = u64::from(output.watts) + u64::from(ups_power_profile().self_watts);
+                s32(ceil(
+                    watts * 100,
+                    u64::from(self.ups[&id].spec.efficiency_percent.clamp(1, 100)),
+                ))
+                .saturating_sub(output.watts)
+            }
+            SourceId::Ups(_) => 0,
+        };
         Some(PowerTelemetry {
+            self_consumption_watts,
             output,
             input,
             available,
@@ -460,10 +499,13 @@ impl PowerSystem {
                 u.battery_mwh = u.battery_mwh.saturating_add(s64(add)).min(cap)
             } else if !u.enabled {
                 u.online = false
-            } else if out.watts > 0 && u.battery_mwh > 0 {
+            } else if u.battery_mwh > 0 {
                 u.online = true;
                 let eff = u64::from(u.spec.efficiency_percent.clamp(1, 100));
-                let n = u128::from(out.watts) * u128::from(ms) * 100 * 1000
+                let n = u128::from(out.watts.saturating_add(ups_power_profile().self_watts))
+                    * u128::from(ms)
+                    * 100
+                    * 1000
                     + u128::from(u.discharge_remainder);
                 let used = n / (u128::from(eff) * 3_600_000);
                 u.discharge_remainder = (n % (u128::from(eff) * 3_600_000)) as u64;
@@ -633,6 +675,12 @@ impl PowerSystem {
                 if !u.enabled || u.tripped {
                     o = ElectricalLoad::default();
                 }
+                if u.enabled && !u.tripped {
+                    o = plus(
+                        o,
+                        ElectricalLoad::from_watts_pf(ups_power_profile().self_watts, 100),
+                    );
+                }
                 let eff = u64::from(u.spec.efficiency_percent.clamp(1, 100));
                 let watts = s32(ceil(u64::from(o.watts) * 100, eff));
                 let va = s32(ceil(u64::from(o.va) * 100, eff));
@@ -654,14 +702,22 @@ impl PowerSystem {
         }
         o
     }
-    fn runtime(&self, id: u64, o: ElectricalLoad) -> Option<u64> {
-        self.ups.get(&id).and_then(|u| {
-            (o.watts > 0).then(|| {
-                u.battery_mwh * 3600
-                    / (u64::from(o.watts) * 1000 * 100
-                        / u64::from(u.spec.efficiency_percent.max(1)))
+    fn runtime(&self, id: u64, output: ElectricalLoad) -> Option<u64> {
+        self.ups
+            .get(&id)
+            .filter(|u| u.enabled && !u.tripped)
+            .and_then(|u| {
+                let watts = u64::from(output.watts) + u64::from(ups_power_profile().self_watts);
+                if watts == 0 {
+                    return None;
+                }
+                Some(
+                    (u128::from(u.battery_mwh)
+                        * 3600
+                        * u128::from(u.spec.efficiency_percent.clamp(1, 100))
+                        / (u128::from(watts) * 1000 * 100)) as u64,
+                )
             })
-        })
     }
     fn recompute(&mut self) {
         let mut ss: Vec<_> = self
@@ -777,7 +833,11 @@ impl PowerSystem {
                     })
                 } else {
                     true
-                }) && self.available(s, &mut HashSet::new())
+                }) && usize::from(index) < self.outlets(s)
+                    && self
+                        .cord_kind(OutletId { source: s, index })
+                        .allows_load(self.devices[&d].load)
+                    && self.available(s, &mut HashSet::new())
             });
             if let Some(x) = self.devices.get_mut(&d) {
                 x.effective = x.requested && on
@@ -902,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_ups_runtime_has_no_division_or_fake_runtime() {
+    fn idle_ups_runtime_accounts_for_controller_power() {
         let r = RackId(9);
         let mut p = PowerSystem::new();
         p.add_rack(r);
@@ -917,7 +977,8 @@ mod tests {
         .unwrap();
         let t = p.source_telemetry(SourceId::Ups(u)).unwrap();
         assert_eq!(t.output.watts, 0);
-        assert_eq!(t.runtime_seconds, None);
+        assert_eq!(t.input.watts, 9);
+        assert_eq!(t.runtime_seconds, Some(364_500));
         p.tick_ms(u64::MAX);
         assert_eq!(p.ups[&u].battery_mwh, 900_000);
     }
@@ -962,13 +1023,13 @@ mod tests {
             100
         );
         assert_eq!(ut.output.watts, 105);
-        assert_eq!(ut.input.watts, 117);
-        assert_eq!(rt.output.watts, 117);
+        assert_eq!(ut.input.watts, 126);
+        assert_eq!(rt.output.watts, 126);
         p.ups.get_mut(&u).unwrap().battery_mwh = 899_000;
         let ut = p.source_telemetry(SourceId::Ups(u)).unwrap();
         let rt = p.source_telemetry(SourceId::Rack(r)).unwrap();
-        assert_eq!(ut.input.watts, 237);
-        assert_eq!(rt.output.watts, 237);
+        assert_eq!(ut.input.watts, 246);
+        assert_eq!(rt.output.watts, 246);
         p.set_rack_mains(r, false);
         let ut = p.source_telemetry(SourceId::Ups(u)).unwrap();
         let rt = p.source_telemetry(SourceId::Rack(r)).unwrap();

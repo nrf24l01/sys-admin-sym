@@ -108,8 +108,8 @@ proportionally; automatic lengths use the same 5% slack rule for both families.
 `PortConnector` records the socket independently from VLAN/IP configuration.
 `optics` owns cage capabilities, separate transceiver and finished assembly
 inventories, typed installation commands, and the shared `link_status` evaluator.
-The original Catalyst has four 1G SFP cages; a separate JSON hardware profile
-provides 1/10G SFP+ uplinks, and the PCIe catalog includes an Intel X520-DA2
+The Catalyst 4G and 4X have independent hardware profiles in `switches.json`,
+with four 1G SFP or 1/10G SFP+ cages respectively, and the PCIe catalog includes an Intel X520-DA2
 (two SFP+ cages, PCIe 2.0 x8). Generic prototype NIC IDs migrate on load without
 recreating their interfaces.
 LC patch panels reuse passive paired-port forwarding without regenerating signals.
@@ -265,3 +265,28 @@ ordinary devices and the supplied Cisco 66 W adapter for ISR C1111 routers.
 The router adapter has a four-pin inlet (not a barrel jack), 12 V / 5.5 A
 output, 90% efficiency, and PF 0.90; its upstream draw is calculated once at
 the adapter boundary.
+
+## Catalyst switch services
+
+`crates/sim/src/switching` owns model specifications, save migration, converged
+EtherChannel membership, QoS classification/queue budgets and semantic SNMPv2c.
+Forwarding consumes channel membership and QoS in the existing Ethernet path;
+spanning tree collapses bundles and blocks every active member together.
+Switch services serialize with running/startup device configuration, while
+packet counters, queue budgets and boot times remain transient runtime state.
+IOS commands and simulated Linux SNMP tools call these domain services.
+See [the Catalyst guide](docs/CATALYST_SWITCHES.md) for supported operations
+and the boundary between deterministic behavior and firmware/wire protocols.
+
+## Operating power estimates
+
+`crates/sim/src/power/consumption.rs` combines hardware-dependent idle and active
+component curves, guest work, per-card traffic and PSU conversion. Estimated
+parameters live in per-model `power` blocks in equipment JSON catalogs. Each
+catalog/profile reads installed files once, with embedded defaults when absent;
+editing power values requires a restart, not a rebuild. Ratings remain separate
+from operating curves, and saved UPS/PDU state adopts current model settings. Consumption snapshots are cached in transient
+network runtime; sustained `DeviceWorkload` inputs persist in the world.
+The existing electrical topology consumes the resulting operating demand.
+Time advancement integrates changing load across activity bucket boundaries
+without looping through long idle periods. See [power consumption](docs/POWER_CONSUMPTION.md).

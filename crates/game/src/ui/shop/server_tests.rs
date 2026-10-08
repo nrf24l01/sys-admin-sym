@@ -38,7 +38,11 @@ fn server_filters_describe_physical_capacity_for_bare_and_populated_configuratio
         );
         assert_eq!(
             offer.numeric("psu-watts"),
-            u64::from(chassis.integrated_psu_watts)
+            u64::from(
+                cloud_provider_sim::server_power_profile()
+                    .psu
+                    .capacity_watts
+            )
         );
         assert!(
             chassis

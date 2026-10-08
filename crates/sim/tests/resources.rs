@@ -1,5 +1,6 @@
 use cloud_provider_sim::{
-    Command, DeviceKind, DeviceTemplate, NetworkSim, ServerHardware, ServerPartKind, server_catalog,
+    Command, DeviceKind, DeviceTemplate, NetworkSim, ServerHardware, ServerPartKind,
+    server_power_profile,
 };
 
 #[test]
@@ -28,7 +29,7 @@ fn integrated_power_supply_allows_assembled_server_to_be_ready() {
     assert!(hardware.ready());
     assert_eq!(hardware.compute_mhz(), 4 * 3400);
     assert_eq!(hardware.memory_score_gb(), 16 * 5 * 10 / 30);
-    assert_eq!(server_catalog().chassis.integrated_psu_watts, 600);
+    assert_eq!(server_power_profile().psu.capacity_watts, 600);
 }
 
 #[test]

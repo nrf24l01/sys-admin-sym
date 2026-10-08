@@ -33,6 +33,10 @@ impl MacAddress {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PortTelemetry {
+    #[serde(default)]
+    pub tx_bytes: u64,
+    #[serde(default)]
+    pub rx_bytes: u64,
     pub tx_frames: u64,
     pub rx_frames: u64,
     pub last_tx_ms: Option<u64>,
@@ -42,6 +46,7 @@ pub struct PortTelemetry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EthernetFrame {
+    pub qos: crate::FrameQos,
     pub source: MacAddress,
     pub destination: MacAddress,
     /// `None` is an untagged access frame; `Some` is an 802.1Q tag on a trunk.
@@ -80,6 +85,7 @@ pub enum ArpPacket {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ipv4Packet {
+    pub dscp: u8,
     pub source: Ipv4Addr,
     pub destination: Ipv4Addr,
     pub ttl: u8,
@@ -105,6 +111,12 @@ impl PortTelemetry {
 
 #[derive(Debug, Clone, Default)]
 pub struct NetworkRuntime {
+    pub(crate) power_activity: crate::power::PowerActivity,
+    pub(crate) consumption: HashMap<DeviceId, crate::DeviceConsumption>,
+    pub(crate) device_started: HashMap<DeviceId, u64>,
+    pub(crate) snmp: HashMap<DeviceId, crate::SnmpCounters>,
+    pub(crate) qos: HashMap<PortId, crate::QosCounters>,
+    pub(crate) qos_buckets: HashMap<PortId, crate::switching::QosBucket>,
     pub(crate) now_ms: u64,
     pub(crate) spanning_tree: HashMap<VlanId, HashSet<PortId>>,
     pub loop_drops: u64,
@@ -119,6 +131,12 @@ pub struct NetworkRuntime {
 impl NetworkRuntime {
     /// Drop learned and transient state when a saved/replaced topology is loaded.
     pub(crate) fn reset(&mut self) {
+        self.power_activity = Default::default();
+        self.consumption.clear();
+        self.device_started.clear();
+        self.snmp.clear();
+        self.qos.clear();
+        self.qos_buckets.clear();
         self.now_ms = 0;
         self.telemetry.clear();
         self.spanning_tree.clear();
@@ -136,6 +154,7 @@ impl NetworkRuntime {
             || self.routing_revision != routing_revision
         {
             self.arp.clear();
+            self.qos_buckets.clear();
             self.spanning_tree.clear();
             self.mac_learning.clear();
             self.mac_learning_revision = topology_revision;
@@ -148,6 +167,7 @@ impl NetworkRuntime {
     }
     pub fn advance_time(&mut self, ms: u64) {
         self.now_ms = self.now_ms.saturating_add(ms);
+        self.power_activity.expire(self.now_ms);
     }
 
     pub fn port_telemetry(&self, port: PortId) -> PortTelemetry {
@@ -167,9 +187,21 @@ impl NetworkRuntime {
     /// Account for one synchronous wire crossing. Callers pass the physical
     /// ingress and egress ports, so a frame can never appear as activity on a
     /// disconnected endpoint by accident.
-    pub(crate) fn send_frame(&mut self, egress: PortId, ingress: PortId) {
+    pub(crate) fn send_frame(&mut self, egress: PortId, ingress: PortId, bytes: u16) {
+        self.power_activity
+            .network
+            .entry(egress)
+            .or_default()
+            .add(self.now_ms, u64::from(bytes.max(64)));
+        self.power_activity
+            .network
+            .entry(ingress)
+            .or_default()
+            .add(self.now_ms, u64::from(bytes.max(64)));
         self.tx(egress);
         self.rx(ingress);
+        self.telemetry.entry(egress).or_default().tx_bytes += u64::from(bytes.max(64));
+        self.telemetry.entry(ingress).or_default().rx_bytes += u64::from(bytes.max(64));
     }
 
     pub(crate) fn rx(&mut self, port: PortId) {

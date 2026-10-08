@@ -15,8 +15,6 @@ pub struct ServerChassis {
     pub dimm_slots: usize,
     pub memory_type: String,
     pub psu_bays: usize,
-    #[serde(default = "ServerChassis::default_integrated_psu_watts")]
-    pub integrated_psu_watts: u16,
     pub drive_bays: Vec<DriveBay>,
     pub pcie_slots: Vec<PcieSlot>,
 }
@@ -57,6 +55,7 @@ pub struct ServerPart {
     #[serde(default)]
     pub desc: crate::LocalizedText,
     pub price: i64,
+    pub power: crate::PowerProfile,
     #[serde(flatten)]
     pub kind: ServerPartKind,
 }
@@ -128,15 +127,16 @@ pub enum PciCard {
         #[serde(default)]
         cage: Option<crate::CageProfile>,
         speed_mbps: u32,
-        power_w: u16,
     },
 }
 
 pub fn server_catalog() -> &'static ServerCatalog {
     static CATALOG: OnceLock<ServerCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../assets/equipment/server_parts.json"))
-            .expect("valid server hardware catalog")
+        crate::equipment_config::equipment_catalog(
+            "server_parts.json",
+            include_str!("../../../assets/equipment/server_parts.json"),
+        )
     })
 }
 
@@ -216,55 +216,17 @@ impl ServerHardware {
             .sum()
     }
 
+    /// Estimated maximum component load for sizing; current consumption is
+    /// available through NetworkSim::device_consumption.
     pub fn load_watts(&self) -> u32 {
-        let catalog = server_catalog();
-        let cpu_w: u32 = self
-            .cpus
-            .iter()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match part.kind {
-                ServerPartKind::Cpu { tdp_w, .. } => Some(u32::from(tdp_w)),
-                _ => None,
-            })
-            .sum();
-        let card_w: u32 = self
-            .pcie
-            .iter()
-            .flatten()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match &part.kind {
-                ServerPartKind::PciCard {
-                    card: PciCard::Ethernet { power_w, .. },
-                } => Some(u32::from(*power_w)),
-                _ => None,
-            })
-            .sum();
-        let drive_w: u32 = self
-            .drives
-            .iter()
-            .flatten()
-            .filter_map(|id| {
-                crate::drive_catalog()
-                    .drives
-                    .iter()
-                    .find(|drive| &drive.id == id)
-            })
-            .map(|drive| u32::from(drive.power_w))
-            .sum();
-        100 + cpu_w + self.ram.len() as u32 * 5 + card_w + drive_w
+        self.peak_load_watts()
     }
 
     pub fn ready(&self) -> bool {
         if self.cpus.is_empty() || self.ram.is_empty() {
             return false;
         }
-        u32::from(server_catalog().chassis.integrated_psu_watts) >= self.load_watts()
-    }
-}
-
-impl ServerChassis {
-    fn default_integrated_psu_watts() -> u16 {
-        600
+        crate::server_power_profile().psu.capacity_watts >= self.load_watts()
     }
 }
 

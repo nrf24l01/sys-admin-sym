@@ -250,7 +250,9 @@ running configuration in this simulator; use `reload` for startup restoration.
 ## Compatibility boundary
 
 This is a functional IOS command subset. Firmware boot, authentication/AAA,
-EtherChannel, QoS, IPv6, configurable IOS NAT, OSPF/EIGRP and SNMP are not modeled.
+IPv6, configurable IOS NAT and OSPF/EIGRP are not modeled.
+Catalyst EtherChannel, QoS and SNMPv2c have functional simulated subsets; see
+[the Catalyst guide](CATALYST_SWITCHES.md) for commands and precise limits.
 The Ethernet/IPv4 packet engine supports static-route forwarding. Provider-side
 BGP policy, converged spanning-tree forwarding, interface filtering, switch
 management and semantic DHCP have scenario configuration APIs; their complete

@@ -8,6 +8,7 @@ mod cables;
 mod equipment;
 mod inventory;
 mod optics;
+mod power_details;
 mod rack;
 mod ranges;
 mod room;
@@ -140,6 +141,7 @@ pub struct EquipmentImages {
     server_front: Handle<Image>,
     server_rear: Handle<Image>,
     switch_front: Handle<Image>,
+    switch_4x_front: Handle<Image>,
     switch_rear: Handle<Image>,
     router_front: Handle<Image>,
     router_rear: Handle<Image>,
@@ -161,6 +163,7 @@ struct EquipmentTextures {
     server_front: egui::TextureId,
     server_rear: egui::TextureId,
     switch_front: egui::TextureId,
+    switch_4x_front: egui::TextureId,
     switch_rear: egui::TextureId,
     router_front: egui::TextureId,
     router_rear: egui::TextureId,
@@ -177,6 +180,7 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.server_front = textures::load(&assets, "equipment/server_front.png");
     images.server_rear = textures::load(&assets, "equipment/server_rear_clean.png");
     images.switch_front = textures::load(&assets, "equipment/switch_front_clean.png");
+    images.switch_4x_front = textures::load(&assets, "equipment/switch_4x_front.jpg");
     images.switch_rear = textures::load(&assets, "equipment/switch_rear.png");
     images.router_front = textures::load(&assets, "equipment/router_rear_clean.png");
     images.router_rear = textures::load(&assets, "equipment/router_front_clean.png");
@@ -193,6 +197,7 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
         images.server_front.id(),
         images.server_rear.id(),
         images.switch_front.id(),
+        images.switch_4x_front.id(),
         images.switch_rear.id(),
         images.router_front.id(),
         images.router_rear.id(),
@@ -210,6 +215,7 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
         images.server_front.id(),
         images.router_front.id(),
         images.switch_front.id(),
+        images.switch_4x_front.id(),
         images.ups_faces.id(),
         images.pdu_faces.id(),
         images.shop_products.id(),
@@ -274,6 +280,7 @@ impl EquipmentImages {
             &self.shop_products,
             &self.optical_connectors,
             &self.shop_connectors,
+            &self.switch_4x_front,
         ];
         let ids = sources.map(|source| self.textures.thumbnail(source, contexts));
         let full = if details_open {
@@ -285,6 +292,7 @@ impl EquipmentImages {
             server: ids[0],
             router: ids[1],
             switch: ids[2],
+            switch_10g: ids[8],
             ups: ids[3],
             pdu: ids[4],
             products: ids[5],
@@ -301,6 +309,7 @@ impl EquipmentImages {
             server_front: self.textures.texture(&self.server_front, contexts),
             server_rear: self.textures.texture(&self.server_rear, contexts),
             switch_front: self.textures.texture(&self.switch_front, contexts),
+            switch_4x_front: self.textures.texture(&self.switch_4x_front, contexts),
             switch_rear: self.textures.texture(&self.switch_rear, contexts),
             router_front: self.textures.texture(&self.router_front, contexts),
             router_rear: self.textures.texture(&self.router_rear, contexts),
@@ -792,7 +801,7 @@ fn server_hardware_inspector(
             (chassis.cpu_sockets).to_string(),
             (hardware.ram.len()).to_string(),
             (chassis.dimm_slots).to_string(),
-            (chassis.integrated_psu_watts).to_string(),
+            (server_power_profile().psu.capacity_watts).to_string(),
         ],
     ));
     let cpu_lanes: u16 = hardware
@@ -1010,36 +1019,50 @@ fn power_controls(
         _ => None,
     };
     if let Some(power) = sim.power.device_status(device.id) {
+        let load = sim
+            .device_consumption(device.id)
+            .map_or_else(ElectricalLoad::default, |c| c.current);
         if matches!(device.kind, DeviceKind::Router(_)) {
-            let ac = PowerCordKind::Cisco66WAdapter.input_load(power.load);
+            let adapter = &router_power_profile().adapter;
+            let ac = PowerCordKind::Cisco66WAdapter.input_load(load);
             ui.label(crate::localization::tr_args(
                 "ui.cisco-adapter-66-w-max-12-v",
                 &[
-                    (power.load.watts).to_string(),
-                    format!("{:.2}", power.load.watts as f32 / 12.0),
+                    (load.watts).to_string(),
+                    format!("{:.2}", load.watts as f32 / adapter.output_volts as f32),
                     (ac.watts).to_string(),
                     (ac.va).to_string(),
                     format!("{:.2}", ac.current_ma as f32 / 1000.0),
+                    adapter.output_watts.to_string(),
+                    adapter.output_volts.to_string(),
+                    format!("{:.1}", adapter.output_current_ma as f32 / 1000.0),
                 ],
             ));
         } else {
             ui.label(crate::localization::tr_args(
                 "ui.load-w-va-a",
                 &[
-                    (power.load.watts).to_string(),
-                    (power.load.va).to_string(),
-                    format!("{:.2}", power.load.current_ma as f32 / 1000.0),
+                    (load.watts).to_string(),
+                    (load.va).to_string(),
+                    format!("{:.2}", load.current_ma as f32 / 1000.0),
                 ],
             ));
         }
         ui.colored_label(
-            if power.effective {
+            if device.powered {
                 egui::Color32::LIGHT_GREEN
             } else {
                 egui::Color32::YELLOW
             },
-            tr(if power.effective {
+            tr(if device.powered {
                 "ui.effective-power-on"
+            } else if power.requested
+                && matches!(device.kind, DeviceKind::Router(_))
+                && !PowerCordKind::Cisco66WAdapter.allows_load(power.load)
+            {
+                "power.adapter-overload"
+            } else if power.requested && power.effective {
+                "power.assembly-required"
             } else if power.requested {
                 "ui.requested-on-source-unavailable"
             } else {
@@ -1057,7 +1080,19 @@ fn power_controls(
             actions.write(UiAction::TogglePower(device.id, !power.requested));
         }
     }
+    if matches!(
+        device.kind,
+        DeviceKind::Server(_) | DeviceKind::Switch(_) | DeviceKind::Router(_)
+    ) {
+        power_details::consumption(ui, sim, device, actions);
+    }
     if let Some(source) = source {
+        if let Some(reading) = sim.power.source_telemetry(source) {
+            ui.label(crate::localization::tr_args(
+                "power.source-self",
+                &[reading.self_consumption_watts.to_string()],
+            ));
+        }
         let telemetry = sim.power.source_telemetry(source);
         ui.separator();
         ui.strong(tr(if matches!(device.kind, DeviceKind::Ups(_)) {
@@ -2034,7 +2069,7 @@ fn rack_view(
                                                 DeviceKind::Switch(_)
                                                     if state.rack_side == RackSide::Front =>
                                                 {
-                                                    textures.switch_front
+                                                    if matches!(&device.kind, DeviceKind::Switch(sw) if sw.model == SwitchModel::Catalyst24T4X) { textures.switch_4x_front } else { textures.switch_front }
                                                 }
                                                 DeviceKind::Switch(_) => textures.switch_rear,
                                                 DeviceKind::Router(_)
@@ -3232,6 +3267,11 @@ fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
     let (left, top, right, bottom) = match kind {
         DeviceKind::Server(_) if side == RackSide::Front => (0.009, 0.48, 0.995, 0.84),
         DeviceKind::Switch(_) if side == RackSide::Rear => (0.002, 0.45, 0.997, 0.755),
+        DeviceKind::Switch(sw)
+            if side == RackSide::Front && sw.model == SwitchModel::Catalyst24T4X =>
+        {
+            (8.0 / 500.0, 203.0 / 400.0, 495.0 / 500.0, 251.0 / 400.0)
+        }
         DeviceKind::Switch(_) => (0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
         DeviceKind::Router(_) if side == RackSide::Rear => (0.0, 0.31, 1.0, 0.70),
         DeviceKind::Router(_) => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
@@ -3332,7 +3372,13 @@ fn equipment_texture(
     Some(match kind {
         DeviceKind::Server(_) if side == RackSide::Front => textures.server_front,
         DeviceKind::Server(_) => textures.server_rear,
-        DeviceKind::Switch(_) if side == RackSide::Front => textures.switch_front,
+        DeviceKind::Switch(sw) if side == RackSide::Front => {
+            if sw.model == SwitchModel::Catalyst24T4X {
+                textures.switch_4x_front
+            } else {
+                textures.switch_front
+            }
+        }
         DeviceKind::Switch(_) => textures.switch_rear,
         DeviceKind::Router(_) if side == RackSide::Front => textures.router_front,
         DeviceKind::Router(_) => textures.router_rear,

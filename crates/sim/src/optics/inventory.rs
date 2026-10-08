@@ -4,11 +4,12 @@ use crate::*;
 impl NetworkSim {
     pub fn cage_profile(&self, port: PortId) -> Option<CageProfile> {
         (self.port(port)?.connector == PortConnector::Sfp).then(|| {
-            self.optics
-                .cages
-                .get(&port)
-                .cloned()
-                .unwrap_or_else(CageProfile::sfp)
+            self.optics.cages.get(&port).cloned().unwrap_or_else(|| {
+                match self.device(self.ports[&port].device).map(|d| &d.kind) {
+                    Some(DeviceKind::Switch(switch)) => switch.model.spec().cage.clone(),
+                    _ => CageProfile::sfp(),
+                }
+            })
         })
     }
     pub fn installed_transceiver(&self, port: PortId) -> Option<&TransceiverInstance> {
@@ -140,42 +141,27 @@ impl NetworkSim {
         self.sync_effective_power();
         true
     }
-    pub(crate) fn module_load_watts(&self, device: DeviceId) -> u32 {
-        let mw: u32 = self.device(device).map_or(0, |d| {
+    pub(crate) fn module_power_milliwatts(&self, device: DeviceId) -> (u32, u32) {
+        self.device(device).map_or((0, 0), |d| {
             d.ports()
                 .iter()
-                .filter_map(|port| self.endpoint_module(*port))
-                .map(|m| m.power_mw)
-                .sum()
-        });
-        mw.div_ceil(1000)
+                .filter_map(|port| self.endpoint_module(*port).map(|module| (*port, module)))
+                .fold((0, 0), |(current, peak), (port, module)| {
+                    let activity = if module.power.idle_mw == module.power.peak_mw {
+                        0
+                    } else {
+                        let (linked, traffic) = self.network_power_utilization(&[port]);
+                        module.power.network_activity(linked, traffic)
+                    };
+                    (
+                        current + module.power.draw_mw(activity),
+                        peak + module.power.peak_mw,
+                    )
+                })
+        })
     }
     pub(crate) fn refresh_module_loads(&mut self) {
-        let loads: Vec<_> = self
-            .devices
-            .values()
-            .filter_map(|device| {
-                let base = match &device.kind {
-                    DeviceKind::Server(server) => server
-                        .hardware
-                        .as_ref()
-                        .map_or(180, ServerHardware::load_watts),
-                    DeviceKind::Switch(_) => 80,
-                    DeviceKind::Router(_) => 60,
-                    _ => return None,
-                };
-                Some((
-                    device.id,
-                    base.saturating_add(self.module_load_watts(device.id)),
-                ))
-            })
-            .collect();
-        for (device, watts) in loads {
-            if let Some(power) = self.power.devices.get_mut(&device) {
-                power.load = ElectricalLoad::from_watts_pf(watts, 90);
-            }
-        }
-        self.power.recompute_now();
+        self.refresh_device_loads();
     }
     pub(crate) fn configure_optics(
         &mut self,
@@ -301,27 +287,17 @@ impl NetworkSim {
                     });
                 }
                 // The existing device implementation owns switching/panel behavior; the profile supplies hardware capabilities.
-                let id = self.buy_device_at_price(template, model.price)?;
+                let switch_model = match model.profile {
+                    OpticalHardwareProfile::Switch { model } => model,
+                    OpticalHardwareProfile::FiberPanel => SwitchModel::default(),
+                };
+                let id = self.buy_device_with_switch_model(template, model.price, switch_model)?;
                 self.devices.get_mut(&id).unwrap().name =
                     format!("{} #{:02}", model.display_name.get("en"), id.0);
                 self.optics.device_models.insert(id, model.id.clone());
                 for port in self.devices[&id].ports().to_vec() {
                     let p = self.ports.get_mut(&port).unwrap();
-                    if switch && p.connector == PortConnector::Sfp {
-                        let OpticalHardwareProfile::Switch { cage } = &model.profile else {
-                            unreachable!()
-                        };
-                        let speed = cage
-                            .modes
-                            .iter()
-                            .map(|m| m.speed)
-                            .max()
-                            .ok_or(OpticsError::IncompatibleHost)?;
-                        p.max_speed = speed;
-                        p.advertised_speed = speed;
-                        p.name = p.name.replace("Gi1/0/", "Te1/0/").replace("SFP ", "");
-                        self.optics.cages.insert(port, cage.clone());
-                    } else if !switch {
+                    if !switch {
                         p.connector = PortConnector::Lc;
                     }
                 }

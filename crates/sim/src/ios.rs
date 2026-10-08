@@ -1,5 +1,6 @@
 //! IOS-style console for the simulator. No Cisco firmware is executed.
 mod routes;
+mod switching;
 
 use crate::*;
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,25 @@ pub struct IosStartupConfig {
 
 impl IosStartupConfig {
     pub(crate) fn normalize_interfaces(&mut self) {
+        if let DeviceKind::Switch(switch) = &mut self.kind {
+            let spec = switch.model.spec();
+            if self.ports.iter().any(|p| p.max_speed == LinkSpeed::Gbps10) {
+                switch.model = SwitchModel::Catalyst24T4X;
+                for (index, port) in self.ports.iter_mut().enumerate().skip(spec.copper_ports) {
+                    let number = index + 1 - spec.copper_ports;
+                    port.name = format!("Te1/0/{number:02}");
+                    if let Some(description) = self
+                        .metadata
+                        .descriptions
+                        .remove(&format!("TenGigabitEthernet1/0/{}", index + 1))
+                    {
+                        self.metadata
+                            .descriptions
+                            .insert(format!("TenGigabitEthernet1/0/{number}"), description);
+                    }
+                }
+            }
+        }
         if let DeviceKind::Router(router) = &mut self.kind {
             crate::normalize_router_interfaces(&mut router.interfaces);
         }
@@ -43,6 +63,7 @@ pub enum IosMode {
     Privileged,
     Global,
     Vlan(VlanId),
+    PortChannel(u8),
     Interface {
         ports: Vec<PortId>,
         subinterface: Option<u16>,
@@ -75,6 +96,9 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
     match mode {
         IosMode::User | IosMode::Privileged => {
             commands.extend(SHOW.iter().copied());
+            if switch {
+                commands.extend(switching::SHOW.iter().copied());
+            }
             commands.push("enable");
             if !switch {
                 commands.extend(["ping <address>", "traceroute <address>"]);
@@ -91,7 +115,10 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                 commands.retain(|c| !matches!(*c, "show running-config" | "show startup-config"));
             }
         }
-        IosMode::Global | IosMode::Vlan(_) | IosMode::Interface { .. } => {
+        IosMode::Global
+        | IosMode::Vlan(_)
+        | IosMode::Interface { .. }
+        | IosMode::PortChannel(_) => {
             commands.extend(["end", "do <command...>"]);
             if matches!(mode, IosMode::Global) {
                 commands.extend([
@@ -109,6 +136,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     ]);
                 }
                 if switch {
+                    commands.extend(switching::GLOBAL.iter().copied());
                     commands.extend([
                         "vlan <id>",
                         "no vlan <id>",
@@ -120,13 +148,20 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
             if matches!(mode, IosMode::Vlan(_)) {
                 commands.push("name <name>");
             }
-            if let IosMode::Interface { subinterface, .. } = mode {
+            if matches!(mode, IosMode::Interface { .. } | IosMode::PortChannel(_)) {
                 commands.extend(["interface <interface...>", "interface range <range...>"]);
                 commands.extend(["description <text...>", "no description"]);
-                if subinterface.is_none() {
+                if !matches!(
+                    mode,
+                    IosMode::Interface {
+                        subinterface: Some(_),
+                        ..
+                    }
+                ) {
                     commands.extend(["shutdown", "no shutdown"]);
                 }
                 if switch {
+                    commands.extend(switching::INTERFACE.iter().copied());
                     commands.extend([
                         "switchport mode access",
                         "switchport mode trunk",
@@ -139,7 +174,13 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     ]);
                 } else {
                     commands.extend(["ip address <address> <mask>", "no ip address"]);
-                    if subinterface.is_some() {
+                    if matches!(
+                        mode,
+                        IosMode::Interface {
+                            subinterface: Some(_),
+                            ..
+                        }
+                    ) {
                         commands.push("encapsulation dot1q <id>");
                     }
                 }
@@ -150,6 +191,12 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "speed 10000",
                     "speed 25000",
                     "speed auto",
+                ]);
+            }
+            if matches!(mode, IosMode::PortChannel(_)) {
+                commands.extend([
+                    "port-channel min-links <count>",
+                    "no port-channel min-links",
                 ]);
             }
         }
@@ -289,6 +336,7 @@ impl NetworkSim {
             IosMode::Privileged => "#",
             IosMode::Global => "(config)#",
             IosMode::Vlan(_) => "(config-vlan)#",
+            IosMode::PortChannel(_) => "(config-if)#",
             IosMode::Interface {
                 ports,
                 subinterface,
@@ -468,6 +516,14 @@ impl NetworkSim {
                     self.restore_device_network(device, network);
                 }
                 self.ios_configs.insert(device, saved.metadata);
+                self.runtime
+                    .device_started
+                    .insert(device, self.simulation_time_ms());
+                self.runtime.snmp.remove(&device);
+                for port in self.devices[&device].ports() {
+                    self.runtime.qos.remove(port);
+                    self.runtime.qos_buckets.remove(port);
+                }
                 self.topology_revision += 1;
                 self.routing_revision += 1;
                 *mode = IosMode::User;
@@ -536,7 +592,9 @@ impl NetworkSim {
             "end" => *mode = IosMode::Privileged,
             "exit" => {
                 *mode = match mode {
-                    IosMode::Interface { .. } | IosMode::Vlan(_) => IosMode::Global,
+                    IosMode::Interface { .. } | IosMode::Vlan(_) | IosMode::PortChannel(_) => {
+                        IosMode::Global
+                    }
                     IosMode::Global => IosMode::Privileged,
                     _ => IosMode::User,
                 }
@@ -662,6 +720,15 @@ impl NetworkSim {
             }
             "interface <interface...>" | "interface range <range...>" => {
                 let range = command.contains("range");
+                if switch && let Some(group) = switching::channel_number(&args[0]) {
+                    if range || self.channel_ports(device, group).is_empty() {
+                        return Err(
+                            "% Create the channel-group on physical interfaces first.".into()
+                        );
+                    }
+                    *mode = IosMode::PortChannel(group);
+                    return Ok(vec![]);
+                }
                 let (ports, subinterface) = self.ios_interfaces(device, &args[0], range)?;
                 *mode = IosMode::Interface {
                     ports,
@@ -669,6 +736,14 @@ impl NetworkSim {
                 };
             }
             _ => {
+                if switching::GLOBAL.contains(&command) {
+                    self.ios_switch_global(device, command, &args)?;
+                    return Ok(vec![]);
+                }
+                if let IosMode::PortChannel(group) = mode {
+                    self.ios_channel_command(device, *group, command, &args)?;
+                    return Ok(vec![]);
+                }
                 let IosMode::Interface {
                     ports,
                     subinterface,
@@ -694,14 +769,20 @@ impl NetworkSim {
         let dev = &self.devices[&device];
         let index = dev.ports().iter().position(|p| *p == port).unwrap_or(0);
         match dev.kind {
-            DeviceKind::Switch(_) => format!(
+            DeviceKind::Switch(ref switch) => format!(
                 "{}1/0/{}",
                 if self.ports[&port].max_speed == LinkSpeed::Gbps10 {
                     "TenGigabitEthernet"
                 } else {
                     "GigabitEthernet"
                 },
-                index + 1
+                if switch.model == SwitchModel::Catalyst24T4X
+                    && index >= switch.model.spec().copper_ports
+                {
+                    index + 1 - switch.model.spec().copper_ports
+                } else {
+                    index + 1
+                }
             ),
             DeviceKind::Router(_) if index < 2 => format!("GigabitEthernet0/0/{index}"),
             DeviceKind::Router(_) => format!("GigabitEthernet0/1/{}", index - 2),
@@ -806,6 +887,9 @@ impl NetworkSim {
         command: &str,
         args: &[String],
     ) -> Result<(), String> {
+        if switching::INTERFACE.contains(&command) {
+            return self.ios_switch_interface(device, port, command, args);
+        }
         let name = format!(
             "{}{}",
             self.ios_interface_name(device, port),
@@ -985,7 +1069,36 @@ impl NetworkSim {
         command: &str,
         args: &[String],
     ) -> Result<Vec<String>, String> {
+        if switching::SHOW.contains(&command) {
+            return self.ios_switch_show(device, command, args);
+        }
         let dev = &self.devices[&device];
+        if command == "show interfaces <interface>"
+            && let Some(interface) = args.first()
+            && let Some(group) = switching::channel_number(interface)
+        {
+            let members = self.channel_ports(device, group);
+            if members.is_empty() {
+                return Err("% Port-channel does not exist.".into());
+            }
+            let capacity = self.channel_capacity_mbps(device, group);
+            return Ok(vec![
+                format!(
+                    "Port-channel{group} is {}, line protocol is {}",
+                    if capacity > 0 { "up" } else { "down" },
+                    if capacity > 0 { "up" } else { "down" }
+                ),
+                format!("BW {capacity} Mbps; each flow uses one physical member"),
+                format!(
+                    "Members: {}",
+                    members
+                        .iter()
+                        .map(|p| self.ios_interface_name(device, *p))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ]);
+        }
         match command {
             "show inventory"
             | "show interfaces transceiver"
@@ -1003,16 +1116,42 @@ impl NetworkSim {
                         .filter(|port| self.cage_profile(*port).is_some())
                         .collect()
                 };
-                Ok(ports
-                    .into_iter()
-                    .flat_map(|port| self.transceiver_report(port))
-                    .collect())
+                let mut lines = Vec::new();
+                if command == "show inventory"
+                    && let DeviceKind::Switch(switch) = &dev.kind
+                {
+                    lines.push(format!(
+                        "NAME: Chassis, PID: {}, 24 RJ45 / 4 uplinks, non-PoE, fanless",
+                        switch.model.spec().name
+                    ));
+                }
+                lines.extend(
+                    ports
+                        .into_iter()
+                        .flat_map(|port| self.transceiver_report(port)),
+                );
+                Ok(lines)
             }
-            "show version" => Ok(vec![
-                "IOS-style network simulator (not Cisco IOS firmware)".into(),
-                format!("Hardware: {}", dev.name),
-                "Supported commands: ?   Configuration guide: docs/IOS_GUIDE.md".into(),
-            ]),
+            "show version" => {
+                let mut lines = vec![
+                    "IOS-style network simulator (not Cisco IOS firmware)".into(),
+                    format!("Hardware: {}", dev.name),
+                    "Supported commands: ?   Configuration guide: docs/IOS_GUIDE.md".into(),
+                ];
+                if let DeviceKind::Switch(switch) = &dev.kind {
+                    let spec = switch.model.spec();
+                    lines.push(format!(
+                        "ARM v7 {} MHz; {} MB DRAM; {} MB flash",
+                        spec.cpu_mhz, spec.dram_mb, spec.flash_mb
+                    ));
+                    lines.push(format!(
+                        "Switching capacity: {} Mbps; forwarding rating: {} kpps",
+                        spec.switching_mbps, spec.forwarding_kpps
+                    ));
+                    lines.push(format!("Configured idle/full-traffic power: {:.2}/{:.2} W; simulation rounds up and adds transceiver draw",f64::from(spec.power.idle_mw)/1000.0,f64::from(spec.power.peak_mw)/1000.0));
+                }
+                Ok(lines)
+            }
             "show running-config" => Ok(self.ios_running_config(device)),
             "show startup-config" => {
                 let saved = self
@@ -1259,6 +1398,7 @@ impl NetworkSim {
         if let Some(address) = self.console_management_ip(device) {
             lines.push(format!("management ip {address}"));
         }
+        lines.extend(self.ios_switch_config(device));
         if let DeviceKind::Switch(sw) = &dev.kind {
             let mut vlans = sw.vlans.clone();
             vlans.sort_by_key(|v| v.id.0);
@@ -1322,6 +1462,7 @@ impl NetworkSim {
                 }
                 _ => {}
             }
+            lines.extend(self.ios_switch_port_config(device, *id));
             lines.push(" exit".into());
             if let PortConfig::Router(c) = &port.config {
                 for iface in c.interfaces.iter().filter(|i| i.name.contains('.')) {
@@ -1340,6 +1481,7 @@ impl NetworkSim {
             }
         }
         lines.extend(self.ios_route_config(device));
+        lines.extend(self.ios_channel_config(device));
         lines.push("end".into());
         lines
     }

@@ -77,5 +77,45 @@
         "side": "back"
       }
     ]
+  },
+  "power": {
+    "board": {
+      "idle_mw": 22000,
+      "peak_mw": 30000
+    },
+    "fans": {
+      "idle_mw": 3000,
+      "peak_mw": 10000
+    },
+    "psu": {
+      "capacity_watts": 600,
+      "efficiency_permille": [
+        [
+          0,
+          800
+        ],
+        [
+          100,
+          860
+        ],
+        [
+          200,
+          900
+        ],
+        [
+          500,
+          940
+        ],
+        [
+          1000,
+          920
+        ]
+      ]
+    },
+    "legacy": {
+      "idle_mw": 45000,
+      "peak_mw": 180000
+    },
+    "power_factor_percent": 90
   }
 }

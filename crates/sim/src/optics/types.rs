@@ -75,7 +75,7 @@ impl CageProfile {
     }
     pub fn supports(&self, module: &TransceiverModel) -> bool {
         self.kind.accepts(module.cage)
-            && module.power_mw <= self.max_power_mw
+            && module.power.peak_mw <= self.max_power_mw
             && module.modes.iter().any(|mode| self.modes.contains(mode))
     }
 }
@@ -114,7 +114,7 @@ pub struct TransceiverModel {
     pub desc: LocalizedText,
     pub cage: CageKind,
     pub modes: Vec<EthernetMode>,
-    pub power_mw: u32,
+    pub power: crate::PowerProfile,
     pub dom: bool,
     pub price: i64,
     #[serde(flatten)]

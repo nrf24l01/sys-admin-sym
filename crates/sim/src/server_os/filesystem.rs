@@ -1,5 +1,21 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+#[derive(Debug, Default)]
+pub(crate) struct IoCounter(AtomicU64);
+impl Clone for IoCounter {
+    fn clone(&self) -> Self {
+        Self(AtomicU64::new(self.get()))
+    }
+}
+impl IoCounter {
+    pub fn get(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+    pub fn set(&self, value: u64) {
+        self.0.store(value, Ordering::Relaxed);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuestFile {
@@ -10,12 +26,18 @@ pub struct GuestFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuestFilesystem {
+    #[serde(skip)]
+    pub(crate) read_bytes: IoCounter,
+    #[serde(skip)]
+    pub(crate) written_bytes: u64,
     pub entries: BTreeMap<String, GuestFile>,
 }
 
 impl Default for GuestFilesystem {
     fn default() -> Self {
         let mut fs = Self {
+            read_bytes: IoCounter::default(),
+            written_bytes: 0,
             entries: BTreeMap::new(),
         };
         for directory in [
@@ -66,6 +88,7 @@ impl Default for GuestFilesystem {
             fs.write(path, contents, false)
                 .expect("default guest filesystem");
         }
+        fs.written_bytes = 0;
         fs
     }
 }
@@ -105,6 +128,16 @@ impl GuestFilesystem {
         if file.directory {
             return Err(format!("{path}: Is a directory"));
         }
+        if !["/tmp/", "/proc/", "/dev/"]
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+        {
+            self.read_bytes.set(
+                self.read_bytes
+                    .get()
+                    .saturating_add(file.contents.len() as u64),
+            );
+        }
         Ok(file.contents.clone())
     }
 
@@ -129,6 +162,12 @@ impl GuestFilesystem {
             file.contents.push_str(contents);
         } else {
             file.contents = contents.into();
+        }
+        if !["/tmp/", "/proc/", "/dev/"]
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+        {
+            self.written_bytes = self.written_bytes.saturating_add(contents.len() as u64);
         }
         Ok(())
     }

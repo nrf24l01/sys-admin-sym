@@ -121,18 +121,34 @@ impl NetworkSim {
     /// configured physical topology. Switches learn source MACs per VLAN;
     /// endpoint deliveries are returned in deterministic port order.
     pub fn transmit_frame(&mut self, egress: PortId, frame: EthernetFrame) -> Vec<FrameDelivery> {
+        self.transmit_frames(egress, vec![frame])
+    }
+
+    /// Transmit a packet batch through the same forwarding path and QoS queues.
+    pub fn transmit_frames(
+        &mut self,
+        egress: PortId,
+        frames: Vec<EthernetFrame>,
+    ) -> Vec<FrameDelivery> {
         self.runtime
             .prepare(self.topology_revision, self.routing_revision);
-        if self.ingress_vlan(egress, &frame).is_none() {
-            return vec![];
-        }
-        let initial = frame;
         let mut queue = VecDeque::new();
-        let mut seen: HashSet<(PortId, MacAddress, MacAddress, VlanId)> = HashSet::new();
+        let mut seen: HashSet<(usize, PortId, MacAddress, MacAddress, VlanId)> = HashSet::new();
         let mut deliveries = Vec::new();
-        queue.push_back((egress, initial, 0u16, vec![egress]));
+        for (sequence, frame) in frames.into_iter().enumerate() {
+            if self.ingress_vlan(egress, &frame).is_some() {
+                queue.push_back((sequence, egress, frame, 0u16, vec![egress]));
+            }
+        }
 
-        while let Some((out, frame, hops, mut path)) = queue.pop_front() {
+        while !queue.is_empty() {
+            let next = queue
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, job)| (job.3, self.qos_order(job.1, &job.2), job.0))
+                .map(|(index, _)| index)
+                .unwrap();
+            let (sequence, out, frame, hops, mut path) = queue.remove(next).unwrap();
             if hops >= MAX_FRAME_HOPS {
                 continue;
             }
@@ -148,20 +164,28 @@ impl NetworkSim {
             let Some(in_port) = link.other(out) else {
                 continue;
             };
-            if !self.physical_link_up(out) || !self.physical_link_up(in_port) {
+            if !self.physical_link_up(out)
+                || !self.physical_link_up(in_port)
+                || !self.channel_forwarding(out)
+                || !self.channel_forwarding(in_port)
+            {
                 continue;
             }
             if !self.endpoint_link_vlan_matches(out, in_port, frame.vlan) {
                 continue;
             }
-            self.runtime.send_frame(out, in_port);
+            if !self.qos_transmit(out, &frame) {
+                continue;
+            }
+            self.runtime
+                .send_frame(out, in_port, frame.qos.length_bytes);
             path.push(in_port);
             if let Some(pair) = self.port(in_port).and_then(|p| p.paired_port) {
                 if !self.port_link_up(pair) {
                     continue;
                 }
                 path.push(pair);
-                queue.push_back((pair, frame, hops + 1, path));
+                queue.push_back((sequence, pair, frame, hops + 1, path));
                 continue;
             }
             if let Some(outlet) = self.network_outlet(in_port) {
@@ -197,6 +221,11 @@ impl NetworkSim {
 
             match self.device(device).map(|d| &d.kind) {
                 Some(DeviceKind::Switch(_)) => {
+                    // CoS trust applies to the original 802.1Q tag, not the
+                    // internal access-VLAN label attached during forwarding.
+                    received.vlan = wire_vlan;
+                    received = self.classify_switch_frame(in_port, received);
+                    received.vlan = Some(vlan);
                     if self
                         .switch_management(device)
                         .is_some_and(|m| m.vlan == vlan)
@@ -215,14 +244,20 @@ impl NetworkSim {
                     }
                     self.runtime
                         .learn_mac(device, vlan, received.source, in_port);
-                    let mut targets =
-                        self.switch_targets(device, in_port, vlan, received.destination);
+                    let targets = self.switch_targets(device, in_port, vlan, received.destination);
+                    let mut targets = self.channel_targets(in_port, targets, &received);
                     targets.sort();
                     for target in targets {
                         if self.bridge_port_blocked(target, vlan) {
                             continue;
                         }
-                        let key = (target, received.source, received.destination, vlan);
+                        let key = (
+                            sequence,
+                            target,
+                            received.source,
+                            received.destination,
+                            vlan,
+                        );
                         if !seen.insert(key) {
                             self.runtime.loop_drops += 1;
                             continue;
@@ -231,7 +266,7 @@ impl NetworkSim {
                         emitted.vlan = self.egress_vlan(target, vlan);
                         let mut forwarded_path = path.clone();
                         forwarded_path.push(target);
-                        queue.push_back((target, emitted, hops + 1, forwarded_path));
+                        queue.push_back((sequence, target, emitted, hops + 1, forwarded_path));
                     }
                 }
                 Some(DeviceKind::Server(_)) | Some(DeviceKind::Router(_)) => {
@@ -256,6 +291,8 @@ impl NetworkSim {
             }
         }
         deliveries.sort_by_key(|delivery| delivery.port);
+        self.refresh_module_loads();
+        self.sync_effective_power();
         deliveries
     }
 
@@ -514,6 +551,7 @@ mod tests {
 
     fn frame(source: PortId, destination: MacAddress, vlan: Option<VlanId>) -> EthernetFrame {
         EthernetFrame {
+            qos: crate::FrameQos::default(),
             source: MacAddress::for_port(source),
             destination,
             vlan,

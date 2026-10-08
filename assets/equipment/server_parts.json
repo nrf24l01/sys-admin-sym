@@ -6,7 +6,6 @@
     "dimm_slots": 4,
     "memory_type": "DDR5 ECC UDIMM",
     "psu_bays": 2,
-    "integrated_psu_watts": 600,
     "drive_bays": [
       {
         "name": "Bay 1",
@@ -94,6 +93,10 @@
       "desc": {
         "en": "LGA1700 · 4 cores at 3400 MHz · 20 PCIe lanes · 55 W TDP",
         "ru": "LGA1700 · 4 ядра, 3400 МГц · 20 линий PCIe · TDP 55 Вт"
+      },
+      "power": {
+        "idle_mw": 8000,
+        "peak_mw": 55000
       }
     },
     {
@@ -110,6 +113,10 @@
       "desc": {
         "en": "16 GB DDR5 ECC memory module.",
         "ru": "Модуль памяти DDR5 ECC объёмом 16 ГБ."
+      },
+      "power": {
+        "idle_mw": 1600,
+        "peak_mw": 4000
       }
     },
     {
@@ -123,8 +130,7 @@
         "generation": 2,
         "width": 4,
         "rj45_ports": 4,
-        "speed_mbps": 1000,
-        "power_w": 5
+        "speed_mbps": 1000
       },
       "display_name": {
         "en": "Intel I350-T4",
@@ -133,6 +139,11 @@
       "desc": {
         "en": "4 × RJ45 · 1000 Mb/s · PCIe Gen 2 x4",
         "ru": "4 × RJ45 · 1000 Мбит/с · PCIe Gen 2 x4"
+      },
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 5000,
+        "link_share_permille": 250
       }
     },
     {
@@ -154,7 +165,6 @@
         "generation": 2,
         "width": 8,
         "speed_mbps": 10000,
-        "power_w": 6,
         "connector": "Sfp",
         "ports": 2,
         "cage": {
@@ -173,6 +183,11 @@
           ],
           "max_power_mw": 2000
         }
+      },
+      "power": {
+        "idle_mw": 2400,
+        "peak_mw": 6000,
+        "link_share_permille": 250
       }
     }
   ]

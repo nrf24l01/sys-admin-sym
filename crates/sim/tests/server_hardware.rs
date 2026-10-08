@@ -174,13 +174,13 @@ fn bare_chassis_requires_parts_and_installed_nic_adds_real_ports() {
         panic!()
     };
     assert!(server.hardware.as_ref().unwrap().ready());
-    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 160);
+    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 42);
     install(&mut sim, id, "intel_i350_t4", Some(1));
     let DeviceKind::Server(server) = &sim.device(id).unwrap().kind else {
         panic!()
     };
     assert_eq!(server.ports.len(), onboard + 4);
-    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 165);
+    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 45);
     assert_eq!(
         server.hardware.as_ref().unwrap().pcie[1].as_deref(),
         Some("intel_i350_t4")
@@ -246,7 +246,7 @@ fn bare_chassis_requires_parts_and_installed_nic_adds_real_ports() {
     assert!(loaded.port(nic_port).is_none());
     assert_eq!(loaded.device(id).unwrap().ports().len(), onboard);
     assert_eq!(loaded.server_parts["intel_i350_t4"], 1);
-    assert_eq!(loaded.power.device_status(id).unwrap().load.watts, 160);
+    assert_eq!(loaded.power.device_status(id).unwrap().load.watts, 42);
 }
 
 #[test]

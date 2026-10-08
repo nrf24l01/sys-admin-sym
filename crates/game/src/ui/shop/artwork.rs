@@ -7,13 +7,14 @@ pub(in crate::ui) struct ShopTextures {
     pub server: egui::TextureId,
     pub router: egui::TextureId,
     pub switch: egui::TextureId,
+    pub switch_10g: egui::TextureId,
     pub ups: egui::TextureId,
     pub pdu: egui::TextureId,
     pub products: egui::TextureId,
     pub optics: crate::ui::optics::ShopTextures,
-    /// Server, router, switch, UPS, PDU, products, modules, assemblies.
-    pub ready: [bool; 8],
-    pub full: [egui::TextureId; 8],
+    /// Server, router, 4G switch, UPS, PDU, products, modules, assemblies, 4X switch.
+    pub ready: [bool; 9],
+    pub full: [egui::TextureId; 9],
 }
 impl ShopTextures {
     pub(super) fn full_resolution(mut self) -> Self {
@@ -27,6 +28,7 @@ impl ShopTextures {
         ] = self.full[..6].try_into().unwrap();
         self.optics.modules = self.full[6];
         self.optics.cables = self.full[7];
+        self.switch_10g = self.full[8];
         self
     }
 }
@@ -82,11 +84,17 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
             egui::vec2(2172.0, 724.0),
             textures.ready[1],
         ),
-        "cisco_catalyst_c1000" | "switch_10g" => panel(
+        "cisco_catalyst_c1000" => panel(
             textures.switch,
             rect(0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
             egui::vec2(2200.0, 715.0),
             textures.ready[2],
+        ),
+        "switch_10g" => panel(
+            textures.switch_10g,
+            rect(8.0 / 500.0, 203.0 / 400.0, 495.0 / 500.0, 251.0 / 400.0),
+            egui::vec2(500.0, 400.0),
+            textures.ready[8],
         ),
         "apc_smt1500" => panel(
             textures.ups,
@@ -157,11 +165,12 @@ pub(super) fn test_textures() -> ShopTextures {
         server: texture,
         router: texture,
         switch: texture,
+        switch_10g: texture,
         ups: texture,
         pdu: texture,
         products: texture,
-        ready: [true; 8],
-        full: [texture; 8],
+        ready: [true; 9],
+        full: [texture; 9],
         optics: crate::ui::optics::ShopTextures {
             modules: texture,
             cables: texture,

@@ -53,6 +53,18 @@ impl NetworkSim {
         destination: Ipv4Addr,
         ttl: u8,
     ) -> ReachabilityResult {
+        self.probe_ipv4_protocol(source, destination, ttl, 1)
+    }
+
+    /// A semantic request/reply probe through actual ARP, routes, VLANs and
+    /// interface policies. This does not create a host transport socket.
+    pub(crate) fn probe_ipv4_protocol(
+        &mut self,
+        source: PortId,
+        destination: Ipv4Addr,
+        ttl: u8,
+        protocol: u8,
+    ) -> ReachabilityResult {
         let bad = |f, h| ReachabilityResult {
             reachable: false,
             hops: h,
@@ -96,10 +108,11 @@ impl NetworkSim {
             return bad(self.local_failure(source, next), hops);
         };
         let p = Ipv4Packet {
+            dscp: 0,
             source: src.address,
             destination,
             ttl,
-            protocol: 1,
+            protocol,
         };
         let ok = self.deliver(
             source,
@@ -184,6 +197,7 @@ impl NetworkSim {
             };
         };
         let p = Ipv4Packet {
+            dscp: 0,
             source: address,
             destination,
             ttl: 64,
@@ -222,6 +236,10 @@ impl NetworkSim {
             return false;
         }
         let f = EthernetFrame {
+            qos: crate::FrameQos {
+                dscp: p.dscp,
+                ..Default::default()
+            },
             source: MacAddress::for_port(out),
             destination: mac,
             vlan: self.wire_vlan_for(out, vlan),
@@ -245,6 +263,9 @@ impl NetworkSim {
                     );
                 }
             }
+            let EthernetPayload::Ipv4 { packet: p, icmp } = d.frame.payload else {
+                continue;
+            };
             let Some(port) = self.port(d.port).cloned() else {
                 continue;
             };
@@ -272,10 +293,11 @@ impl NetworkSim {
                                     continue;
                                 };
                                 let rp = Ipv4Packet {
+                                    dscp: 0,
                                     source: p.destination,
                                     destination: p.source,
                                     ttl: 64,
-                                    protocol: 1,
+                                    protocol: p.protocol,
                                 };
                                 if self.deliver(
                                     route.port,
@@ -355,10 +377,11 @@ impl NetworkSim {
                     return false;
                 };
                 let rp = Ipv4Packet {
+                    dscp: 0,
                     source: p.destination,
                     destination: p.source,
                     ttl: 64,
-                    protocol: 1,
+                    protocol: p.protocol,
                 };
                 return self.deliver(
                     ro,

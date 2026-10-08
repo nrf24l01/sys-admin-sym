@@ -12,6 +12,7 @@ impl NetworkSim {
         let requests = self.transmit_frame(
             client,
             EthernetFrame {
+                qos: crate::FrameQos::default(),
                 source: MacAddress::for_port(client),
                 destination: MacAddress([255; 6]),
                 vlan: None,
@@ -65,6 +66,7 @@ impl NetworkSim {
             let replies = self.transmit_frame(
                 pool.server,
                 EthernetFrame {
+                    qos: crate::FrameQos::default(),
                     source: MacAddress::for_port(pool.server),
                     destination: MacAddress::for_port(client),
                     vlan: self.wire_vlan_for(pool.server, pool.vlan),

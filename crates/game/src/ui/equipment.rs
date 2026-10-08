@@ -70,6 +70,34 @@ pub(super) fn equipment_port_position(
         RackSide::Front => "front",
         RackSide::Rear => "back",
     };
+    if matches!(kind, DeviceKind::Switch(sw) if sw.model == cloud_provider_sim::SwitchModel::Catalyst24T4X)
+        && side == RackSide::Front
+        && connector == PortConnector::Rj45
+        && index < 24
+    {
+        let column = index / 2;
+        let x = if column < 6 {
+            180.0 + column as f32 * 16.0
+        } else {
+            309.0 + (column - 6) as f32 * 16.0
+        };
+        let y = if index.is_multiple_of(2) {
+            221.0
+        } else {
+            235.0
+        };
+        return Some(((x - 8.0) / 487.0, (y - 203.0) / 48.0));
+    }
+    if matches!(kind, DeviceKind::Switch(sw) if sw.model == cloud_provider_sim::SwitchModel::Catalyst24T4X)
+        && side == RackSide::Front
+        && connector == PortConnector::Sfp
+        && (24..28).contains(&index)
+    {
+        return Some((
+            (416.0 + (index - 24) as f32 * 19.0 - 8.0) / 487.0,
+            (239.0 - 203.0) / 48.0,
+        ));
+    }
     let group_index = match kind {
         DeviceKind::Switch(_) if matches!(connector, PortConnector::Sfp) => {
             index.saturating_sub(24)
@@ -161,6 +189,8 @@ mod tests {
     fn bundled_switch_map_is_readable() {
         let position = equipment_port_position(
             &DeviceKind::Switch(cloud_provider_sim::Switch {
+                model: cloud_provider_sim::SwitchModel::default(),
+                services: cloud_provider_sim::SwitchServices::default(),
                 ports: vec![],
                 vlans: vec![],
             }),
@@ -175,6 +205,27 @@ mod tests {
             .unwrap();
         assert_eq!(config.ports["rj-45"].len(), 24);
         assert_eq!(config.ports["sfp"].len(), 4);
+    }
+
+    #[test]
+    fn four_x_front_socket_centers_match_its_dedicated_photo() {
+        let kind = DeviceKind::Switch(cloud_provider_sim::Switch {
+            model: cloud_provider_sim::SwitchModel::Catalyst24T4X,
+            services: Default::default(),
+            ports: vec![],
+            vlans: vec![],
+        });
+        let mut positions = Vec::new();
+        for index in 0..24 {
+            let position =
+                equipment_port_position(&kind, PortConnector::Rj45, RackSide::Front, index)
+                    .unwrap();
+            assert!((0.0..1.0).contains(&position.0) && (0.0..1.0).contains(&position.1));
+            assert!(!positions.contains(&position));
+            positions.push(position);
+        }
+        assert!(positions[0].1 < positions[1].1);
+        assert!(positions[12].0 > positions[10].0);
     }
 
     #[test]

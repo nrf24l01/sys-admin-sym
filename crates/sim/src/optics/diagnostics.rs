@@ -18,7 +18,7 @@ impl NetworkSim {
                     .collect::<Vec<_>>()
                     .join(" / ")
             ));
-            lines.push(format!("Power requirement: {} mW", module.power_mw));
+            lines.push(format!("Power requirement: {} mW", module.power.peak_mw));
             if let Some(instance) = self.installed_transceiver(port) {
                 lines.push(format!("Inventory ID: {}", instance.id.0));
             } else {

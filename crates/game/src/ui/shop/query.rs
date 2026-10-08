@@ -142,7 +142,15 @@ pub(super) fn facet_keys(state: &ShopState) -> &'static [&'static str] {
     match state.section {
         None => &[],
         Some(ShopSection::Routers) => &["speed", "ports", "rack"],
-        Some(ShopSection::Switches) => &["speed", "ports", "cages", "cage", "rack"],
+        Some(ShopSection::Switches) => &[
+            "speed",
+            "ports",
+            "cages",
+            "cage",
+            "switching-capacity",
+            "poe",
+            "rack",
+        ],
         Some(ShopSection::Servers) => &[
             "memory-type",
             "socket",

@@ -75,6 +75,26 @@ The older reference assets below are retained for reference.
 - Direct image: https://www.cisco.com/c/dam/en/us/td/i/300001-400000/350001-360000/356001-357000/356400.jpg
 - Copyright: Cisco Systems, Inc.
 
+## `switch_4x_front.jpg`
+
+- Model represented: Cisco Catalyst C1000-24T-4X-L; dedicated front photograph.
+- Source: SCT Systems model-specific product listing.
+- Page: https://www.sct-systems.com/catalog/product_info.php?products_id=4228
+- Original image: https://www.sct-systems.com/catalog/images/Cisco-Catalyst-C1000-24T-4X-Switch.jpg
+- Original JPEG retained without pixel edits; front-face UV and socket centers are in the UI.
+- Product branding: Cisco Systems, Inc.; photograph distributed by SCT Systems.
+- Both models share the existing rear artwork because both have the same fanless rear enclosure.
+
+## Catalyst hardware specifications
+
+- `switches.json`: model-specific ports, cage modes, idle/100%-traffic consumption,
+  switching bandwidth, forwarding rate and weight.
+- Source: https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-1000-series-switches/nb-06-cat1k-ser-switch-ds-cte-en.html
+- Interface numbering: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst1000/hardware/installation/24_48_port_hig/b_c1000_24_48_hig/product_overview.html
+- Rated full-traffic consumption cross-check: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst1000/hardware/installation/24_48_port_hig/b_c1000_24_48_hig/technical_specifications.html
+- Rack electrical budgets round milliwatts up to whole watts. Separately simulated
+  transceiver draw is added conservatively; this is not a calibrated meter model.
+
 ## `router_front.png`
 
 - Model represented: Cisco ISR C1111-8P I/O panel
@@ -151,3 +171,17 @@ The older reference assets below are retained for reference.
   sprites (duplex LC, simplex LC, DAC and AOC) use full padded cells. Shop icons
   do not crop plugs from coiled cables or show seated module faces.
   Final prompt: `../cables/optical_shop_connectors_prompt.md`.
+
+## Operating power estimates
+
+- Per-model `power` blocks in `server_config.json`, `server_parts.json`,
+  `router_config.json`, `drives.json`, `ups_config.json`, `pdu_config.json` and
+  `optics.json` contain project-authored operating assumptions for boards, memory,
+  drives, NICs, cooling, conversion and legacy devices. These are simulator
+  parameters, not measured vendor power figures. `switches.json` retains the
+  separately cited Cisco idle/full-traffic endpoints.
+- CPU sizing endpoint: [Intel Xeon E-2434, 55 W TDP](https://www.intel.com/content/www/us/en/products/sku/236192/intel-xeon-e2434-processor-12m-cache-3-40-ghz/specifications.html).
+- [Dell R360 PSU capacity](https://www.dell.com/support/manuals/en-au/poweredge-r360/r360_ism/psu-specifications?guid=guid-ff8a8542-c09e-4bb9-9b35-710b1366b973&lang=en-us)
+  and [Cisco C1111 66 W adapter capacity](https://www.cisco.com/c/en/us/products/collateral/routers/1000-series-integrated-services-routers-isr/datasheet-c78-739512.html)
+  remain output limits; they do not become constant draw.
+- [Calculation details and limitations](../../docs/POWER_CONSUMPTION.md).

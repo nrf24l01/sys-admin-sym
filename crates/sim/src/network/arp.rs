@@ -103,6 +103,7 @@ impl NetworkSim {
         }
         .ok_or(ReachabilityFailure::NoAddress)?;
         let request = EthernetFrame {
+            qos: crate::FrameQos::default(),
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
             vlan: self.wire_vlan_for(port, vlan),
@@ -126,6 +127,7 @@ impl NetworkSim {
                 continue;
             }
             let reply = EthernetFrame {
+                qos: crate::FrameQos::default(),
                 source: MacAddress::for_port(delivery.port),
                 destination: request.source,
                 vlan: self.wire_vlan_for(delivery.port, delivery.vlan),
@@ -172,6 +174,7 @@ impl NetworkSim {
     ) -> bool {
         self.prepare_runtime();
         let probe = EthernetFrame {
+            qos: crate::FrameQos::default(),
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
             vlan: self.wire_vlan_for(port, vlan),

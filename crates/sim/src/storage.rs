@@ -28,15 +28,17 @@ pub struct DriveModel {
     pub write_mb_s: u32,
     pub read_iops: u32,
     pub write_iops: u32,
-    pub power_w: u16,
+    pub power: crate::PowerProfile,
     pub price: i64,
 }
 
 pub fn drive_catalog() -> &'static DriveCatalog {
     static CATALOG: OnceLock<DriveCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../assets/equipment/drives.json"))
-            .expect("valid drive catalog")
+        crate::equipment_config::equipment_catalog(
+            "drives.json",
+            include_str!("../../../assets/equipment/drives.json"),
+        )
     })
 }
 
