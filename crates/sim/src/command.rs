@@ -138,6 +138,10 @@ pub enum Command {
         prefix: u8,
         internet_connected: bool,
     },
+    SetRouterSwitchport {
+        port: PortId,
+        switchport: bool,
+    },
     SetStaticRoute {
         router: DeviceId,
         route: Route,

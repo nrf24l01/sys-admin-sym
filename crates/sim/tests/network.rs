@@ -37,6 +37,16 @@ fn install_and_power(sim: &mut NetworkSim, device: DeviceId, unit: u8) {
         powered: true,
     })
     .unwrap();
+    if matches!(sim.device(device).unwrap().kind, DeviceKind::Router(_)) {
+        for index in [8, 9] {
+            let port = sim.device(device).unwrap().ports()[index];
+            sim.execute(Command::SetRouterSwitchport {
+                port,
+                switchport: false,
+            })
+            .unwrap();
+        }
+    }
 }
 
 fn ports(sim: &NetworkSim, device: DeviceId) -> Vec<PortId> {
@@ -59,7 +69,7 @@ fn wan_cabling_alone_does_not_supply_transit_or_nat() {
         let server = buy(&mut sim, DeviceTemplate::Server);
         install_and_power(&mut sim, router, 1);
         install_and_power(&mut sim, server, 2);
-        let lan = ports(&sim, router)[2];
+        let lan = ports(&sim, router)[8];
         let ethernet = ports(&sim, server)[0];
         sim.execute(Command::ConfigureRouterInterface {
             port: lan,
@@ -368,7 +378,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {
-        port: rp[2],
+        port: rp[8],
         name: "vlan10".into(),
         vlan: Some(VlanId(10)),
         address: Some(ip("10.10.10.1")),
@@ -377,7 +387,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {
-        port: rp[2],
+        port: rp[8],
         name: "vlan20".into(),
         vlan: Some(VlanId(20)),
         address: Some(ip("10.10.20.1")),
@@ -396,7 +406,7 @@ fn routed_network(allowed: Vec<VlanId>) -> (NetworkSim, DeviceId, DeviceId, Devi
     })
     .unwrap();
     sim.execute(Command::Connect {
-        a: rp[2],
+        a: rp[8],
         b: swp[0],
     })
     .unwrap();

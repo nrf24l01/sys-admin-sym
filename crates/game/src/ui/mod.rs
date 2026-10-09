@@ -759,10 +759,14 @@ fn device_inspector(
                 ui.end_row();
             }
         });
-    if let DeviceKind::Switch(sw) = &device.kind {
+    if let Some(vlans) = match &device.kind {
+        DeviceKind::Switch(sw) => Some(&sw.vlans),
+        DeviceKind::Router(r) => Some(&r.vlans),
+        _ => None,
+    } {
         ui.separator();
         ui.strong(tr("ui.vlan-database"));
-        for vlan in &sw.vlans {
+        for vlan in vlans {
             ui.label(crate::localization::tr_args(
                 "vlan.entry",
                 &[(vlan.id.0).to_string(), (vlan.name).to_string()],
@@ -792,6 +796,7 @@ fn server_hardware_inspector(
     use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
     let catalog = server_catalog();
     let chassis = &catalog.chassis;
+    let parts_editable = !sim.device(device).unwrap().powered || chassis.parts_hot_swappable;
     ui.separator();
     ui.strong(tr("ui.server-hardware"));
     ui.label(crate::localization::tr_args(
@@ -804,6 +809,68 @@ fn server_hardware_inspector(
             (server_power_profile().psu.capacity_watts).to_string(),
         ],
     ));
+    match hardware.memory_status() {
+        Ok(memory) => {
+            ui.label(crate::localization::tr_args(
+                "hardware.memory-capacity",
+                &[
+                    memory.capacity_gb.to_string(),
+                    memory.max_capacity_gb.to_string(),
+                ],
+            ));
+            ui.label(crate::localization::tr_args(
+                "hardware.memory-channels-speed",
+                &[
+                    memory.populated_channels.to_string(),
+                    memory.available_channels.to_string(),
+                    memory.speed_mt_s.to_string(),
+                ],
+            ));
+            if !hardware.ram.is_empty() && !memory.balanced {
+                ui.weak(tr("hardware.memory-unbalanced"));
+            }
+        }
+        Err(reason) => {
+            ui.colored_label(
+                egui::Color32::YELLOW,
+                format!("{}: {reason}", tr("hardware.invalid-memory")),
+            );
+        }
+    }
+    let dimm_indices = hardware.dimm_slot_indices(catalog);
+    egui::CollapsingHeader::new(tr("hardware.dimm-slots")).show(ui, |ui| {
+        for (index, slot) in chassis.memory.slots.iter().enumerate() {
+            let installed = dimm_indices
+                .iter()
+                .position(|i| *i == index)
+                .and_then(|i| hardware.ram.get(i));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(crate::localization::tr_args(
+                    "hardware.dimm-slot",
+                    &[
+                        slot.name.clone(),
+                        (slot.cpu_socket + 1).to_string(),
+                        (slot.channel + 1).to_string(),
+                    ],
+                ));
+                if let Some(id) = installed {
+                    ui.label(crate::localization::item_name(id, id));
+                    if ui
+                        .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
+                        .clicked()
+                    {
+                        actions.write(UiAction::RemoveServerPart {
+                            device,
+                            part_id: id.clone(),
+                            slot: Some(index),
+                        });
+                    }
+                } else {
+                    ui.weak(tr("ui.empty"));
+                }
+            });
+        }
+    });
     let cpu_lanes: u16 = hardware
         .cpus
         .iter()
@@ -861,7 +928,16 @@ fn server_hardware_inspector(
                     .find(|part| part.id == id)
                     .map_or(id, |part| part.name.as_str());
                 ui.label(crate::localization::item_name(id, name));
-                if ui.button(tr("ui.remove")).clicked() {
+                if let Some(generation) = hardware.pcie_link_generation(index) {
+                    ui.weak(crate::localization::tr_args(
+                        "hardware.pcie-negotiated",
+                        &[generation.to_string()],
+                    ));
+                }
+                if ui
+                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
+                    .clicked()
+                {
                     actions.write(UiAction::RemoveServerPart {
                         device,
                         part_id: id.into(),
@@ -871,28 +947,21 @@ fn server_hardware_inspector(
             } else {
                 ui.weak(tr("ui.empty"));
                 for part in &catalog.parts {
-                    let ServerPartKind::PciCard {
-                        card:
-                            PciCard::Ethernet {
-                                lanes,
-                                generation,
-                                width,
-                                ..
-                            },
-                    } = &part.kind
-                    else {
+                    let ServerPartKind::PciCard { .. } = &part.kind else {
                         continue;
                     };
                     if sim.server_parts.get(&part.id).copied().unwrap_or(0) > 0
-                        && slot.lanes >= *lanes
-                        && slot.width >= *width
-                        && slot.generation >= *generation
-                        && used_lanes + u16::from(*lanes) <= cpu_lanes
+                        && sim
+                            .server_part_installation_slot(device, &part.id, Some(index))
+                            .is_ok()
                         && ui
-                            .button(crate::localization::tr_args(
-                                "hardware.install-item",
-                                &[crate::localization::item_name(&part.id, &part.name)],
-                            ))
+                            .add_enabled(
+                                parts_editable,
+                                egui::Button::new(crate::localization::tr_args(
+                                    "hardware.install-item",
+                                    &[crate::localization::item_name(&part.id, &part.name)],
+                                )),
+                            )
                             .clicked()
                     {
                         actions.write(UiAction::InstallServerPart {
@@ -930,8 +999,20 @@ fn server_hardware_inspector(
                     (installed).to_string(),
                 ],
             ));
+            let compatibility = sim.server_part_installation_slot(device, &part.id, None);
             if ui
-                .add_enabled(owned > 0, egui::Button::new(tr("ui.install")))
+                .add_enabled(
+                    owned > 0 && parts_editable && compatibility.is_ok(),
+                    egui::Button::new(tr("ui.install")),
+                )
+                .on_disabled_hover_text(if !parts_editable {
+                    tr("hardware.power-off-parts")
+                } else {
+                    compatibility
+                        .err()
+                        .map(|error| error.to_string())
+                        .unwrap_or_else(|| tr("ui.empty"))
+                })
                 .clicked()
             {
                 actions.write(UiAction::InstallServerPart {
@@ -942,7 +1023,9 @@ fn server_hardware_inspector(
             }
             if installed > 0
                 && !matches!(part.kind, ServerPartKind::PciCard { .. })
-                && ui.button(tr("ui.remove")).clicked()
+                && ui
+                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
+                    .clicked()
             {
                 actions.write(UiAction::RemoveServerPart {
                     device,

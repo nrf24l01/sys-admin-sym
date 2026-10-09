@@ -370,7 +370,15 @@ fn server_static_route_forwards_packets_through_the_configured_gateway() {
         })
         .unwrap();
     let ports = lab.sim.device(router).unwrap().ports().to_vec();
-    for (port, address) in [(ports[2], "192.0.2.1"), (ports[3], "198.51.100.1")] {
+    for index in [8, 9] {
+        lab.sim
+            .execute(Command::SetRouterSwitchport {
+                port: ports[index],
+                switchport: false,
+            })
+            .unwrap();
+    }
+    for (port, address) in [(ports[8], "192.0.2.1"), (ports[9], "198.51.100.1")] {
         lab.sim
             .execute(Command::ConfigureRouterInterface {
                 port,
@@ -382,7 +390,7 @@ fn server_static_route_forwards_packets_through_the_configured_gateway() {
             })
             .unwrap();
     }
-    lab.connect(lab.port(0, "eth0"), ports[2]);
+    lab.connect(lab.port(0, "eth0"), ports[8]);
     lab.run(0, "ip addr add 192.0.2.2/24 dev eth0");
     assert!(
         !lab.sim
@@ -391,7 +399,7 @@ fn server_static_route_forwards_packets_through_the_configured_gateway() {
     );
     lab.run(0, "ip route add 198.51.100.0/24 via 192.0.2.1 dev eth0");
     lab.run(0, "ping 198.51.100.1");
-    assert!(lab.sim.port_telemetry(ports[2]).tx_frames > 0);
+    assert!(lab.sim.port_telemetry(ports[8]).tx_frames > 0);
     lab.run(0, "ip route del 198.51.100.0/24");
     assert!(
         !lab.sim

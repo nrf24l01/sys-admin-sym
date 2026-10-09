@@ -397,6 +397,9 @@ impl NetworkSim {
                 );
             }
         }
+        if matches!(&self.devices[&r].kind, DeviceKind::Router(router) if !router.routing_enabled) {
+            return false;
+        }
         if p.ttl <= 1 {
             self.hop(h, r, Some(ing), None, "TTL expired");
             return false;

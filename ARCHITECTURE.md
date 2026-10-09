@@ -290,3 +290,17 @@ network runtime; sustained `DeviceWorkload` inputs persist in the world.
 The existing electrical topology consumes the resulting operating demand.
 Time advancement integrates changing load across activity bucket boundaries
 without looping through long idle periods. See [power consumption](docs/POWER_CONSUMPTION.md).
+
+## Hardware compatibility and router LAN switching
+
+`server_hardware/limits.rs` validates CPU/chassis limits and DIMM topology from
+`server_parts.json`. `shop_compatibility.rs` shares these rules with installation
+and shop previews. Physical DIMM indices persist separately from component IDs;
+legacy saves receive the configured population order. Catalogs load once.
+
+`router_hardware.rs` reads JSON port roles, converts flex ports through the domain
+command, and manages logical SVI ports separately from physical rack ports. The
+Ethernet engine bridges router LAN switchports and delivers VLAN frames to SVIs;
+SVIs inject frames back into that bridge. Shared link status reports their member
+availability. Transit routing observes `routing_enabled`, while local endpoints
+and switching remain available. Startup snapshots include logical ports.

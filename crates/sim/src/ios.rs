@@ -1,4 +1,5 @@
 //! IOS-style console for the simulator. No Cisco firmware is executed.
+mod config;
 mod routes;
 mod switching;
 
@@ -88,6 +89,7 @@ const SHOW: &[&str] = &[
     "show interfaces trunk",
     "show cdp neighbors",
     "show running-config",
+    "show running-config interface <interface>",
     "show startup-config",
 ];
 
@@ -112,7 +114,9 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "reload",
                 ]);
             } else {
-                commands.retain(|c| !matches!(*c, "show running-config" | "show startup-config"));
+                commands.retain(|c| {
+                    !c.starts_with("show running-config") && *c != "show startup-config"
+                });
             }
         }
         IosMode::Global
@@ -129,20 +133,18 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                 ]);
                 if !switch {
                     commands.extend([
+                        "ip routing",
+                        "no ip routing",
                         "ip route <network> <mask> <next-hop>",
                         "ip route <network> <mask> <interface> <next-hop>",
                         "no ip route <network> <mask> <next-hop>",
                         "no ip route <network> <mask> <interface> <next-hop>",
                     ]);
                 }
+                commands.extend(["vlan <id>", "no vlan <id>"]);
                 if switch {
                     commands.extend(switching::GLOBAL.iter().copied());
-                    commands.extend([
-                        "vlan <id>",
-                        "no vlan <id>",
-                        "management ip <address>",
-                        "no management ip",
-                    ]);
+                    commands.extend(["management ip <address>", "no management ip"]);
                 }
             }
             if matches!(mode, IosMode::Vlan(_)) {
@@ -162,7 +164,17 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                 }
                 if switch {
                     commands.extend(switching::INTERFACE.iter().copied());
+                }
+                if !matches!(
+                    mode,
+                    IosMode::Interface {
+                        subinterface: Some(_),
+                        ..
+                    }
+                ) {
                     commands.extend([
+                        "switchport",
+                        "no switchport",
                         "switchport mode access",
                         "switchport mode trunk",
                         "switchport access vlan <id>",
@@ -172,7 +184,8 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                         "switchport trunk allowed vlan remove <list>",
                         "switchport trunk native vlan <id>",
                     ]);
-                } else {
+                }
+                if !switch {
                     commands.extend(["ip address <address> <mask>", "no ip address"]);
                     if matches!(
                         mode,
@@ -508,6 +521,11 @@ impl NetworkSim {
                     .cloned()
                     .ok_or("% No startup configuration. Save with write memory first.")?;
                 saved.normalize_interfaces();
+                for id in self.ios_ports(device) {
+                    if !saved.ports.iter().any(|p| p.id == id) {
+                        self.ports.remove(&id);
+                    }
+                }
                 self.devices.get_mut(&device).unwrap().kind = saved.kind;
                 for port in saved.ports {
                     self.ports.insert(port.id, port);
@@ -556,7 +574,20 @@ impl NetworkSim {
                 .map(str::to_owned)
                 .collect());
         }
-        let (command, args) = resolve(input, &commands)?;
+        let (command, args) = resolve(input, &commands).map_err(|error| {
+            if *mode == IosMode::User
+                && resolve(input, &grammar(&IosMode::Privileged, switch)).is_ok_and(
+                    |(command, _)| {
+                        command.starts_with("show running-config")
+                            || command == "show startup-config"
+                    },
+                )
+            {
+                "% This command requires privileged EXEC mode. Type enable to enter # mode.".into()
+            } else {
+                error
+            }
+        })?;
         if command.starts_with("show ") {
             self.prepare_runtime();
             return self.ios_show(device, command, &args);
@@ -663,8 +694,8 @@ impl NetworkSim {
                     device,
                     IosStartupConfig {
                         kind: self.devices[&device].kind.clone(),
-                        ports: self.devices[&device]
-                            .ports()
+                        ports: self
+                            .ios_ports(device)
                             .iter()
                             .map(|p| self.ports[p].clone())
                             .collect(),
@@ -683,8 +714,11 @@ impl NetworkSim {
             }
             "vlan <id>" => {
                 let id = vlan_id(&args[0])?;
-                if let DeviceKind::Switch(sw) = &self.devices[&device].kind
-                    && !sw.vlans.iter().any(|v| v.id == id)
+                if !self
+                    .device_vlans(device)
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|v| v.id == id)
                 {
                     self.ios_execute(Command::CreateVlan {
                         switch: device,
@@ -701,10 +735,11 @@ impl NetworkSim {
                 if id == VlanId(1) {
                     return Err("% Default VLAN 1 cannot be removed.".into());
                 }
-                if let DeviceKind::Switch(sw) = &mut self.devices.get_mut(&device).unwrap().kind {
-                    sw.vlans.retain(|v| v.id != id);
+                if let Some(vlans) = self.device_vlans_mut(device) {
+                    vlans.retain(|v| v.id != id);
                 }
                 self.topology_revision += 1;
+                self.routing_revision += 1;
             }
             "name <name>" => {
                 let IosMode::Vlan(id) = mode else {
@@ -720,6 +755,22 @@ impl NetworkSim {
             }
             "interface <interface...>" | "interface range <range...>" => {
                 let range = command.contains("range");
+                let value = args[0].replace(' ', "").to_ascii_lowercase();
+                if let Some(id) = value
+                    .strip_prefix("vlan")
+                    .or_else(|| value.strip_prefix("vl"))
+                {
+                    if range {
+                        return Err("% VLAN interface ranges are unsupported.".into());
+                    }
+                    let vlan = vlan_id(id)?;
+                    let port = self.ensure_router_svi(device, vlan)?;
+                    *mode = IosMode::Interface {
+                        ports: vec![port],
+                        subinterface: None,
+                    };
+                    return Ok(vec![]);
+                }
                 if switch && let Some(group) = switching::channel_number(&args[0]) {
                     if range || self.channel_ports(device, group).is_empty() {
                         return Err(
@@ -734,6 +785,13 @@ impl NetworkSim {
                     ports,
                     subinterface,
                 };
+            }
+            "ip routing" | "no ip routing" => {
+                let DeviceKind::Router(r) = &mut self.devices.get_mut(&device).unwrap().kind else {
+                    return Err("% Layer 3 routing is not supported on this switch.".into());
+                };
+                r.routing_enabled = command == "ip routing";
+                self.routing_revision += 1;
             }
             _ => {
                 if switching::GLOBAL.contains(&command) {
@@ -767,6 +825,9 @@ impl NetworkSim {
 
     pub fn ios_interface_name(&self, device: DeviceId, port: PortId) -> String {
         let dev = &self.devices[&device];
+        if self.router_svi(port).is_some() {
+            return self.ports[&port].name.clone();
+        }
         let index = dev.ports().iter().position(|p| *p == port).unwrap_or(0);
         match dev.kind {
             DeviceKind::Switch(ref switch) => format!(
@@ -808,8 +869,8 @@ impl NetworkSim {
             ),
             None => (value.as_str(), None),
         };
-        for port in self.devices[&device].ports() {
-            let full = self.ios_interface_name(device, *port).to_ascii_lowercase();
+        for port in self.ios_ports(device) {
+            let full = self.ios_interface_name(device, port).to_ascii_lowercase();
             let (suffix, aliases): (&str, &[&str]) =
                 if let Some(suffix) = full.strip_prefix("tengigabitethernet") {
                     (suffix, &["te", "ten"])
@@ -819,7 +880,7 @@ impl NetworkSim {
                         &["gi", "gig", "g"],
                     )
                 };
-            let matched = base == self.ports[port].name.to_ascii_lowercase()
+            let matched = base == self.ports[&port].name.to_ascii_lowercase()
                 || base == full
                 || aliases
                     .iter()
@@ -828,7 +889,13 @@ impl NetworkSim {
                 if sub.is_some() && !matches!(self.devices[&device].kind, DeviceKind::Router(_)) {
                     return Err("% Subinterfaces are supported on routers only.".into());
                 }
-                return Ok((*port, sub));
+                if sub.is_some() && matches!(self.ports[&port].config, PortConfig::Switch(_)) {
+                    return Err(
+                        "% Convert a flex port using no switchport before creating subinterfaces."
+                            .into(),
+                    );
+                }
+                return Ok((port, sub));
             }
         }
         Err(format!(
@@ -896,6 +963,17 @@ impl NetworkSim {
             sub.map(|s| format!(".{s}")).unwrap_or_default()
         );
         match command {
+            "switchport" | "no switchport" => {
+                if matches!(self.devices[&device].kind, DeviceKind::Switch(_))
+                    && command == "switchport"
+                {
+                    return Ok(());
+                }
+                return self.ios_execute(Command::SetRouterSwitchport {
+                    port,
+                    switchport: command == "switchport",
+                });
+            }
             "description <text...>" => {
                 self.ios_configs
                     .entry(device)
@@ -919,6 +997,11 @@ impl NetworkSim {
             }
             "speed 10" | "speed 100" | "speed 1000" | "speed 10000" | "speed 25000"
             | "speed auto" => {
+                if self.router_svi(port).is_some() {
+                    return Err(
+                        "% VLAN interfaces derive their rate from active LAN members.".into(),
+                    );
+                }
                 let speed = match command {
                     "speed 10" => LinkSpeed::Mbps10,
                     "speed 100" => LinkSpeed::Mbps100,
@@ -943,8 +1026,7 @@ impl NetworkSim {
                     "no switchport access vlan" => SwitchPortMode::Access { vlan: None },
                     "switchport access vlan <id>" => {
                         let vlan = vlan_id(&args[0])?;
-                        if let DeviceKind::Switch(sw) = &self.devices[&device].kind
-                            && !sw.vlans.iter().any(|v| v.id == vlan)
+                        if !self.device_vlans(device).unwrap_or_default().iter().any(|v| v.id == vlan)
                         {
                             self.ios_execute(Command::CreateVlan {
                                 switch: device,
@@ -963,6 +1045,7 @@ impl NetworkSim {
                             allowed: (1..4095).map(VlanId).collect(),
                         },
                     },
+                    "ip address <address> <mask>" | "no ip address" => return Err("% This is a Layer 2 switch port. Configure interface Vlan<N>, or use no switchport on a flex port.".into()),
                     _ => {
                         let SwitchPortMode::Trunk {
                             mut native_vlan,
@@ -1153,6 +1236,9 @@ impl NetworkSim {
                 Ok(lines)
             }
             "show running-config" => Ok(self.ios_running_config(device)),
+            "show running-config interface <interface>" => {
+                self.ios_running_interface_config(device, &args[0])
+            }
             "show startup-config" => {
                 let saved = self
                     .startup_configs
@@ -1170,15 +1256,13 @@ impl NetworkSim {
                 Ok(copy.ios_running_config(device))
             }
             "show vlan brief" => {
-                let DeviceKind::Switch(sw) = &dev.kind else {
-                    return Err("% VLAN database is available on switches only.".into());
-                };
+                let database = self.device_vlans(device).ok_or("% No VLAN database.")?;
                 let mut lines =
                     vec!["VLAN  Name                             Status   Ports".into()];
-                let mut vlans = sw.vlans.clone();
+                let mut vlans = database.to_vec();
                 vlans.sort_by_key(|v| v.id.0);
                 for vlan in vlans {
-                    let ports = sw.ports.iter().filter(|p| matches!(&self.ports[p].config, PortConfig::Switch(c) if c.mode == SwitchPortMode::Access { vlan: Some(vlan.id) })).map(|p| self.ios_interface_name(device, *p)).collect::<Vec<_>>().join(", ");
+                    let ports = dev.ports().iter().filter(|p| matches!(&self.ports[p].config, PortConfig::Switch(c) if matches!(c.mode, SwitchPortMode::Access { vlan: id } if id.unwrap_or(VlanId(1)) == vlan.id))).map(|p| self.ios_interface_name(device, *p)).collect::<Vec<_>>().join(", ");
                     lines.push(format!(
                         "{:<5} {:<32} active   {ports}",
                         vlan.id.0, vlan.name
@@ -1191,7 +1275,7 @@ impl NetworkSim {
                     .runtime
                     .arp
                     .iter()
-                    .filter(|((port, _, _), _)| dev.ports().contains(port))
+                    .filter(|((port, _, _), _)| self.ios_ports(device).contains(port))
                     .collect();
                 entries.sort_by_key(|((port, address, vlan), _)| (*port, *vlan, *address));
                 let mut lines = vec![
@@ -1213,6 +1297,9 @@ impl NetworkSim {
                 let mut lines = vec![
                     "Codes: C - connected, S - static; configured routes on this device".into(),
                 ];
+                if !router.routing_enabled {
+                    lines.push("IP routing is disabled; transit packets are not forwarded.".into());
+                }
                 for iface in &router.interfaces {
                     if !self.ports[&iface.port].enabled {
                         continue;
@@ -1300,7 +1387,7 @@ impl NetworkSim {
             }
             _ => {
                 let ports = if args.is_empty() {
-                    dev.ports().to_vec()
+                    self.ios_ports(device)
                 } else {
                     let (port, sub) = self.ios_find_interface(device, &args[0])?;
                     if sub.is_some() {
@@ -1337,9 +1424,14 @@ impl NetworkSim {
                             ));
                         }
                         PortConfig::Router(c) => {
-                            if command == "show interfaces trunk" || command.ends_with("switchport")
-                            {
-                                return Err("% This is a routed interface in the simulator.".into());
+                            if command == "show interfaces trunk" {
+                                continue;
+                            }
+                            if command.ends_with("switchport") {
+                                lines.push(format!(
+                                    "{name}: Switchport: Disabled (routed interface)"
+                                ));
+                                continue;
                             }
                             if c.interfaces.is_empty() {
                                 lines.push(format!(
@@ -1399,8 +1491,18 @@ impl NetworkSim {
             lines.push(format!("management ip {address}"));
         }
         lines.extend(self.ios_switch_config(device));
-        if let DeviceKind::Switch(sw) = &dev.kind {
-            let mut vlans = sw.vlans.clone();
+        if let DeviceKind::Router(r) = &dev.kind {
+            lines.push(
+                if r.routing_enabled {
+                    "ip routing"
+                } else {
+                    "no ip routing"
+                }
+                .into(),
+            );
+        }
+        if let Some(database) = self.device_vlans(device) {
+            let mut vlans = database.to_vec();
             vlans.sort_by_key(|v| v.id.0);
             for v in vlans {
                 lines.extend([
@@ -1410,9 +1512,9 @@ impl NetworkSim {
                 ]);
             }
         }
-        for id in dev.ports() {
-            let port = &self.ports[id];
-            let name = self.ios_interface_name(device, *id);
+        for id in self.ios_ports(device) {
+            let port = &self.ports[&id];
+            let name = self.ios_interface_name(device, id);
             lines.push(format!("interface {name}"));
             if let Some(description) = meta.descriptions.get(&name) {
                 lines.push(format!(" description {description}"));
@@ -1425,29 +1527,40 @@ impl NetworkSim {
                 }
                 .into(),
             );
-            lines.push(format!(" speed {}", port.advertised_speed.mbps()));
+            if self.router_svi(id).is_none() {
+                lines.push(format!(" speed {}", port.advertised_speed.mbps()));
+            }
             match &port.config {
-                PortConfig::Switch(c) => match &c.mode {
-                    SwitchPortMode::Access { vlan } => lines.extend([
-                        " switchport mode access".into(),
-                        vlan.map(|v| format!(" switchport access vlan {}", v.0))
-                            .unwrap_or_else(|| " no switchport access vlan".into()),
-                    ]),
-                    SwitchPortMode::Trunk {
-                        native_vlan,
-                        allowed,
-                    } => {
-                        lines.push(" switchport mode trunk".into());
-                        if let Some(vlan) = native_vlan {
-                            lines.push(format!(" switchport trunk native vlan {}", vlan.0));
-                        }
-                        lines.push(format!(
-                            " switchport trunk allowed vlan {}",
-                            format_vlan_list(allowed)
-                        ));
+                PortConfig::Switch(c) => {
+                    if matches!(dev.kind, DeviceKind::Router(_)) {
+                        lines.push(" switchport".into());
                     }
-                },
+                    match &c.mode {
+                        SwitchPortMode::Access { vlan } => lines.extend([
+                            " switchport mode access".into(),
+                            vlan.map(|v| format!(" switchport access vlan {}", v.0))
+                                .unwrap_or_else(|| " no switchport access vlan".into()),
+                        ]),
+                        SwitchPortMode::Trunk {
+                            native_vlan,
+                            allowed,
+                        } => {
+                            lines.push(" switchport mode trunk".into());
+                            if let Some(vlan) = native_vlan {
+                                lines.push(format!(" switchport trunk native vlan {}", vlan.0));
+                            }
+                            lines.push(format!(
+                                " switchport trunk allowed vlan {}",
+                                format_vlan_list(allowed)
+                            ));
+                        }
+                    }
+                }
                 PortConfig::Router(c) => {
+                    if matches!(&dev.kind, DeviceKind::Router(r) if r.ports.iter().position(|p| *p == id).is_some_and(|i| router_network_profile().flex_ports.contains(&i)))
+                    {
+                        lines.push(" no switchport".into());
+                    }
                     for iface in c.interfaces.iter().filter(|i| !i.name.contains('.')) {
                         if let Some(ip) = iface.address {
                             lines.push(format!(" ip address {ip} {}", prefix_mask(iface.prefix)));
@@ -1462,7 +1575,7 @@ impl NetworkSim {
                 }
                 _ => {}
             }
-            lines.extend(self.ios_switch_port_config(device, *id));
+            lines.extend(self.ios_switch_port_config(device, id));
             lines.push(" exit".into());
             if let PortConfig::Router(c) = &port.config {
                 for iface in c.interfaces.iter().filter(|i| i.name.contains('.')) {

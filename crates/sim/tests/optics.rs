@@ -477,10 +477,20 @@ fn server_sfpplus_nic_adds_real_interfaces_and_removal_returns_modules_and_cable
         part_id: "intel_x520_da2".into(),
     })
     .unwrap();
+    sim.execute(Command::SetPower {
+        device: server,
+        powered: false,
+    })
+    .unwrap();
     sim.execute(Command::InstallServerPart {
         device: server,
         part_id: "intel_x520_da2".into(),
         slot: Some(1),
+    })
+    .unwrap();
+    sim.execute(Command::SetPower {
+        device: server,
+        powered: true,
     })
     .unwrap();
     let DeviceKind::Server(data) = &sim.device(server).unwrap().kind else {
@@ -518,6 +528,11 @@ fn server_sfpplus_nic_adds_real_interfaces_and_removal_returns_modules_and_cable
         },
     );
     assert!(deliveries.iter().any(|delivery| delivery.port == port));
+    sim.execute(Command::SetPower {
+        device: server,
+        powered: false,
+    })
+    .unwrap();
     sim.execute(Command::RemoveServerPart {
         device: server,
         part_id: "intel_x520_da2".into(),
@@ -614,10 +629,20 @@ fn loading_prototype_nics_migrates_inventory_and_preserves_live_interfaces() {
         part_id: "intel_x520_da2".into(),
     })
     .unwrap();
+    sim.execute(Command::SetPower {
+        device: server,
+        powered: false,
+    })
+    .unwrap();
     sim.execute(Command::InstallServerPart {
         device: server,
         part_id: "intel_x520_da2".into(),
         slot: Some(1),
+    })
+    .unwrap();
+    sim.execute(Command::SetPower {
+        device: server,
+        powered: true,
     })
     .unwrap();
     let DeviceKind::Server(data) = &sim.device(server).unwrap().kind else {

@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+mod limits;
+pub use limits::*;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerCatalog {
     pub chassis: ServerChassis,
@@ -14,6 +17,11 @@ pub struct ServerChassis {
     pub cpu_sockets: usize,
     pub dimm_slots: usize,
     pub memory_type: String,
+    pub supported_cpu_ids: Vec<String>,
+    pub max_cpu_tdp_w: u16,
+    pub identical_cpus: bool,
+    pub parts_hot_swappable: bool,
+    pub memory: ChassisMemoryLimits,
     pub psu_bays: usize,
     pub drive_bays: Vec<DriveBay>,
     pub pcie_slots: Vec<PcieSlot>,
@@ -29,6 +37,7 @@ pub struct DriveBay {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PcieSlot {
     pub name: String,
+    pub cpu_socket: usize,
     pub lanes: u8,
     pub generation: u8,
     pub width: u8,
@@ -71,10 +80,17 @@ pub enum ServerPartKind {
         frequency_mhz: u32,
         pcie_lanes: u8,
         tdp_w: u16,
+        threads: u16,
+        max_sockets: usize,
+        pcie_generation: u8,
+        memory: CpuMemoryLimits,
     },
     Ram {
         memory_type: String,
         capacity_gb: u16,
+        speed_mt_s: u32,
+        ranks: u8,
+        voltage_mv: u16,
     },
     PowerSupply {
         capacity_w: u16,
@@ -89,6 +105,7 @@ impl ServerPartKind {
         let Self::Ram {
             memory_type,
             capacity_gb,
+            ..
         } = self
         else {
             return None;
@@ -133,10 +150,14 @@ pub enum PciCard {
 pub fn server_catalog() -> &'static ServerCatalog {
     static CATALOG: OnceLock<ServerCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        crate::equipment_config::equipment_catalog(
+        let catalog: ServerCatalog = crate::equipment_config::equipment_catalog(
             "server_parts.json",
             include_str!("../../../assets/equipment/server_parts.json"),
-        )
+        );
+        catalog.validate().unwrap_or_else(|error| {
+            panic!("invalid equipment config assets/equipment/server_parts.json: {error}")
+        });
+        catalog
     })
 }
 
@@ -177,6 +198,9 @@ impl ServerFullPack {
 pub struct ServerHardware {
     pub cpus: Vec<String>,
     pub ram: Vec<String>,
+    /// Physical DIMM indices parallel to `ram`; absent in legacy saves.
+    #[serde(default)]
+    pub ram_slot_indices: Vec<usize>,
     pub power_supplies: Vec<String>,
     /// Read old saves and refund previously purchased fans once on load.
     #[serde(default, rename = "cooling", skip_serializing)]
@@ -190,6 +214,32 @@ pub struct ServerHardware {
 }
 
 impl ServerHardware {
+    pub fn pcie_link_generation(&self, index: usize) -> Option<u8> {
+        let catalog = server_catalog();
+        let slot = catalog.chassis.pcie_slots.get(index)?;
+        let cpu = catalog
+            .parts
+            .iter()
+            .find(|p| self.cpus.get(slot.cpu_socket) == Some(&p.id))?;
+        let card = catalog
+            .parts
+            .iter()
+            .find(|p| self.pcie.get(index).and_then(Option::as_ref) == Some(&p.id))?;
+        let ServerPartKind::Cpu {
+            pcie_generation, ..
+        } = &cpu.kind
+        else {
+            return None;
+        };
+        let ServerPartKind::PciCard {
+            card: PciCard::Ethernet { generation, .. },
+        } = &card.kind
+        else {
+            return None;
+        };
+        Some(slot.generation.min(*pcie_generation).min(*generation))
+    }
+
     pub fn compute_mhz(&self) -> u64 {
         let catalog = server_catalog();
         self.cpus
@@ -226,7 +276,8 @@ impl ServerHardware {
         if self.cpus.is_empty() || self.ram.is_empty() {
             return false;
         }
-        crate::server_power_profile().psu.capacity_watts >= self.load_watts()
+        self.validate_limits(server_catalog()).is_ok()
+            && crate::server_power_profile().psu.capacity_watts >= self.load_watts()
     }
 }
 

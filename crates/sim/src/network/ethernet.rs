@@ -136,6 +136,22 @@ impl NetworkSim {
         let mut seen: HashSet<(usize, PortId, MacAddress, MacAddress, VlanId)> = HashSet::new();
         let mut deliveries = Vec::new();
         for (sequence, frame) in frames.into_iter().enumerate() {
+            if let Some(interface) = self.router_svi(egress) {
+                if !self.port_link_up(egress) {
+                    continue;
+                }
+                let vlan = interface.vlan.unwrap();
+                let device = self.ports[&egress].device;
+                if !self.frame_permitted(egress, vlan, false, frame) {
+                    continue;
+                }
+                for target in self.switch_targets(device, egress, vlan, frame.destination) {
+                    let mut emitted = frame;
+                    emitted.vlan = self.egress_vlan(target, vlan);
+                    queue.push_back((sequence, target, emitted, 0, vec![egress, target]));
+                }
+                continue;
+            }
             if self.ingress_vlan(egress, &frame).is_some() {
                 queue.push_back((sequence, egress, frame, 0u16, vec![egress]));
             }
@@ -156,6 +172,9 @@ impl NetworkSim {
                 .ingress_vlan(out, &frame)
                 .unwrap_or(frame.vlan.unwrap_or(VlanId(1)));
             if !self.frame_permitted(out, out_vlan, false, frame) {
+                continue;
+            }
+            if self.bridge_port_blocked(out, out_vlan) {
                 continue;
             }
             let Some(link) = self.link_for_port(out).cloned() else {
@@ -220,12 +239,45 @@ impl NetworkSim {
             let device = port.device;
 
             match self.device(device).map(|d| &d.kind) {
-                Some(DeviceKind::Switch(_)) => {
+                Some(DeviceKind::Switch(_)) | Some(DeviceKind::Router(_))
+                    if matches!(port.config, PortConfig::Switch(_)) =>
+                {
                     // CoS trust applies to the original 802.1Q tag, not the
                     // internal access-VLAN label attached during forwarding.
                     received.vlan = wire_vlan;
                     received = self.classify_switch_frame(in_port, received);
                     received.vlan = Some(vlan);
+                    if let Some(DeviceKind::Router(router)) = self.device(device).map(|d| &d.kind) {
+                        let targets: Vec<_> = router
+                            .svi_ports
+                            .iter()
+                            .copied()
+                            .filter(|id| {
+                                self.router_svi(*id).is_some_and(|i| i.vlan == Some(vlan))
+                                    && self.port_link_up(*id)
+                            })
+                            .collect();
+                        let mut addressed_svi = false;
+                        for target in targets {
+                            addressed_svi |= received.destination == MacAddress::for_port(target);
+                            if (received.destination == MacAddress::for_port(target)
+                                || is_broadcast(received.destination))
+                                && self.frame_permitted(target, vlan, true, received)
+                            {
+                                let mut local_path = path.clone();
+                                local_path.push(target);
+                                deliveries.push(FrameDelivery {
+                                    port: target,
+                                    vlan,
+                                    frame: received,
+                                    path: local_path,
+                                });
+                            }
+                        }
+                        if addressed_svi {
+                            continue;
+                        }
+                    }
                     if self
                         .switch_management(device)
                         .is_some_and(|m| m.vlan == vlan)
@@ -283,6 +335,7 @@ impl NetworkSim {
                         });
                     }
                 }
+                Some(DeviceKind::Switch(_)) => {}
                 Some(DeviceKind::PatchPanel(_))
                 | Some(DeviceKind::CableManager(_))
                 | Some(DeviceKind::Ups(_))
@@ -403,7 +456,12 @@ impl NetworkSim {
         ports
             .iter()
             .copied()
-            .filter(|p| *p != ingress && self.port_link_up(*p) && self.carries_vlan(*p, vlan))
+            .filter(|p| {
+                *p != ingress
+                    && matches!(self.ports[p].config, PortConfig::Switch(_))
+                    && self.port_link_up(*p)
+                    && self.carries_vlan(*p, vlan)
+            })
             .collect()
     }
 
@@ -449,7 +507,8 @@ impl NetworkSim {
     }
 
     fn switch_has_vlan(&self, device: crate::DeviceId, vlan: VlanId) -> bool {
-        matches!(self.device(device).map(|d| &d.kind), Some(DeviceKind::Switch(sw)) if sw.vlans.iter().any(|entry| entry.id == vlan))
+        self.device_vlans(device)
+            .is_some_and(|vlans| vlans.iter().any(|entry| entry.id == vlan))
     }
 
     pub(crate) fn endpoint_link_vlan_matches(

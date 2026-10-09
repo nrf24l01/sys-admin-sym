@@ -662,6 +662,18 @@
     "power.component.conversion": "Потери БП",
     "power.source-self": "Собственное потребление, потери и зарядка: {0} Вт",
     "power.assembly-required": "Для включения завершите сборку сервера",
-    "power.adapter-overload": "Превышена мощность адаптера"
+    "power.adapter-overload": "Превышена мощность адаптера",
+    "hardware.memory-capacity": "Память: {0} / {1} ГБ",
+    "hardware.memory-channels-speed": "Каналы: {0}/{1} · {2} MT/s",
+    "hardware.memory-unbalanced": "Заполните оба канала одинаково для лучшей производительности.",
+    "hardware.invalid-memory": "Неверная конфигурация памяти",
+    "hardware.dimm-slots": "Размещение DIMM",
+    "hardware.dimm-slot": "{0} · CPU {1} · канал {2}",
+    "shop.spec.max-memory": "Максимум ОЗУ (ГБ)",
+    "shop.spec.memory-channels": "Каналы памяти",
+    "shop.spec.memory-speed": "Скорость памяти (MT/s)",
+    "shop.spec.ranks": "Ранги DIMM",
+    "hardware.pcie-negotiated": "линк Gen {0}",
+    "hardware.power-off-parts": "Выключите сервер перед заменой компонентов."
   }
 }

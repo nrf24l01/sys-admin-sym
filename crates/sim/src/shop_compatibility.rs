@@ -39,6 +39,11 @@ impl NetworkSim {
                         "CPU socket is incompatible or full".into(),
                     ));
                 }
+                let mut candidate = hardware.clone();
+                candidate.cpus.push(part_id.into());
+                candidate
+                    .validate_limits(catalog)
+                    .map_err(SimError::ServerHardware)?;
                 None
             }
             ServerPartKind::Ram { memory_type, .. } => {
@@ -47,7 +52,38 @@ impl NetworkSim {
                         "DIMM type is incompatible or slots are full".into(),
                     ));
                 }
-                None
+                let indices = hardware.dimm_slot_indices(catalog);
+                if slot.is_some_and(|index| index >= chassis.dimm_slots || indices.contains(&index))
+                {
+                    return Err(SimError::ServerHardware(
+                        "DIMM slot is occupied or does not exist".into(),
+                    ));
+                }
+                let free = slot.map(|index| vec![index]).unwrap_or_else(|| {
+                    chassis
+                        .memory
+                        .population_order
+                        .iter()
+                        .copied()
+                        .filter(|i| !indices.contains(i))
+                        .collect()
+                });
+                let mut first_error = None;
+                for index in free {
+                    let mut candidate = hardware.clone();
+                    candidate.ram_slot_indices = indices.clone();
+                    candidate.ram.push(part_id.into());
+                    candidate.ram_slot_indices.push(index);
+                    match candidate.validate_limits(catalog) {
+                        Ok(()) => return Ok(Some(index)),
+                        Err(error) => {
+                            first_error.get_or_insert(error);
+                        }
+                    }
+                }
+                return Err(SimError::ServerHardware(
+                    first_error.unwrap_or_else(|| "DIMM slots are full".into()),
+                ));
             }
             ServerPartKind::PowerSupply { .. } => {
                 if hardware.power_supplies.len() >= chassis.psu_bays {
@@ -61,7 +97,7 @@ impl NetworkSim {
                 card:
                     PciCard::Ethernet {
                         lanes,
-                        generation,
+                        generation: _,
                         width,
                         speed_mbps,
                         ..
@@ -77,7 +113,6 @@ impl NetworkSim {
                         hardware.pcie.get(index).is_some_and(Option::is_none)
                             && s.lanes >= *lanes
                             && s.width >= *width
-                            && s.generation >= *generation
                     })
                 };
                 let index = slot
@@ -117,6 +152,11 @@ impl NetworkSim {
                         used + u16::from(*lanes)
                     )));
                 }
+                let mut candidate = hardware.clone();
+                candidate.pcie[index] = Some(part_id.into());
+                candidate
+                    .validate_limits(catalog)
+                    .map_err(SimError::ServerHardware)?;
                 Some(index)
             }
         };

@@ -111,7 +111,7 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
         id => {
             let cell = match id {
                 "xeon_e_2434" => 0,
-                "ddr5_ecc_16gb" => 1,
+                "ddr5_ecc_16gb" | "ddr5_ecc_32gb" => 1,
                 "intel_i350_t4" => 2,
                 "intel_x520_da2" => 3,
                 "enterprise_hdd_2tb" => 4,

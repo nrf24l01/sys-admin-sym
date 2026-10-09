@@ -662,6 +662,18 @@
     "power.component.conversion": "PSU losses",
     "power.source-self": "Own draw, losses and charging: {0} W",
     "power.assembly-required": "Complete the required server hardware to power on",
-    "power.adapter-overload": "Adapter capacity exceeded"
+    "power.adapter-overload": "Adapter capacity exceeded",
+    "hardware.memory-capacity": "Memory: {0} / {1} GB",
+    "hardware.memory-channels-speed": "Channels: {0}/{1} · {2} MT/s",
+    "hardware.memory-unbalanced": "Populate both channels equally for best performance.",
+    "hardware.invalid-memory": "Invalid memory configuration",
+    "hardware.dimm-slots": "DIMM placement",
+    "hardware.dimm-slot": "{0} · CPU {1} · channel {2}",
+    "shop.spec.max-memory": "Maximum RAM (GB)",
+    "shop.spec.memory-channels": "Memory channels",
+    "shop.spec.memory-speed": "Memory speed (MT/s)",
+    "shop.spec.ranks": "DIMM ranks",
+    "hardware.pcie-negotiated": "link Gen {0}",
+    "hardware.power-off-parts": "Power off the server before changing components."
   }
 }

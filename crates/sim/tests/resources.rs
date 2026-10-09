@@ -9,6 +9,9 @@ fn memory_score_accounts_for_ddr_generation_and_module_type() {
         ServerPartKind::Ram {
             memory_type: memory_type.into(),
             capacity_gb: 30,
+            speed_mt_s: 4800,
+            ranks: 1,
+            voltage_mv: 1100,
         }
         .memory_score_gb()
         .unwrap()

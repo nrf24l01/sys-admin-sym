@@ -40,6 +40,9 @@ impl NetworkSim {
 
     pub fn wire_vlan_for(&self, port: PortId, vlan: VlanId) -> Option<VlanId> {
         let p = self.port(port)?;
+        if self.router_svi(port).is_some() {
+            return Some(vlan);
+        }
         match &p.config {
             PortConfig::Server(_) => None,
             PortConfig::Switch(config) => match config.mode {
@@ -232,7 +235,12 @@ mod tests {
             powered: true,
         })
         .unwrap();
-        let port = sim.device(router).unwrap().ports()[2];
+        let port = sim.device(router).unwrap().ports()[8];
+        sim.execute(Command::SetRouterSwitchport {
+            port,
+            switchport: false,
+        })
+        .unwrap();
         (sim, port)
     }
 

@@ -40,6 +40,16 @@ fn install_power(sim: &mut NetworkSim, device: DeviceId, unit: u8) {
         powered: true,
     })
     .unwrap();
+    if matches!(sim.device(device).unwrap().kind, DeviceKind::Router(_)) {
+        for index in [8, 9] {
+            let port = sim.device(device).unwrap().ports()[index];
+            sim.execute(Command::SetRouterSwitchport {
+                port,
+                switchport: false,
+            })
+            .unwrap();
+        }
+    }
 }
 
 fn supplies(sim: &mut NetworkSim) {
@@ -184,7 +194,7 @@ fn reset_port_config_keeps_configuration_commands_applicable() {
     let router = buy(&mut sim, DeviceTemplate::Router);
     let server = buy(&mut sim, DeviceTemplate::Server);
     let switch_port = sim.device(switch).unwrap().ports()[0];
-    let router_port = sim.device(router).unwrap().ports()[2];
+    let router_port = sim.device(router).unwrap().ports()[8];
     let server_port = sim.device(server).unwrap().ports()[0];
     sim.execute(Command::SetSwitchPortMode {
         port: switch_port,
@@ -199,6 +209,11 @@ fn reset_port_config_keeps_configuration_commands_applicable() {
     sim.execute(Command::SetIpv4 {
         port: server_port,
         config: Ipv4InterfaceConfig::new(ip("192.0.2.2"), 24, None, VlanId(1)),
+    })
+    .unwrap();
+    sim.execute(Command::SetRouterSwitchport {
+        port: router_port,
+        switchport: false,
     })
     .unwrap();
     sim.execute(Command::ConfigureRouterInterface {
@@ -235,7 +250,7 @@ fn router_originated_ping_updates_both_wire_endpoints() {
     let server = buy(&mut sim, DeviceTemplate::Server);
     install_power(&mut sim, router, 1);
     install_power(&mut sim, server, 2);
-    let router_port = sim.device(router).unwrap().ports()[2];
+    let router_port = sim.device(router).unwrap().ports()[8];
     let server_port = sim.device(server).unwrap().ports()[0];
     sim.execute(Command::ConfigureRouterInterface {
         port: router_port,
@@ -274,7 +289,7 @@ fn unconfigured_wan_does_not_manufacture_a_reply() {
     let server = buy(&mut sim, DeviceTemplate::Server);
     install_power(&mut sim, router, 1);
     install_power(&mut sim, server, 2);
-    let router_port = sim.device(router).unwrap().ports()[2];
+    let router_port = sim.device(router).unwrap().ports()[8];
     let source = sim.device(server).unwrap().ports()[0];
     sim.execute(Command::ConfigureRouterInterface {
         port: router_port,
@@ -322,7 +337,7 @@ fn untagged_router_interface_reaches_access_vlan_gateway() {
     }
     let switch_port_router = sim.device(switch).unwrap().ports()[0];
     let switch_port_server = sim.device(switch).unwrap().ports()[1];
-    let router_port = sim.device(router).unwrap().ports()[2];
+    let router_port = sim.device(router).unwrap().ports()[8];
     let server_port = sim.device(server).unwrap().ports()[0];
     for port in [switch_port_router, switch_port_server] {
         sim.execute(Command::SetSwitchPortMode {
@@ -375,8 +390,8 @@ fn routed_echo_reply_fails_when_destination_has_no_gateway() {
     let rbp = sim.device(rb).unwrap().ports().to_vec();
     let source = sim.device(left).unwrap().ports()[0];
     let destination = sim.device(right).unwrap().ports()[0];
-    let (ra_lan, ra_transit) = (rap[2], rap[3]);
-    let (rb_lan, rb_transit) = (rbp[2], rbp[3]);
+    let (ra_lan, ra_transit) = (rap[8], rap[9]);
+    let (rb_lan, rb_transit) = (rbp[8], rbp[9]);
     for (port, name, address) in [
         (ra_lan, "LAN-A", "10.0.1.1"),
         (ra_transit, "TRANSIT-A", "10.0.12.1"),
@@ -469,7 +484,7 @@ fn ttl_one_expires_at_the_first_router() {
     let server = buy(&mut sim, DeviceTemplate::Server);
     install_power(&mut sim, router, 1);
     install_power(&mut sim, server, 2);
-    let rp = sim.device(router).unwrap().ports()[2];
+    let rp = sim.device(router).unwrap().ports()[8];
     let sp = sim.device(server).unwrap().ports()[0];
     sim.execute(Command::ConfigureRouterInterface {
         port: rp,
@@ -506,8 +521,8 @@ fn static_routes_forward_and_longest_prefix_wins() {
     let rbp = sim.device(rb).unwrap().ports().to_vec();
     let lp = sim.device(left).unwrap().ports()[0];
     let rp = sim.device(right).unwrap().ports()[0];
-    let (ra_lan, ra_transit) = (rap[2], rap[3]);
-    let (rb_lan, rb_transit) = (rbp[2], rbp[3]);
+    let (ra_lan, ra_transit) = (rap[8], rap[9]);
+    let (rb_lan, rb_transit) = (rbp[8], rbp[9]);
     for (port, name, address) in [
         (ra_lan, "LAN-A", "10.0.1.1"),
         (ra_transit, "TRANSIT-A", "10.0.12.1"),

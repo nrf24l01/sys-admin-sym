@@ -273,6 +273,7 @@ impl NetworkSim {
             if let DeviceKind::Server(server) = &mut device.kind
                 && let Some(hardware) = &mut server.hardware
             {
+                hardware.normalize_dimm_slots();
                 let slots = server_catalog().chassis.pcie_slots.len();
                 if hardware.pcie.len() < slots {
                     hardware.pcie.resize(slots, None);
@@ -824,6 +825,16 @@ impl NetworkSim {
                 )?;
                 vec![SimEvent::PortConfigChanged(port)]
             }
+            Command::SetRouterSwitchport { port, switchport } => {
+                let device = self
+                    .ports
+                    .get(&port)
+                    .ok_or(SimError::PortNotFound(port))?
+                    .device;
+                self.ios_set_switchport(device, port, switchport)
+                    .map_err(|e| SimError::Provider(e.trim_start_matches("% ").into()))?;
+                vec![SimEvent::PortConfigChanged(port)]
+            }
             Command::SetStaticRoute { router, route } => {
                 self.set_static_route(router, route)?;
                 vec![SimEvent::ConnectivityChanged]
@@ -948,7 +959,7 @@ impl NetworkSim {
         Ok(events)
     }
 
-    fn alloc_port(
+    pub(crate) fn alloc_port(
         &mut self,
         device: DeviceId,
         name: String,
@@ -1087,14 +1098,26 @@ impl NetworkSim {
             }
             DeviceTemplate::Router => {
                 let mut ports = Vec::new();
-                for name in [
-                    "WAN1", "WAN2", "LAN1", "LAN2", "LAN3", "LAN4", "LAN5", "LAN6", "LAN7", "LAN8",
-                ] {
+                let profile = router_network_profile();
+                for index in 0..profile.wan_ports.len() + profile.lan_ports.len() {
+                    let wan = profile.wan_ports.iter().position(|i| *i == index);
+                    let name = wan.map(|n| format!("WAN{}", n + 1)).unwrap_or_else(|| {
+                        format!(
+                            "LAN{}",
+                            profile.lan_ports.iter().position(|i| *i == index).unwrap() + 1
+                        )
+                    });
                     ports.push(self.alloc_port(
                         id,
-                        name.into(),
+                        name,
                         PortConnector::Rj45,
-                        PortConfig::Router(RouterPortConfig::default()),
+                        if wan.is_some() {
+                            PortConfig::Router(RouterPortConfig::default())
+                        } else {
+                            PortConfig::Switch(SwitchPortConfig {
+                                mode: SwitchPortMode::Access { vlan: None },
+                            })
+                        },
                     ));
                 }
                 for port in &ports {
@@ -1116,6 +1139,9 @@ impl NetworkSim {
                         interfaces: vec![interface],
                         routes: Vec::new(),
                         domain_routes: Vec::new(),
+                        vlans: crate::device::default_router_vlans(),
+                        svi_ports: Vec::new(),
+                        routing_enabled: profile.routing_enabled,
                     }),
                 )
             }
@@ -1320,6 +1346,13 @@ impl NetworkSim {
         part_id: &str,
         slot: Option<usize>,
     ) -> Result<(), SimError> {
+        if self.devices.get(&device).is_some_and(|d| d.powered)
+            && !server_catalog().chassis.parts_hot_swappable
+        {
+            return Err(SimError::ServerHardware(
+                "power off the server before changing CPU, RAM or PCIe cards".into(),
+            ));
+        }
         let catalog = server_catalog();
         let part = catalog
             .parts
@@ -1378,7 +1411,11 @@ impl NetworkSim {
         let hardware = server.hardware.as_mut().unwrap();
         match &part.kind {
             ServerPartKind::Cpu { .. } => hardware.cpus.push(part_id.into()),
-            ServerPartKind::Ram { .. } => hardware.ram.push(part_id.into()),
+            ServerPartKind::Ram { .. } => {
+                hardware.normalize_dimm_slots();
+                hardware.ram.push(part_id.into());
+                hardware.ram_slot_indices.push(selected_slot.unwrap());
+            }
             ServerPartKind::PowerSupply { .. } => hardware.power_supplies.push(part_id.into()),
             ServerPartKind::PciCard { .. } => {
                 let index = selected_slot.unwrap();
@@ -1400,6 +1437,13 @@ impl NetworkSim {
         part_id: &str,
         slot: Option<usize>,
     ) -> Result<(), SimError> {
+        if self.devices.get(&device).is_some_and(|d| d.powered)
+            && !server_catalog().chassis.parts_hot_swappable
+        {
+            return Err(SimError::ServerHardware(
+                "power off the server before changing CPU, RAM or PCIe cards".into(),
+            ));
+        }
         let server = match &self
             .devices
             .get(&device)
@@ -1457,6 +1501,23 @@ impl NetworkSim {
             unreachable!()
         };
         let hardware = server.hardware.as_mut().unwrap();
+        hardware.normalize_dimm_slots();
+        let ram_index = if matches!(part.kind, ServerPartKind::Ram { .. }) {
+            Some(
+                hardware
+                    .ram
+                    .iter()
+                    .enumerate()
+                    .position(|(i, id)| {
+                        id == part_id && slot.is_none_or(|s| hardware.ram_slot_indices[i] == s)
+                    })
+                    .ok_or_else(|| {
+                        SimError::ServerHardware("DIMM is not installed in that slot".into())
+                    })?,
+            )
+        } else {
+            None
+        };
         let list = match part.kind {
             ServerPartKind::Cpu { .. } => Some(&mut hardware.cpus),
             ServerPartKind::Ram { .. } => Some(&mut hardware.ram),
@@ -1464,11 +1525,13 @@ impl NetworkSim {
             ServerPartKind::PciCard { .. } => None,
         };
         if let Some(list) = list {
-            let index = list
-                .iter()
-                .position(|p| p == part_id)
+            let index = ram_index
+                .or_else(|| list.iter().position(|p| p == part_id))
                 .ok_or_else(|| SimError::ServerHardware("part is not installed".into()))?;
             list.remove(index);
+            if ram_index.is_some() {
+                hardware.ram_slot_indices.remove(index);
+            }
         } else {
             let index = pci_slot.unwrap();
             hardware.pcie[index] = None;
@@ -1495,7 +1558,7 @@ impl NetworkSim {
         if device.rack.is_some() {
             return Err(SimError::DeviceInstalled);
         }
-        let ports = device.ports().to_vec();
+        let ports = self.ios_ports(id);
         let source = match &device.kind {
             DeviceKind::Ups(x) => x.source,
             DeviceKind::Pdu(x) => x.source,
@@ -1758,6 +1821,9 @@ impl NetworkSim {
         }
         let pa = self.ports.get(&a).ok_or(SimError::PortNotFound(a))?;
         let pb = self.ports.get(&b).ok_or(SimError::PortNotFound(b))?;
+        if self.router_svi(a).is_some() || self.router_svi(b).is_some() {
+            return Err(SimError::WrongPortType);
+        }
         if self.port_links.contains_key(&a) {
             return Err(SimError::PortAlreadyConnected(a));
         }
@@ -1831,11 +1897,22 @@ impl NetworkSim {
     fn set_power(&mut self, id: DeviceId, powered: bool) -> Result<(), SimError> {
         let device = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
         if powered
-            && matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()))
+            && let DeviceKind::Server(server) = &device.kind
+            && let Some(hardware) = &server.hardware
         {
-            return Err(SimError::ServerHardware(
-                "install a CPU and RAM before powering on".into(),
-            ));
+            if hardware.cpus.is_empty() || hardware.ram.is_empty() {
+                return Err(SimError::ServerHardware(
+                    "install a CPU and RAM before powering on".into(),
+                ));
+            }
+            hardware
+                .validate_limits(server_catalog())
+                .map_err(SimError::ServerHardware)?;
+            if !hardware.ready() {
+                return Err(SimError::ServerHardware(
+                    "component peak demand exceeds configured PSU capacity".into(),
+                ));
+            }
         }
         let source = match &self.devices[&id].kind {
             DeviceKind::Ups(x) => x.source,
@@ -1953,17 +2030,15 @@ impl NetworkSim {
         if vlan.id.0 == 0 || vlan.id.0 >= 4095 {
             return Err(SimError::VlanNotFound(vlan.id));
         }
-        match &mut self
-            .devices
-            .get_mut(&id)
-            .ok_or(SimError::DeviceNotFound(id))?
-            .kind
-        {
-            DeviceKind::Switch(sw) => {
-                if let Some(old) = sw.vlans.iter_mut().find(|v| v.id == vlan.id) {
+        if !self.devices.contains_key(&id) {
+            return Err(SimError::DeviceNotFound(id));
+        }
+        match self.device_vlans_mut(id) {
+            Some(vlans) => {
+                if let Some(old) = vlans.iter_mut().find(|v| v.id == vlan.id) {
                     *old = vlan;
                 } else {
-                    sw.vlans.push(vlan);
+                    vlans.push(vlan);
                 }
                 Ok(())
             }
@@ -1980,15 +2055,9 @@ impl NetworkSim {
             });
         }
         let device_id = port.device;
-        let switch = match &self
-            .devices
-            .get(&device_id)
-            .ok_or(SimError::DeviceNotFound(device_id))?
-            .kind
-        {
-            DeviceKind::Switch(v) => v,
-            _ => return Err(SimError::WrongPortType),
-        };
+        let known_vlans = self
+            .device_vlans(device_id)
+            .ok_or(SimError::WrongPortType)?;
         let vlans: Vec<_> = match &mode {
             SwitchPortMode::Access { vlan } => vlan.iter().copied().collect(),
             SwitchPortMode::Trunk {
@@ -2007,7 +2076,7 @@ impl NetworkSim {
         if matches!(mode, SwitchPortMode::Access { .. })
             && let Some(missing) = vlans
                 .into_iter()
-                .find(|v| !switch.vlans.iter().any(|known| known.id == *v))
+                .find(|v| !known_vlans.iter().any(|known| known.id == *v))
         {
             return Err(SimError::VlanNotFound(missing));
         }

@@ -185,3 +185,12 @@ The older reference assets below are retained for reference.
   and [Cisco C1111 66 W adapter capacity](https://www.cisco.com/c/en/us/products/collateral/routers/1000-series-integrated-services-routers-isr/datasheet-c78-739512.html)
   remain output limits; they do not become constant draw.
 - [Calculation details and limitations](../../docs/POWER_CONSUMPTION.md).
+
+## Server compatibility specifications
+
+`server_parts.json` memory and CPU limits follow the manufacturer references in
+[Server hardware](../../docs/SERVER_HARDWARE.md). The added 32 GB DDR5 ECC UDIMM
+uses the existing generic RAM image; its power curve is a project-authored
+estimate. The R360's represented CPU support list includes cataloged processors,
+not every processor sold by Dell. Router port roles follow the Cisco guide linked
+in [IOS guide](../../docs/IOS_GUIDE.md).

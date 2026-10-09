@@ -178,6 +178,22 @@ pub struct Router {
     pub routes: Vec<Route>,
     #[serde(default)]
     pub domain_routes: Vec<crate::DomainRoute>,
+    #[serde(default = "default_router_vlans")]
+    pub vlans: Vec<Vlan>,
+    #[serde(default)]
+    pub svi_ports: Vec<PortId>,
+    #[serde(default = "routing_enabled_default")]
+    pub routing_enabled: bool,
+}
+
+pub(crate) fn default_router_vlans() -> Vec<Vlan> {
+    vec![Vlan {
+        id: crate::VlanId(1),
+        name: "Default".into(),
+    }]
+}
+fn routing_enabled_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

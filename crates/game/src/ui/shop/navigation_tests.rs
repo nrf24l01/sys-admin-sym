@@ -69,7 +69,10 @@ fn overview_filters_are_general_and_leaf_filters_belong_to_the_product_type() {
         }
     }
     state.select(ShopCategory::Compute, Some(ShopSection::Ram));
-    assert_eq!(query::facet_keys(&state), &["capacity", "memory-type"]);
+    assert_eq!(
+        query::facet_keys(&state),
+        &["capacity", "memory-type", "memory-speed", "ranks"]
+    );
     state.select(ShopCategory::Connectivity, Some(ShopSection::FiberCables));
     assert_eq!(
         query::facet_keys(&state),

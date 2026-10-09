@@ -14,7 +14,7 @@ fn offer(id: &str) -> &'static catalog::Offer {
 #[test]
 fn every_offer_has_a_unique_identity_valid_price_and_complete_artwork() {
     let offers = catalog::catalog();
-    assert_eq!(offers.len(), 48);
+    assert_eq!(offers.len(), 49);
     assert_eq!(
         offers.iter().map(|o| &o.id).collect::<BTreeSet<_>>().len(),
         offers.len()
@@ -132,7 +132,7 @@ fn category_changes_deactivate_irrelevant_filters_and_restore_section_facets() {
     assert!(state.facets["ports"].contains("24"));
     assert_eq!(query::filtered(&state, &sim).len(), 2);
     state.select_all();
-    assert_eq!(query::filtered(&state, &sim).len(), 48);
+    assert_eq!(query::filtered(&state, &sim).len(), 49);
 }
 
 #[test]

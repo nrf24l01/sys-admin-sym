@@ -40,6 +40,16 @@ fn device(sim: &mut NetworkSim, kind: DeviceTemplate, unit: u8) -> DeviceId {
         powered: true,
     })
     .unwrap();
+    if matches!(kind, DeviceTemplate::Router) {
+        for index in [8, 9] {
+            let port = sim.device(id).unwrap().ports()[index];
+            sim.execute(Command::SetRouterSwitchport {
+                port,
+                switchport: false,
+            })
+            .unwrap();
+        }
+    }
     id
 }
 fn cable(sim: &mut NetworkSim, a: PortId, b: PortId) {
@@ -88,7 +98,7 @@ impl Lab {
         let router = device(&mut sim, DeviceTemplate::Router, 1);
         let server = device(&mut sim, DeviceTemplate::Server, 2);
         let ports = sim.device(router).unwrap().ports().to_vec();
-        let (wan, lan) = (ports[0], ports[2]);
+        let (wan, lan) = (ports[0], ports[8]);
         let host = sim.device(server).unwrap().ports()[0];
         let circuit = sim
             .network_outlets()
@@ -329,7 +339,7 @@ fn failed_physical_link_selects_the_backup_static_route() {
         .find(|o| matches!(o.kind, NetworkOutletKind::Uplink { .. }) && o.port != l.circuit)
         .unwrap()
         .port;
-    let wan2 = l.sim.device(l.router).unwrap().ports()[3];
+    let wan2 = l.sim.device(l.router).unwrap().ports()[9];
     iface(&mut l.sim, wan2, "192.0.2.6", 30);
     cable(&mut l.sim, wan2, other);
     let mut c = l.sim.provider().circuit(l.circuit).unwrap().clone();
@@ -741,7 +751,7 @@ fn bgp_session_loss_withdraws_the_default_and_selects_another_peer() {
         .find(|o| matches!(o.kind, NetworkOutletKind::Uplink { .. }) && o.port != l.circuit)
         .unwrap()
         .port;
-    let wan_b = l.sim.device(l.router).unwrap().ports()[3];
+    let wan_b = l.sim.device(l.router).unwrap().ports()[9];
     iface(&mut l.sim, wan_b, "192.0.2.6", 30);
     cable(&mut l.sim, wan_b, circuit_b_port);
     let circuit_b = TransitCircuit {
@@ -792,7 +802,7 @@ fn each_player_router_needs_its_own_forward_and_return_routes() {
     let mut lab = Lab::new();
     let edge = device(&mut lab.sim, DeviceTemplate::Router, 3);
     let ports = lab.sim.device(edge).unwrap().ports().to_vec();
-    let (outside, inside) = (ports[0], ports[2]);
+    let (outside, inside) = (ports[0], ports[8]);
     let link = lab.sim.link_for_port(lab.wan).unwrap().id;
     lab.sim.execute(Command::Disconnect { link }).unwrap();
     cable(&mut lab.sim, lab.wan, inside);
@@ -968,7 +978,7 @@ fn range_delivery_requires_the_wan_and_local_gateway_configured_by_the_player() 
     let router = device(&mut sim, DeviceTemplate::Router, 1);
     let server = device(&mut sim, DeviceTemplate::Server, 2);
     let ports = sim.device(router).unwrap().ports().to_vec();
-    let (wan, lan) = (ports[0], ports[2]);
+    let (wan, lan) = (ports[0], ports[8]);
     let host = sim.device(server).unwrap().ports()[0];
     let block = sim.buy_public_ipv4_pool().unwrap();
     let range = Ipv4Prefix::new(block.network, PublicIpv4Block::PREFIX).unwrap();

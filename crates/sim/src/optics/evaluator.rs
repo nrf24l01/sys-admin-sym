@@ -4,6 +4,15 @@ use crate::*;
 impl NetworkSim {
     /// One authoritative L1 result for forwarding, counters, UI and consoles.
     pub fn link_status(&self, port: PortId) -> LinkStatus {
+        if self.router_svi(port).is_some() {
+            let speed = self.svi_link_speed(port);
+            return LinkStatus {
+                speed,
+                fault: speed.is_none().then_some(LinkFault::NoCable),
+                path: vec![port],
+                optical: Vec::new(),
+            };
+        }
         let path = self.mechanical_path(port);
         if path.is_empty() {
             let fault = if self.cage_profile(port).is_some() && self.endpoint_module(port).is_none()

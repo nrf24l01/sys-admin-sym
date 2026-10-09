@@ -89,6 +89,11 @@ fn server_consumption_follows_component_load_without_using_psu_capacity_as_draw(
 fn extra_ram_and_spinning_drives_add_idle_draw_without_charging_their_active_rating() {
     let mut sim = NetworkSim::new();
     let device = server(&mut sim);
+    sim.execute(Command::SetPower {
+        device,
+        powered: false,
+    })
+    .unwrap();
     sim.execute(Command::BuyServerPart {
         part_id: "ddr5_ecc_16gb".into(),
     })
@@ -97,6 +102,11 @@ fn extra_ram_and_spinning_drives_add_idle_draw_without_charging_their_active_rat
         device,
         part_id: "ddr5_ecc_16gb".into(),
         slot: None,
+    })
+    .unwrap();
+    sim.execute(Command::SetPower {
+        device,
+        powered: true,
     })
     .unwrap();
     assert_eq!(part(&sim, device, PowerComponentKind::Memory), 3200);
@@ -434,7 +444,12 @@ fn installed_power_json_changes_all_equipment_without_rebuilding() {
             "server_parts.json" => {
                 config["parts"][0]["power"] = json!({"idle_mw":10000,"peak_mw":70000});
                 config["parts"][1]["power"] = json!({"idle_mw":3000,"peak_mw":5000});
-                config["parts"][2]["power"] =
+                config["parts"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|part| part["id"] == "intel_i350_t4")
+                    .unwrap()["power"] =
                     json!({"idle_mw":4000,"peak_mw":8000,"link_share_permille":500});
             }
             "drives.json" => config["drives"][1]["power"] = json!({"idle_mw":2000,"peak_mw":6000}),

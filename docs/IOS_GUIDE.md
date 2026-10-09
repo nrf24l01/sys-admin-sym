@@ -42,7 +42,7 @@ but each individual command, including an interface range, is atomic.
 | `Switch(config-vlan)#` | VLAN configuration | `vlan 20` |
 | `Switch(config-if)#` | Interface configuration | `interface Gi1/0/1` |
 | `Switch(config-if-range)#` | Interface range | `interface range Gi1/0/1 - 4` |
-| `Router(config-subif)#` | Router subinterface | `interface Gi0/1/0.20` |
+| `Router(config-subif)#` | Router subinterface | `interface Gi0/1/6.20` |
 
 `exit` leaves one configuration level. `end` returns to privileged EXEC.
 `disable` returns to user EXEC. Unambiguous keyword abbreviations such as `en`,
@@ -56,22 +56,35 @@ configuration mode. `do write memory` also saves from configuration mode.
 | --- | --- | --- |
 | Catalyst C1000 | `Gi1/0/1`–`Gi1/0/24` | `Gi1/0/01`–`Gi1/0/24` |
 | Catalyst 1G SFP cages | `Gi1/0/25`–`Gi1/0/28` | Install a 1G module using the inspector |
-| Catalyst 10G profile uplinks | `Te1/0/25`–`Te1/0/28` | 1/10G SFP+ cages |
+| Catalyst 10G profile uplinks | `Te1/0/1`–`Te1/0/4` | 1/10G SFP+ cages |
 | ISR C1111 WAN | `Gi0/0/0`, `Gi0/0/1` | WAN1, WAN2 |
 | ISR C1111 LAN | `Gi0/1/0`–`Gi0/1/7` | LAN1–LAN8 |
+| ISR C1111 VLAN interfaces | `Vlan1`–`Vlan4094` | Logical interfaces, no cable socket |
 
 Full `GigabitEthernet` names and existing rack labels also work. Router
 subinterfaces accept `.number`; use `encapsulation dot1q VLAN` before assigning
 an IP address. A subinterface number and its VLAN do not have to be equal.
 
-The C1111 LAN ports currently use the simulator's **routed-port model**, which
-differs from the real device's embedded Ethernet switch. Router LAN switchport
-commands, bridge domains, and switch virtual interfaces are not implemented.
+New C1111 routers have two routed WAN ports and eight LAN switch ports. LAN7/8
+(`Gi0/1/6`, `Gi0/1/7`) are flex ports: `no switchport` makes them routed ports;
+`switchport` restores Layer 2 access mode and clears their routed configuration.
+Fixed LAN ports route through `interface Vlan<N>`. Access/trunk membership and
+VLAN isolation share the switch forwarding engine. `ip routing` is enabled by
+default; `no ip routing` stops transit forwarding while local addresses and LAN
+switching remain available. Port roles/flex support/default routing live in the
+router JSON `network` block.
+
+A VLAN interface comes up after `no shutdown` when its VLAN exists and has an
+active LAN member. It has no physical cable socket. VLANs, interfaces and routing
+state persist in game saves and `write memory`/`reload`. Existing saves retain
+their older routed LAN configurations. Hardware limits follow
+[Cisco's ISR switchport and flex-port guide](https://www.cisco.com/c/en/us/td/docs/routers/access/isr1100/software/configuration/guide/isr1100-sw-config/configuring_ethernet_switchports.html),
+including the two-flex-port restriction introduced in IOS XE 17.11.1a.
 
 ## Example: two server VLANs through a router
 
 Install and power one switch, one router, and two servers. Cable server A to
-switch port 1, server B to switch port 2, and router LAN1 to switch port 3.
+switch port 1, server B to switch port 2, and router LAN7 to switch port 3.
 
 Run on the switch, beginning at `Switch>`:
 
@@ -98,7 +111,7 @@ switchport access vlan 30
 no shutdown
 exit
 interface Gi1/0/3
-description Router LAN1
+description Router LAN7
 switchport mode trunk
 switchport trunk allowed vlan 20,30
 no shutdown
@@ -113,15 +126,18 @@ Run on the router, beginning at `Router>`:
 enable
 configure terminal
 hostname Edge
-interface Gi0/1/0.20
+interface Gi0/1/6
+no switchport
+exit
+interface Gi0/1/6.20
 encapsulation dot1q 20
 ip address 10.0.20.1 255.255.255.0
 exit
-interface Gi0/1/0.30
+interface Gi0/1/6.30
 encapsulation dot1q 30
 ip address 10.0.30.1 255.255.255.0
 exit
-interface Gi0/1/0
+interface Gi0/1/6
 no shutdown
 exit
 end
@@ -202,8 +218,10 @@ Ethernet engine. An untagged server address can leave its VLAN affinity unset.
 ## Verify configuration and links
 
 ```text
+enable
 show version
 show running-config
+show running-config interface GigabitEthernet0/0/0
 show startup-config
 show vlan brief
 show interfaces
@@ -216,6 +234,12 @@ show ip route
 show ip arp
 show cdp neighbors
 ```
+
+Configuration displays require privileged EXEC mode (`#`); use `enable` from
+`>`. `show running-config interface NAME` displays just that interface's stanza,
+including physical ports, SVIs, subinterfaces and port-channels. Abbreviations
+such as `sh run int Gi0/0/0` work. This follows
+[Cisco's configuration display command](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9400/software/release/16-8/command_reference/b_168_9400_cr/b_168_9400_cr_chapter_010011.html).
 
 Outputs are computed from the simulator state. Interface status reflects power,
 installation, administrative shutdown, cable length, and the remote cable
@@ -264,3 +288,27 @@ for allocation delivery and WAN/LAN addressing instructions. `show ip route` inc
 Regression tests cover console modes, invalid/ambiguous commands, device-session
 isolation, atomic range failure, VLAN switching, routed VLANs, gateway ping,
 trunk filtering, shutdown, startup reload, and SQLite persistence.
+
+## Example: VLAN 8 on the router's embedded switch
+
+```text
+enable
+configure terminal
+vlan 8
+name SERVERS
+exit
+interface Gi0/1/0
+switchport mode access
+switchport access vlan 8
+exit
+interface vlan 8
+ip address 10.0.8.1 255.255.255.0
+no shutdown
+exit
+ip routing
+end
+write memory
+```
+
+A host on LAN1 can use `10.0.8.1` as its gateway. Add another VLAN/interface to
+route between LANs; the switch forwards same-VLAN traffic without routing.
