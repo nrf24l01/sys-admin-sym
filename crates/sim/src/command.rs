@@ -16,6 +16,9 @@ pub enum Command {
     BuyCableSupply {
         supply: crate::CableSupply,
     },
+    SetCableSettings {
+        settings: crate::CableSettings,
+    },
     ConnectCable {
         a: PortId,
         b: PortId,

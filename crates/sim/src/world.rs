@@ -29,6 +29,8 @@ pub struct NetworkSim {
     #[serde(default)]
     pub(crate) cable_inventory: CableInventory,
     #[serde(default)]
+    pub(crate) cable_settings: CableSettings,
+    #[serde(default)]
     pub server_parts: HashMap<String, u32>,
     #[serde(default)]
     pub drive_inventory: HashMap<String, u32>,
@@ -75,6 +77,7 @@ impl NetworkSim {
             device_workloads: HashMap::new(),
             money: 6_000,
             cable_inventory: CableInventory::default(),
+            cable_settings: CableSettings::default(),
             server_parts: HashMap::new(),
             drive_inventory: HashMap::new(),
             topology_revision: 0,
@@ -647,6 +650,11 @@ impl NetworkSim {
                 self.buy_cable_supply(supply)?;
                 vec![SimEvent::CableSuppliesPurchased(supply)]
             }
+            Command::SetCableSettings { settings } => {
+                settings.validate()?;
+                self.cable_settings = settings;
+                Vec::new()
+            }
             Command::ConnectCable { a, b, length_cm } => {
                 let id = self.connect(a, b, Some(length_cm), CableColor::White)?;
                 vec![SimEvent::LinkCreated(id)]
@@ -667,24 +675,10 @@ impl NetworkSim {
                 color,
                 route,
             } => {
-                // Validate first so a bad route never consumes cable stock.
-                for point in &route {
-                    self.validate_route_point(point)?;
-                }
-                let routed_minimum = self.minimum_routed_cable_length(a, b, &route)?;
-                if let Some(length) = length_cm
-                    && length < routed_minimum
-                {
-                    return Err(SimError::CableTooShort {
-                        minimum_cm: routed_minimum,
-                    });
-                }
-                let automatic = length_cm.is_none();
-                let effective_length = length_cm.or(Some(routed_minimum));
-                let id = self.connect(a, b, effective_length, color)?;
+                let quote = self.quote_routed_colored_cable(a, b, length_cm, color, &route)?;
+                let id = self.connect_quoted(a, b, quote)?;
                 let link = self.links.get_mut(&id).expect("new link exists");
                 link.route = route;
-                link.auto_length = automatic;
                 vec![SimEvent::LinkCreated(id)]
             }
             Command::BuyDevice { kind } => {
@@ -1849,6 +1843,15 @@ impl NetworkSim {
         color: CableColor,
     ) -> Result<LinkId, SimError> {
         let quote = self.quote_colored_cable(a, b, length_cm, color)?;
+        self.connect_quoted(a, b, quote)
+    }
+
+    fn connect_quoted(
+        &mut self,
+        a: PortId,
+        b: PortId,
+        quote: CableQuote,
+    ) -> Result<LinkId, SimError> {
         self.consume_cable(quote)?;
         let id = LinkId(self.next_link_id);
         self.next_link_id += 1;
@@ -1860,8 +1863,10 @@ impl NetworkSim {
                 b,
                 enabled: true,
                 length_cm: quote.length_cm,
-                auto_length: length_cm.is_none(),
-                color,
+                // A finished lead has a physical cut length. Only legacy leads
+                // are eligible for the automatic-length migration on load.
+                auto_length: false,
+                color: quote.color,
                 route: Vec::new(),
             },
         );

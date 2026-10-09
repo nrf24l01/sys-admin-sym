@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
+mod cable_settings;
 mod cables;
 mod equipment;
 mod inventory;
@@ -501,6 +502,15 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                             )
                         },
                     );
+                    if ui
+                        .add_enabled(
+                            !state.pending_cable_route.is_empty(),
+                            egui::Button::new(tr("cable.undo-anchor")).small(),
+                        )
+                        .clicked()
+                    {
+                        state.pending_cable_route.pop();
+                    }
                     if ui.small_button(tr("ui.cancel-cable")).clicked() {
                         state.pending_cable = None;
                         state.pending_assembly = None;
@@ -1574,6 +1584,14 @@ fn link_inspector(
         return;
     };
     let endpoint = |id| {
+        if let Some(outlet) = sim.network_outlet(id) {
+            return match outlet.kind {
+                NetworkOutletKind::Uplink { .. } => tr("cable.global-uplink"),
+                NetworkOutletKind::Lan { rack } => {
+                    crate::localization::tr_args("cable.rack-lan", &[rack.0.to_string()])
+                }
+            };
+        }
         sim.port(id)
             .map(|p| {
                 crate::localization::tr_args(
@@ -1620,6 +1638,26 @@ fn link_inspector(
     if let Some(fault) = sim.link_status(link.a).fault {
         ui.weak(crate::localization::link_fault(fault));
     }
+    if let Ok(minimum) = sim.minimum_routed_cable_length(link.a, link.b, &link.route) {
+        ui.label(crate::localization::tr_args(
+            "cable.route-minimum",
+            &[format!("{:.2}", minimum as f64 / 100.0)],
+        ));
+        if link.length_cm >= minimum {
+            ui.weak(crate::localization::tr_args(
+                "cable.length-reserve",
+                &[format!("{:.2}", (link.length_cm - minimum) as f64 / 100.0)],
+            ));
+        } else {
+            ui.colored_label(
+                egui::Color32::LIGHT_RED,
+                crate::localization::tr_args(
+                    "cable.length-shortage",
+                    &[format!("{:.2}", (minimum - link.length_cm) as f64 / 100.0)],
+                ),
+            );
+        }
+    }
     ui.label(endpoint(link.a));
     ui.label("↕");
     ui.label(endpoint(link.b));
@@ -1628,16 +1666,24 @@ fn link_inspector(
     ui.weak(tr("ui.ordered-rack-anchors-shape-the-physical-cable"));
     let route = link.route.clone();
     for (index, point) in route.iter().enumerate() {
-        ui.horizontal(|ui| {
-            ui.monospace(crate::localization::tr_args(
-                "ui.u-cm",
+        ui.monospace(if let Some(anchor) = point.room_anchor_id() {
+            crate::localization::tr_args(
+                "cable.room-anchor",
+                &[(index + 1).to_string(), anchor.to_string()],
+            )
+        } else {
+            crate::localization::tr_args(
+                "cable.rack-anchor",
                 &[
                     (index + 1).to_string(),
-                    (point.unit).to_string(),
+                    point.rack.0.to_string(),
+                    point.unit.to_string(),
                     crate::localization::rack_side(point.side),
-                    (point.offset_cm).to_string(),
+                    point.offset_cm.to_string(),
                 ],
-            ));
+            )
+        });
+        ui.horizontal_wrapped(|ui| {
             if ui.small_button("×").clicked() {
                 actions.write(UiAction::RemoveCableRoutePoint { link: id, index });
             }
@@ -1657,7 +1703,7 @@ fn link_inspector(
                     route: reordered,
                 });
             }
-            if ui.small_button(tr("ui.left")).clicked() {
+            if point.room_anchor_id().is_none() && ui.small_button(tr("ui.left")).clicked() {
                 let mut moved = *point;
                 moved.offset_cm = 0;
                 actions.write(UiAction::MoveCableRoutePoint {
@@ -1666,7 +1712,7 @@ fn link_inspector(
                     point: moved,
                 });
             }
-            if ui.small_button(tr("ui.right")).clicked() {
+            if point.room_anchor_id().is_none() && ui.small_button(tr("ui.right")).clicked() {
                 let mut moved = *point;
                 moved.offset_cm = 48;
                 actions.write(UiAction::MoveCableRoutePoint {
@@ -1679,6 +1725,11 @@ fn link_inspector(
     }
     if route.is_empty() {
         ui.label(tr("ui.no-anchors-click-a-rack-anchor-to"));
+    } else if ui.button(tr("ui.clear-rack-anchors")).clicked() {
+        actions.write(UiAction::RerouteCable {
+            link: id,
+            route: Vec::new(),
+        });
     }
     if ui.button(tr("ui.disconnect")).clicked() {
         actions.write(UiAction::Disconnect(id));

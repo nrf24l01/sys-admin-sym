@@ -105,12 +105,10 @@ impl NetworkSim {
             return failure(LinkFault::Disabled);
         }
         if segments.iter().any(|link| {
-            self.connected_assembly(link.id).is_some()
-                && self
-                    .minimum_routed_cable_length(link.a, link.b, &link.route)
-                    .is_ok_and(|minimum| minimum > link.length_cm)
+            self.minimum_routed_cable_length(link.a, link.b, &link.route)
+                .is_ok_and(|minimum| minimum > link.length_cm)
         }) {
-            return failure(LinkFault::TooLong);
+            return failure(LinkFault::CableTooShort);
         }
         let length: u64 = segments.iter().map(|link| u64::from(link.length_cm)).sum();
         let assemblies: Vec<_> = segments

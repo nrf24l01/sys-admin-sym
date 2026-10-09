@@ -99,11 +99,19 @@ provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
 Disconnecting stores the finished lead for reuse. Rack cable shape is presentation
 state only: a fixed-endpoint Verlet rope applies gravity and damping while the
 network link keeps its exact physical length.
+Saved `CableSettings` add a percentage and/or fixed service-loop allowance to
+automatic copper cuts and can prefer the shortest suitable reusable lead of the
+chosen color. Quotes and connection commands share route validation and material
+accounting. New leads retain their cut length across reroutes and save loads;
+the inspector compares that length with the routed minimum. See
+[`docs/CABLE_MANAGEMENT.md`](docs/CABLE_MANAGEMENT.md).
 Ethernet and power adapters supply cable identities, projected paths, lengths,
 selection state, and connector artwork to one generic `CableLayer`. The parent
 owns slack allocation, rope simulation, dragging, hit testing, connector placement,
 and jacket/highlight rendering. Visible sections share the available cable length
-proportionally; automatic lengths use the same 5% slack rule for both families.
+proportionally. Copper route minima include 5% installation slack on the port
+legs; saved extra allowances are added when cutting a new lead. Finished optical
+assemblies keep their catalog lengths.
 
 `PortConnector` records the socket independently from VLAN/IP configuration.
 `optics` owns cage capabilities, separate transceiver and finished assembly

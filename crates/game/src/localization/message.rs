@@ -61,6 +61,7 @@ impl From<cloud_provider_sim::SimError> for UiMessage {
                 Self::new("error.cable-too-short", vec![(minimum_cm).to_string()])
             }
             CableTooLong => Self::new("error.cable-too-long", vec![]),
+            InvalidCableSettings => Self::new("error.invalid-cable-settings", vec![]),
             InsufficientConnectors { available } => Self::new(
                 "error.insufficient-connectors",
                 vec![(available).to_string()],

@@ -235,6 +235,7 @@ pub enum LinkFault {
     FiberMismatch,
     WavelengthMismatch,
     PolarityMismatch,
+    CableTooShort,
     TooLong,
     LowLight,
     ReceiverOverload,
