@@ -7,7 +7,7 @@ routes and forwards packets only through its own interfaces and physical links.
 
 ## Configure a routed connection in the GUI
 
-1. Open **IP RANGES** from the top bar (beside Settings). Order a `/29` range,
+1. Open **IP RANGES** from the top bar (beside Settings). Order a `/29` or `/24` range,
    select it in the range list, select the delivery uplink and click **Apply range
    delivery**. The page shows the higher network subnet/gateway, your router's
    WAN address, and the LAN gateway address for this range.
@@ -81,7 +81,7 @@ From the server, `ping 8.8.8.8` checks the outbound path. `ping-in` originates a
 inbound echo request from the external diagnostic host `198.51.100.1`. Both need
 working return routes. Address ownership alone does not create connectivity.
 
-The IPv4 shop purchases address inventory independently of uplinks. Its `/29`
+The IPv4 shop purchases `/29` and `/24` inventory independently of uplinks. Its
 assignment button uses a convenience layout with the first usable address
 reserved for your gateway. For a different layout, add an owned pool and use:
 
@@ -94,6 +94,11 @@ pools can use both addresses; a `/32` can allocate its single address. Explicit
 server routes are still needed when the allocated address has no on-link gateway.
 Private addresses require deliberate translation for public Internet access;
 NAT is not implemented by this foundation.
+
+Prepared hosting nodes automatically configure their data interfaces from the
+node's allowed ranges, using the connected router's actual mask and gateway.
+The node policy may select smaller slices of an owned `/24`, while guest orders
+also obey the product's selected ranges. See [Hosting gameplay](HOSTING.md).
 
 ## Replace the static upstream contract with eBGP
 
@@ -231,8 +236,8 @@ are repaired in both running and startup configuration on load, preferring an
 addressed record over an unassigned placeholder. Valid tagged subinterfaces
 remain separate. Save after loading to persist the repaired records.
 
-Purchased `/29` blocks are imported as address
-inventory; their old uplink field records purchase provenance only. Existing
+Purchased blocks are imported as address inventory; old blocks default to `/29`.
+Their old uplink field records purchase provenance only. Existing
 addresses and cables remain, but configurations relying on shared rack sockets
 or the legacy WAN flag need explicit switching, transit and routes.
 

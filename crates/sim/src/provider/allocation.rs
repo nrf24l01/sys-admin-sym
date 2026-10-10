@@ -4,6 +4,14 @@ use std::{collections::BTreeSet, net::Ipv4Addr};
 impl NetworkSim {
     /// Shared reservations for both owned-address allocation and DHCP.
     pub(crate) fn occupied_ipv4_addresses(&self, except: PortId) -> BTreeSet<Ipv4Addr> {
+        self.occupied_ipv4_addresses_except_service(except, None)
+    }
+
+    pub(crate) fn occupied_ipv4_addresses_except_service(
+        &self,
+        except: PortId,
+        service: Option<u64>,
+    ) -> BTreeSet<Ipv4Addr> {
         let mut occupied = BTreeSet::new();
         for endpoint in self.ports() {
             if endpoint.id == except {
@@ -29,6 +37,18 @@ impl NetworkSim {
                 .filter(|l| l.client != except)
                 .map(|l| l.address),
         );
+        for s in self.hosting.services.values().filter(|s| {
+            s.terminated_at_ms.is_none()
+                && Some(s.id) != service
+                && !s
+                    .vm
+                    .and_then(|id| self.hosting.vms.get(&id))
+                    .is_some_and(|vm| vm.interfaces.contains(&except))
+        }) {
+            if let Some(lease) = &s.provisioning {
+                occupied.extend(&lease.ips);
+            }
+        }
         occupied
     }
 
@@ -39,6 +59,17 @@ impl NetworkSim {
         prefix: Ipv4Prefix,
         gateway: Option<Ipv4Addr>,
         vlan: Option<VlanId>,
+    ) -> Result<Ipv4Addr, SimError> {
+        self.allocate_ipv4_reserved(port, prefix, gateway, vlan, &BTreeSet::new())
+    }
+
+    pub(crate) fn allocate_ipv4_reserved(
+        &mut self,
+        port: PortId,
+        prefix: Ipv4Prefix,
+        gateway: Option<Ipv4Addr>,
+        vlan: Option<VlanId>,
+        reservations: &BTreeSet<Ipv4Addr>,
     ) -> Result<Ipv4Addr, SimError> {
         if !self.provider.owns(prefix) {
             return Err(SimError::PublicIpv4BlockNotOwned);
@@ -61,6 +92,7 @@ impl NetworkSim {
             .find(|a| prefix.usable(a.address) && Some(a.address) != gateway)
             .map(|a| a.address);
         let mut occupied = self.occupied_ipv4_addresses(port);
+        occupied.extend(reservations);
         occupied.extend(gateway);
         let first = u32::from(prefix.network()) + u32::from(prefix.length() < 31);
         let last = prefix.last() - u32::from(prefix.length() < 31);

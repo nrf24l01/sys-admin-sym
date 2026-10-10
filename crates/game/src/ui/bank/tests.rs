@@ -136,7 +136,8 @@ fn unaffordable_early_repayment_is_disabled_and_overdue_debt_is_visible() {
     }))
     .unwrap();
     sim.money = 0;
-    sim.advance_time(300_000);
+    sim.hosting.market.time_scale = 1;
+    sim.advance_time(cloud_provider_sim::hosting::MONTH_MS);
     let mut state = BankWindowState {
         open: true,
         ..Default::default()

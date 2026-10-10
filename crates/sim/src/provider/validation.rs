@@ -182,6 +182,29 @@ impl NetworkSim {
                 }
             }
             ProviderCommand::RemovePool(prefix) => {
+                if self
+                    .hosting
+                    .provider_site_ipv4
+                    .is_some_and(|address| prefix.contains(address))
+                {
+                    return Err(invalid(
+                        "detach the provider site before removing its address pool",
+                    ));
+                }
+                if self
+                    .hosting
+                    .services
+                    .values()
+                    .filter(|s| s.terminated_at_ms.is_none())
+                    .any(|s| {
+                        self.hosting_service_provisioning(s.id)
+                            .is_some_and(|lease| lease.ips.iter().any(|a| prefix.contains(*a)))
+                    })
+                {
+                    return Err(invalid(
+                        "terminate hosting services before removing their address pool",
+                    ));
+                }
                 if self.provider.sessions.iter().any(|session| {
                     session
                         .export_prefixes
@@ -349,10 +372,23 @@ impl NetworkSim {
                     .bindings
                     .retain(|old| old.port != b.port || old.vlan != b.vlan);
                 provider.bindings.push(b);
+                for (guest, uplink) in &self.hosting.bridges {
+                    if *uplink == b.port {
+                        provider
+                            .bindings
+                            .retain(|old| old.port != *guest || old.vlan != b.vlan);
+                        provider
+                            .bindings
+                            .push(InterfaceBinding { port: *guest, ..b });
+                    }
+                }
             }
-            ProviderCommand::RemoveBinding { port, vlan } => provider
-                .bindings
-                .retain(|b| b.port != port || b.vlan != vlan),
+            ProviderCommand::RemoveBinding { port, vlan } => {
+                provider.bindings.retain(|b| {
+                    (b.port != port && self.hosting.bridges.get(&b.port) != Some(&port))
+                        || b.vlan != vlan
+                });
+            }
             ProviderCommand::SetBgp(s) => {
                 provider
                     .sessions

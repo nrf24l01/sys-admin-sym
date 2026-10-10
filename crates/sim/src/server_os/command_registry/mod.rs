@@ -63,6 +63,12 @@ impl CommandRegistry {
     fn builtins() -> Self {
         let mut registry = Self::new();
         registry
+            .register(crate::hosting::VmHostCommand)
+            .expect("unique command");
+        registry
+            .register(crate::hosting::MainHosterCommand)
+            .expect("unique command");
+        registry
             .register(power::PowerCommand)
             .expect("unique command");
         for name in ["snmpget", "snmpwalk", "snmpset"] {
@@ -185,7 +191,10 @@ impl CommandRegistry {
                 return Err(format!("bash: {first}: Permission denied"));
             }
             return Ok(Self::text(super::services::LinuxServices::script(
-                sim, device, &path,
+                sim,
+                device,
+                &path,
+                &words[1..],
             )?));
         }
         Err(format!("bash: {name}: command not found"))

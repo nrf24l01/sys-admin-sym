@@ -8,7 +8,9 @@ bounded; this is not a full protocol stack.
 ## Run
 
 ```bash
-cargo run --release
+make run
+# Or run a release build after verification:
+make run-release
 ```
 
 ## Use your own terminal
@@ -201,10 +203,40 @@ dependencies, including Bevy and egui, while retaining debug symbols and
 assertions to keep interactive rendering responsive. The first
 development build takes longer while those dependencies are rebuilt.
 
+Use GNU Make as the validation entry point. `make`, `make check`, and `make test`
+run formatting, whitespace checks, Clippy with warnings denied, all workspace
+Rust tests (including hosting and egui interaction tests), Python tooling and ZIP
+packaging tests, a workspace build, and the real Linux game/console smoke test.
+The pipeline stops at the first failed check. `make run` and `make run-release`
+run this complete suite before launching the game.
+
 ```bash
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+make check
+make test-hosting       # Focused hosting simulation and UI tests
+make fmt                # Apply Rust formatting
+make help
 ```
+
+The Linux smoke test needs Xvfb, xauth and the Mesa Lavapipe Vulkan driver. On
+Ubuntu/Debian, install the runtime dependencies with:
+
+```bash
+sudo apt-get install make python3 xvfb xauth mesa-vulkan-drivers libvulkan1 libx11-6 libxrandr2 libxcursor1 libxi6 libxkbcommon-x11-0
+```
+
+Install Rust's `rustfmt` and `clippy` components with `rustup component add rustfmt
+clippy`. `make check-core` runs the checks without Linux graphical startup on
+other platforms. Set `VK_DRIVER_FILES` for a Lavapipe manifest installed outside
+`/usr/share/vulkan/icd.d`. Override `CARGO`, `PYTHON`, or `CARGO_TARGET_DIR` when
+using a custom toolchain or build directory.
+
+The smoke test stages the real executable beside the repository assets in a
+temporary directory with a fresh local console port and password. It checks window startup and repeatedly authenticates
+with the built `game-ssh` client, then shuts down its game and X server. Logs are
+kept in `target/check-logs/` (or `$(CARGO_TARGET_DIR)/check-logs`). Rust tests cover
+the complete hosting workflow and UI controls; the smoke test validates the
+native renderer and application integration. GitHub Actions runs `make check`
+on matching pushes and pull requests to `main`, and on manual workflow runs.
 
 The real-equipment reference textures and their sources are documented in
 [`assets/equipment/ATTRIBUTION.md`](assets/equipment/ATTRIBUTION.md).

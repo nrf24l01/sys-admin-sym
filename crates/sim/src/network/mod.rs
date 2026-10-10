@@ -4,7 +4,9 @@ mod ipv4;
 mod reachability;
 mod routing;
 mod runtime;
+mod traffic;
 mod vlan;
+pub use traffic::*;
 
 pub use ethernet::*;
 pub use ipv4::*;

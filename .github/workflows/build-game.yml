@@ -7,10 +7,25 @@ on:
       - Cargo.toml
       - Cargo.lock
       - Cross.toml
+      - Makefile
+      - AGENTS.md
+      - README.md
       - crates/**
       - assets/**
-      - tools/package_game.py
-      - tools/test_package_game.py
+      - tools/**
+      - .github/workflows/build-game.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - Cross.toml
+      - Makefile
+      - AGENTS.md
+      - README.md
+      - crates/**
+      - assets/**
+      - tools/**
       - .github/workflows/build-game.yml
   workflow_dispatch:
 
@@ -19,7 +34,7 @@ permissions:
 
 jobs:
   test:
-    name: Test workspace and package
+    name: Run complete Make verification
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
@@ -37,13 +52,25 @@ jobs:
           key: rust-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
             rust-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-
-      - name: Run Rust tests
-        run: cargo test --workspace --locked
-      - name: Test portable ZIP packaging
-        run: python3 -m unittest discover -s tools -p test_package_game.py
+      - name: Install validation tools and software renderer
+        run: |
+          rustup component add rustfmt clippy
+          sudo apt-get update
+          sudo apt-get install -y make python3 xvfb xauth mesa-vulkan-drivers libvulkan1 libx11-6 libxrandr2 libxcursor1 libxi6 libxkbcommon-x11-0
+      - name: Run all checks
+        run: make check
+      - name: Upload startup logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verification-startup-logs
+          path: target/check-logs/
+          if-no-files-found: ignore
+          retention-days: 7
 
   build:
     name: Build ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     needs: test
     strategy:
       fail-fast: false
@@ -101,45 +128,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xauth mesa-vulkan-drivers libvulkan1 libx11-6 libxrandr2 libxcursor1 libxi6 libxkbcommon-x11-0
-          lvp_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
-          if [ -z "$lvp_icd" ]; then
-            echo 'Mesa Lavapipe Vulkan driver manifest was not installed' >&2
-            exit 1
-          fi
-          echo "Using software Vulkan driver: $lvp_icd"
-          set +e
-          timeout 30s xvfb-run -a env WGPU_BACKEND=vulkan \
-            VK_DRIVER_FILES="$lvp_icd" \
-            target/${{ matrix.target }}/release/cloud-provider-sim > linux-smoke.log 2>&1 &
-          smoke_pid=$!
-          connected=0
-          for attempt in {1..20}; do
-            if GAME_SSH_PASSWORD=game target/${{ matrix.target }}/release/game-ssh --list > console-smoke.log 2>&1; then
-              connected=1
-              break
-            fi
-            if ! kill -0 "$smoke_pid" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          wait "$smoke_pid"
-          status=$?
-          set -e
-          cat linux-smoke.log
-          cat console-smoke.log
-          if [ "$connected" -ne 1 ]; then
-            echo 'Terminal client could not connect to the Linux game' >&2
-            exit 1
-          fi
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
-            echo "Linux game exited with status $status during launch" >&2
-            exit 1
-          fi
-          if grep -q 'panicked at' linux-smoke.log; then
-            echo 'Linux game panicked during launch' >&2
-            exit 1
-          fi
+          make smoke-built \
+            GAME=target/${{ matrix.target }}/release/cloud-provider-sim \
+            CLIENT=target/${{ matrix.target }}/release/game-ssh \
+            CHECK_LOGS=target/release-check-logs
       - name: Verify Windows executable needs no bundled runtime DLLs
         if: runner.os == 'Windows'
         shell: pwsh

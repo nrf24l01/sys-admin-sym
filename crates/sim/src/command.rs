@@ -7,6 +7,8 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
+    SetSimulationSpeed(crate::SimulationSpeed),
+    Hosting(crate::HostingCommand),
     Bank(crate::BankCommand),
     Purchase {
         item: crate::PurchaseItem,
@@ -44,6 +46,9 @@ pub enum Command {
     BuyServerChassis,
     BuyServerFullPack,
     BuyPublicIpv4Pool,
+    BuyPublicIpv4Subnet {
+        prefix: u8,
+    },
     BuyPublicIpv4Block {
         uplink: PortId,
     },

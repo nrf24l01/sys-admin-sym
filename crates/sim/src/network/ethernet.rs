@@ -152,8 +152,23 @@ impl NetworkSim {
                 }
                 continue;
             }
-            if self.ingress_vlan(egress, &frame).is_some() {
-                queue.push_back((sequence, egress, frame, 0u16, vec![egress]));
+            if let Some(vlan) = self.ingress_vlan(egress, &frame) {
+                if let Some(uplink) = self.virtual_uplink(egress) {
+                    if !self.virtual_port_running(egress) || !self.port_link_up(egress) {
+                        continue;
+                    }
+                    self.runtime.tx(egress);
+                    let mut local = self.bridge_deliveries(uplink, frame, vlan, &[egress]);
+                    local.retain(|delivery| delivery.port != egress);
+                    let delivered = !local.is_empty();
+                    deliveries.extend(local);
+                    if !is_broadcast(frame.destination) && delivered {
+                        continue;
+                    }
+                    queue.push_back((sequence, uplink, frame, 0, vec![egress, uplink]));
+                } else {
+                    queue.push_back((sequence, egress, frame, 0u16, vec![egress]));
+                }
             }
         }
 
@@ -192,6 +207,15 @@ impl NetworkSim {
             }
             if !self.endpoint_link_vlan_matches(out, in_port, frame.vlan) {
                 continue;
+            }
+            if !self.runtime.traffic_probe
+                && let Some(queue) = self.runtime.traffic_queues.get_mut(&out)
+            {
+                queue.drop_credit += queue.loss;
+                if queue.drop_credit >= 1.0 {
+                    queue.drop_credit -= 1.0;
+                    continue;
+                }
             }
             if !self.qos_transmit(out, &frame) {
                 continue;
@@ -322,6 +346,15 @@ impl NetworkSim {
                     }
                 }
                 Some(DeviceKind::Server(_)) | Some(DeviceKind::Router(_)) => {
+                    deliveries.extend(self.bridge_deliveries(
+                        in_port,
+                        EthernetFrame {
+                            vlan: wire_vlan,
+                            ..received
+                        },
+                        vlan,
+                        &path,
+                    ));
                     let own = MacAddress::for_port(in_port);
                     if received.destination == own || is_broadcast(received.destination) {
                         deliveries.push(FrameDelivery {
@@ -376,13 +409,10 @@ impl NetworkSim {
                     _ => None,
                 },
             },
-            PortConfig::Server(config) => frame.vlan.is_none().then_some(
-                config
-                    .ipv4
-                    .as_ref()
-                    .and_then(|ip| ip.vlan)
-                    .unwrap_or(VlanId(1)),
-            ),
+            PortConfig::Server(config) => match frame.vlan {
+                Some(vlan) => config.tagged_vlans.contains(&vlan).then_some(vlan),
+                None => Some(config.native_vlan()),
+            },
             PortConfig::Router(config) => {
                 if let Some(vlan) = frame.vlan {
                     config
@@ -423,7 +453,7 @@ impl NetworkSim {
                     .then_some(vlan)
                     .filter(|v| Some(*v) != *native_vlan),
             },
-            PortConfig::Server(_) => None,
+            PortConfig::Server(config) => config.tagged_vlans.contains(&vlan).then_some(vlan),
             PortConfig::Router(config) => {
                 let distinct = config
                     .interfaces
@@ -529,7 +559,10 @@ impl NetworkSim {
         let PortConfig::Server(config) = &source.config else {
             return true;
         };
-        let source_vlan = config.ipv4.as_ref().and_then(|ip| ip.vlan);
+        let source_vlan = config
+            .addresses()
+            .find(|ip| !config.tagged_vlans.contains(&ip.vlan.unwrap_or(VlanId(1))))
+            .and_then(|ip| ip.vlan);
         match &destination.config {
             PortConfig::Switch(config) => match config.mode {
                 SwitchPortMode::Access { vlan } => {

@@ -4,6 +4,9 @@ use crate::*;
 impl NetworkSim {
     /// One authoritative L1 result for forwarding, counters, UI and consoles.
     pub fn link_status(&self, port: PortId) -> LinkStatus {
+        if let Some(status) = self.virtual_link_status(port) {
+            return status;
+        }
         if self.router_svi(port).is_some() {
             let speed = self.svi_link_speed(port);
             return LinkStatus {
