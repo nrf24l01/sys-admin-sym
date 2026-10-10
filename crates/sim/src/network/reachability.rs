@@ -32,8 +32,20 @@ pub enum ReachabilityFailure {
 
 impl NetworkSim {
     pub fn transmit_icmp(&mut self, source: PortId, destination: Ipv4Addr) -> ReachabilityResult {
-        self.ping_ttl_mut(source, destination, 64)
+        self.ping_ttl_mut(source, destination, 64, None)
     }
+    /// Probe from an existing secondary address without mutating interface configuration.
+    pub(crate) fn probe_ipv4_address(
+        &self,
+        source: PortId,
+        address: Ipv4Addr,
+        destination: Ipv4Addr,
+    ) -> ReachabilityResult {
+        let mut probe = self.clone();
+        probe.runtime.traffic_probe = true;
+        probe.ping_ttl_mut(source, destination, 64, Some(address))
+    }
+
     pub fn ping(&self, source: PortId, destination: Ipv4Addr) -> ReachabilityResult {
         let mut s = self.clone();
         s.transmit_icmp(source, destination)
@@ -45,13 +57,14 @@ impl NetworkSim {
         ttl: u8,
     ) -> ReachabilityResult {
         let mut s = self.clone();
-        s.ping_ttl_mut(source, destination, ttl)
+        s.ping_ttl_mut(source, destination, ttl, None)
     }
     fn ping_ttl_mut(
         &mut self,
         source: PortId,
         destination: Ipv4Addr,
         ttl: u8,
+        bound_address: Option<Ipv4Addr>,
     ) -> ReachabilityResult {
         let bad = |f, h| ReachabilityResult {
             reachable: false,
@@ -75,7 +88,19 @@ impl NetworkSim {
         let Some(device) = self.port(source).map(|port| port.device) else {
             return bad(ReachabilityFailure::SourceDown, vec![]);
         };
-        let Some(route) = self.server_route_selection(device, destination, Some(source)) else {
+        let bound = if let Some(address) = bound_address {
+            let Some(config) = self.address_config(source, address) else {
+                return bad(ReachabilityFailure::NoAddress, vec![]);
+            };
+            Some(config)
+        } else {
+            None
+        };
+        let domain = bound
+            .as_ref()
+            .map(|ip| self.provider.domain(source, ip.vlan.unwrap_or(VlanId(1))));
+        let Some(route) = self.server_route_in_domain(device, destination, Some(source), domain)
+        else {
             return bad(
                 if self.server_ipv4(source).is_none() {
                     ReachabilityFailure::NoAddress
@@ -85,7 +110,14 @@ impl NetworkSim {
                 vec![],
             );
         };
-        let src = route.source;
+        let src = if let Some(bound) = bound {
+            if bound.vlan.unwrap_or(VlanId(1)) != route.source.vlan.unwrap_or(VlanId(1)) {
+                return bad(ReachabilityFailure::NoGateway, vec![]);
+            }
+            bound
+        } else {
+            route.source
+        };
         let source_vlan = src.vlan.unwrap_or(VlanId(1));
         if self.address_conflict(source, source_vlan, src.address) {
             return bad(ReachabilityFailure::AddressConflict, vec![]);
@@ -260,7 +292,7 @@ impl NetworkSim {
                                 let Some(route) = self.server_route_in_domain(
                                     port.device,
                                     p.source,
-                                    None,
+                                    self.virtual_uplink(d.port).map(|_| d.port),
                                     Some(self.provider.domain(d.port, d.vlan)),
                                 ) else {
                                     continue;

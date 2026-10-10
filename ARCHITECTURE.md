@@ -92,7 +92,7 @@ drives are saved in a separate storage inventory; installation validates the
 bay interface and updates the server's power load. The Linux console projects
 installed drives as `/dev/sd*` devices, while `ethtool` and `netstat -i` read
 the simulated network ports and runtime counters. Drive ratings describe the
-model; filesystem and measured disk I/O are not simulated yet.
+model; host filesystems remain text simulations; hosting guests consume installed disk capacity and I/O ratings (see `docs/HOSTING.md`).
 
 Cable inventory is domain state: a 305 m bulk box is raw stock, connector packs
 provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
@@ -265,3 +265,38 @@ ordinary devices and the supplied Cisco 66 W adapter for ISR C1111 routers.
 The router adapter has a four-pin inlet (not a barrel jack), 12 V / 5.5 A
 output, 90% efficiency, and PF 0.90; its upstream draw is calculated once at
 the adapter boundary.
+
+## Hosting customers and virtualization
+
+`sim::hosting` owns products, prepared hypervisors, guests, atomic orders, shared
+IPv4 reservations, weighted resource scheduling, customer demand, subscriptions
+and payment/refund history. Paid services retain immutable provisioning contracts
+and IPv4 leases independently of live guest interfaces. VM destruction releases
+compute/storage and preserves the contract; recreation uses the original node,
+specifications, addresses and expiry. Permanent refunds settle only unused prepaid
+time and release leases through the existing shared allocator.
+`Command::Hosting` follows the existing command/snapshot
+boundary; the HOSTING window never directly mutates authoritative state.
+`./vm-prepare.sh <controller-ip>` runs through the Linux filesystem, shell and
+command registry, with scoped positional arguments. A separately purchased
+provider server installs `hosting-provider.service` by running
+`./setup-main-hoster-server.sh` in its console. The HOSTING window connects only
+its owned public IPv4, resolving the actual machine through configured interfaces.
+The service listens on configured addresses; node registration supplies a private
+address through the preparation command. Public transit gates sales,
+while mgmt0 packet paths and saved controller registrations gate node operations.
+
+Node IPv4 policies intersect product ranges with owned CIDR slices. Prepared
+nodes reuse `provider::allocation` and the Ethernet engine's ARP probes to assign
+data addresses through real connected gateways. Automatically assigned interfaces
+and restrictions are saved, with defaults preserving older manual configuration;
+policy edits retain addresses supporting existing guests. The existing shop
+supports `/29` and `/24` inventory through the same purchasing and ownership path.
+
+VM IPv4 ports belong to their physical host but are separate from its inventory
+of physical NICs. A host bridge in `network::ethernet` forwards these interfaces
+through the existing packet engine. `network::traffic` aggregates traffic along
+traced routes and accounts for negotiated NIC/transit bottlenecks, queues, bytes,
+latency and packet loss. Hosting clock and deterministic random state are saved;
+network forwarding caches remain transient. See [Hosting gameplay](docs/HOSTING.md)
+for the complete preparation, publication, provisioning and subscription workflow.

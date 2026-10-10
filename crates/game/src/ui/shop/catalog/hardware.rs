@@ -294,5 +294,17 @@ pub(super) fn offers() -> Vec<Offer> {
         .push(Attribute::text("type", "address-pool"));
     ipv4.guidance.push("shop.guide.ipv4");
     offers.push(ipv4);
+    let mut ipv4_24 = Offer::new(
+        "public_ipv4_pool_24",
+        ShopSection::PublicIp,
+        PurchaseItem::PublicIpv4Pool24,
+    );
+    ipv4_24.attributes = vec![
+        Attribute::text("prefix", "/24"),
+        Attribute::number("addresses", 256_u64),
+        Attribute::text("type", "address-pool"),
+    ];
+    ipv4_24.guidance.push("shop.guide.ipv4");
+    offers.push(ipv4_24);
     offers
 }

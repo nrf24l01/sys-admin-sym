@@ -3,6 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SimError {
+    #[error("hosting: {0}")]
+    Hosting(String),
     #[error("purchase quantity must be between 1 and 100")]
     InvalidPurchaseQuantity,
     #[error("optical hardware: {0}")]

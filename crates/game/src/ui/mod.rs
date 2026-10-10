@@ -6,6 +6,7 @@ use cloud_provider_sim::*;
 use std::collections::HashMap;
 mod cables;
 mod equipment;
+mod hosting;
 mod inventory;
 mod optics;
 mod rack;
@@ -14,6 +15,7 @@ mod room;
 mod routing;
 mod settings;
 mod shop;
+mod speed;
 mod terminal_renderer;
 mod textures;
 mod upstream;
@@ -341,7 +343,7 @@ pub fn main_ui(
             .layer_id(egui::LayerId::background())
             .max_rect(ctx.viewport_rect()),
     );
-    top_bar(&mut viewport_ui, &snapshot.0, &mut state);
+    top_bar(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     let textures = (state.workspace == Workspace::Rack).then(|| images.texture_ids(&mut contexts));
     if let Some(error) = state.error_dialog.clone() {
         let mut open = true;
@@ -387,6 +389,7 @@ pub fn main_ui(
         &mut actions,
     );
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
+    hosting::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     let shop_selection = state.selected;
     if state.shop.open {
         let shop_textures = images.shop_texture_ids(
@@ -424,7 +427,12 @@ fn configure_style(ctx: &egui::Context) {
     ctx.set_visuals(visuals);
 }
 
-fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> egui::Rect {
+fn top_bar(
+    viewport: &mut egui::Ui,
+    sim: &NetworkSim,
+    state: &mut UiState,
+    actions: &mut MessageWriter<UiAction>,
+) -> egui::Rect {
     egui::Panel::top("top_bar")
         .default_size(64.0)
         .max_size(80.0)
@@ -455,6 +463,12 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                     .clicked()
                 {
                     state.ranges_open = !state.ranges_open;
+                }
+                if ui
+                    .selectable_label(state.hosting.open, tr("hosting.title"))
+                    .clicked()
+                {
+                    state.hosting.open = !state.hosting.open;
                 }
                 if ui
                     .selectable_label(state.shop.open, tr("ui.shop"))
@@ -541,6 +555,8 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
             }
             let resources = state.network_summary.resources;
             ui.horizontal(|ui| {
+                speed::show(ui, sim, actions);
+                ui.separator();
                 ui.weak(crate::localization::tr_args(
                     "ui.lan-reachable-core-mhz-weighted-gb-nic",
                     &[
@@ -1278,15 +1294,15 @@ fn port_inspector(
                 .iter()
                 .filter(|_| port.name != "mgmt0")
             {
-                let prefix = Ipv4Prefix::new(block.network, PublicIpv4Block::PREFIX).expect("/29");
+                let prefix = block.range();
                 let uplink = sim
                     .range_uplink(prefix)
                     .and_then(|id| sim.network_outlet(id))
                     .map_or_else(|| tr("ui.unassigned"), |outlet| outlet.name());
                 ui.horizontal(|ui| {
                     ui.label(crate::localization::tr_args(
-                        "ui.29-via",
-                        &[(block.network).to_string(), (uplink).to_string()],
+                        "ui.range-via",
+                        &[prefix.to_string(), uplink.to_string()],
                     ));
                     if ui
                         .button(crate::localization::tr_args(
@@ -3863,6 +3879,9 @@ mod tests {
     #[test]
     fn navigation_bar_does_not_cover_the_room() {
         let sim = NetworkSim::new();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut writer = bevy::ecs::system::SystemState::<MessageWriter<UiAction>>::new(&mut world);
         let ctx = egui::Context::default();
         let mut state = UiState::default();
         let mut height = 0.0;
@@ -3876,7 +3895,13 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    height = top_bar(ui, &sim, &mut state).height();
+                    height = top_bar(
+                        ui,
+                        &sim,
+                        &mut state,
+                        &mut writer.get_mut(&mut world).unwrap(),
+                    )
+                    .height();
                 },
             );
             output.textures_delta.clear();

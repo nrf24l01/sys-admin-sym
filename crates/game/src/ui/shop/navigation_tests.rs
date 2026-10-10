@@ -35,6 +35,7 @@ fn every_product_has_one_discoverable_section_in_the_right_category() {
         ("patch_panel", ShopSection::PatchPanels),
         ("cable_manager", ShopSection::CableManagers),
         ("public_ipv4_pool", ShopSection::PublicIp),
+        ("public_ipv4_pool_24", ShopSection::PublicIp),
     ] {
         assert_eq!(
             catalog::catalog()

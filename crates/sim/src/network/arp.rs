@@ -7,9 +7,8 @@ impl NetworkSim {
     pub fn interface_ipv4(&self, port: PortId, vlan: VlanId) -> Option<Ipv4Addr> {
         match &self.port(port)?.config {
             PortConfig::Server(config) => config
-                .ipv4
-                .as_ref()
-                .filter(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
+                .addresses()
+                .find(|i| i.vlan.unwrap_or(VlanId(1)) == vlan)
                 .map(|i| i.address),
             PortConfig::Router(config) => config
                 .interfaces
@@ -41,7 +40,7 @@ impl NetworkSim {
     pub fn wire_vlan_for(&self, port: PortId, vlan: VlanId) -> Option<VlanId> {
         let p = self.port(port)?;
         match &p.config {
-            PortConfig::Server(_) => None,
+            PortConfig::Server(config) => config.tagged_vlans.contains(&vlan).then_some(vlan),
             PortConfig::Switch(config) => match config.mode {
                 SwitchPortMode::Access { vlan: access } if access.unwrap_or(VlanId(1)) == vlan => {
                     None
@@ -84,10 +83,6 @@ impl NetworkSim {
         target: Ipv4Addr,
         vlan: VlanId,
     ) -> Result<MacAddress, ReachabilityFailure> {
-        self.prepare_runtime();
-        if let Some(mac) = self.runtime.arp.get(&(port, target, vlan)).copied() {
-            return Ok(mac);
-        }
         let source_ip = match &self
             .port(port)
             .ok_or(ReachabilityFailure::NoAddress)?
@@ -102,6 +97,35 @@ impl NetworkSim {
             _ => self.interface_ipv4(port, vlan),
         }
         .ok_or(ReachabilityFailure::NoAddress)?;
+        self.resolve_neighbor_from(port, target, vlan, source_ip)
+    }
+
+    /// Address discovery uses an ARP probe from 0.0.0.0 through the same wire
+    /// engine, before a node has a configured address. It does not invent a link.
+    pub(crate) fn discover_ipv4_neighbor(
+        &self,
+        port: PortId,
+        target: Ipv4Addr,
+        vlan: VlanId,
+    ) -> Option<MacAddress> {
+        let mut probe = self.clone();
+        probe.runtime.traffic_probe = true;
+        probe
+            .resolve_neighbor_from(port, target, vlan, Ipv4Addr::UNSPECIFIED)
+            .ok()
+    }
+
+    fn resolve_neighbor_from(
+        &mut self,
+        port: PortId,
+        target: Ipv4Addr,
+        vlan: VlanId,
+        source_ip: Ipv4Addr,
+    ) -> Result<MacAddress, ReachabilityFailure> {
+        self.prepare_runtime();
+        if let Some(mac) = self.runtime.arp.get(&(port, target, vlan)).copied() {
+            return Ok(mac);
+        }
         let request = EthernetFrame {
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),

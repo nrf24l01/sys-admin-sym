@@ -95,11 +95,25 @@ pub struct ServerPortConfig {
     pub ipv4: Option<Ipv4InterfaceConfig>,
     #[serde(default)]
     pub additional_ipv4: Vec<Ipv4InterfaceConfig>,
+    /// VLAN subinterfaces admitted on this physical/virtual server interface.
+    /// Legacy server interfaces remain untagged, including access VLANs.
+    #[serde(default)]
+    pub tagged_vlans: std::collections::BTreeSet<crate::VlanId>,
 }
 
 impl ServerPortConfig {
     pub fn addresses(&self) -> impl Iterator<Item = &Ipv4InterfaceConfig> {
         self.ipv4.iter().chain(self.additional_ipv4.iter())
+    }
+    pub fn native_vlan(&self) -> crate::VlanId {
+        self.addresses()
+            .find(|a| {
+                !self
+                    .tagged_vlans
+                    .contains(&a.vlan.unwrap_or(crate::VlanId(1)))
+            })
+            .and_then(|a| a.vlan)
+            .unwrap_or(crate::VlanId(1))
     }
 }
 

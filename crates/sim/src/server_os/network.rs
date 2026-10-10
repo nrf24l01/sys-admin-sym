@@ -45,6 +45,9 @@ impl NetworkSim {
         selected: Option<PortId>,
         domain: Option<RoutingDomain>,
     ) -> Option<RouteSelection> {
+        if let Some(port) = selected.filter(|p| self.virtual_uplink(*p).is_some()) {
+            return self.virtual_route(port, destination);
+        }
         let ports = self.device(device)?.ports();
         let mut candidates = Vec::new();
         for id in ports {
@@ -305,7 +308,7 @@ impl LinuxNetwork {
         if filter == Some("lo") {
             return Ok(lines);
         }
-        let ids = Self::selected_ports(sim, device, filter)?;
+        let ids = Self::shown_ports(sim, device, filter)?;
         for (index, id) in ids.iter().enumerate() {
             let port = sim.port(*id).unwrap();
             let (flags, state) = Self::link_state(sim, port);
@@ -368,6 +371,38 @@ impl LinuxNetwork {
         }
     }
 
+    // Host diagnostics include real guest bridge interfaces. Address and link
+    // mutations still use physical interfaces, preserving service/IP ownership.
+    fn shown_ports(
+        sim: &NetworkSim,
+        device: DeviceId,
+        filter: Option<&str>,
+    ) -> Result<Vec<PortId>, String> {
+        let mut ports = sim
+            .device(device)
+            .ok_or("server not found")?
+            .ports()
+            .to_vec();
+        ports.extend(
+            sim.hosting
+                .vms
+                .values()
+                .filter(|vm| vm.host == device)
+                .flat_map(|vm| vm.interfaces.iter().copied()),
+        );
+        ports.sort();
+        ports.dedup();
+        if let Some(name) = filter {
+            let port = ports
+                .into_iter()
+                .find(|id| sim.port(*id).is_some_and(|port| port.name == name))
+                .ok_or_else(|| format!("Cannot find device \"{name}\""))?;
+            Ok(vec![port])
+        } else {
+            Ok(ports)
+        }
+    }
+
     fn loopback(sim: &NetworkSim, device: DeviceId) -> String {
         if sim.server_os(device).is_none_or(|os| os.loopback_up) {
             "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN".into()
@@ -422,10 +457,7 @@ impl LinuxNetwork {
         if filter.is_none() {
             lines.push(Self::loopback(sim, device));
         }
-        for (index, id) in Self::selected_ports(sim, device, filter)?
-            .iter()
-            .enumerate()
-        {
+        for (index, id) in Self::shown_ports(sim, device, filter)?.iter().enumerate() {
             let port = sim.port(*id).unwrap();
             let (flags, state) = Self::link_state(sim, port);
             lines.push(if brief {

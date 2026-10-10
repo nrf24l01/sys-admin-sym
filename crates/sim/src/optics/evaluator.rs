@@ -4,6 +4,9 @@ use crate::*;
 impl NetworkSim {
     /// One authoritative L1 result for forwarding, counters, UI and consoles.
     pub fn link_status(&self, port: PortId) -> LinkStatus {
+        if let Some(status) = self.virtual_link_status(port) {
+            return status;
+        }
         let path = self.mechanical_path(port);
         if path.is_empty() {
             let fault = if self.cage_profile(port).is_some() && self.endpoint_module(port).is_none()

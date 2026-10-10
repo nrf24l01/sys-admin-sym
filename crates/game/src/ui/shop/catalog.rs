@@ -97,13 +97,19 @@ impl Offer {
         if matches!(self.item, PurchaseItem::PublicIpv4Pool) {
             return tr("ui.public-ipv4-29-address-pool");
         }
+        if matches!(self.item, PurchaseItem::PublicIpv4Pool24) {
+            return tr("ui.public-ipv4-24-address-pool");
+        }
         if matches!(self.item, PurchaseItem::ServerFullPack) {
             return tr("shop.server-full-pack");
         }
         item_name(&self.display_id, &self.display_id)
     }
     pub fn description(&self) -> String {
-        if matches!(self.item, PurchaseItem::PublicIpv4Pool) {
+        if matches!(
+            self.item,
+            PurchaseItem::PublicIpv4Pool | PurchaseItem::PublicIpv4Pool24
+        ) {
             return tr("ui.open-ip-ranges-to-select-its-uplink");
         }
         if matches!(self.item, PurchaseItem::ServerFullPack) {
@@ -257,7 +263,20 @@ impl Offer {
                     installed,
                 )
             }
-            PurchaseItem::PublicIpv4Pool => (sim.public_ipv4_blocks().len() as u64, 0),
+            PurchaseItem::PublicIpv4Pool | PurchaseItem::PublicIpv4Pool24 => {
+                let prefix = if matches!(self.item, PurchaseItem::PublicIpv4Pool24) {
+                    24
+                } else {
+                    29
+                };
+                (
+                    sim.public_ipv4_blocks()
+                        .iter()
+                        .filter(|b| b.prefix == prefix)
+                        .count() as u64,
+                    0,
+                )
+            }
             PurchaseItem::Supply(_) => (0, 0),
             _ => {
                 let matching = |d: &&Device| match &self.item {

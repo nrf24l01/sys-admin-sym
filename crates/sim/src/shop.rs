@@ -16,6 +16,7 @@ pub enum PurchaseItem {
     Assembly(String),
     OpticalHardware(String),
     PublicIpv4Pool,
+    PublicIpv4Pool24,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +70,7 @@ impl PurchaseItem {
                     .price
             }
             Self::PublicIpv4Pool => PublicIpv4Block::PRICE,
+            Self::PublicIpv4Pool24 => PublicIpv4Block::PRICE_24,
         })
     }
 
@@ -94,6 +96,7 @@ impl PurchaseItem {
                 model: model.clone(),
             }),
             Self::PublicIpv4Pool => Command::BuyPublicIpv4Pool,
+            Self::PublicIpv4Pool24 => Command::BuyPublicIpv4Subnet { prefix: 24 },
         }
     }
 }
@@ -118,8 +121,11 @@ impl NetworkSim {
                 available: self.money,
             });
         }
-        if matches!(item, PurchaseItem::PublicIpv4Pool)
-            && quantity as usize > self.available_public_ipv4_pools()
+        if let Some(prefix) = match item {
+            PurchaseItem::PublicIpv4Pool => Some(29),
+            PurchaseItem::PublicIpv4Pool24 => Some(24),
+            _ => None,
+        } && quantity as usize > self.available_public_ipv4_subnets(prefix)
         {
             return Err(SimError::PublicIpv4Exhausted);
         }

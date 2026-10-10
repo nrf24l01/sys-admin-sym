@@ -61,6 +61,12 @@ impl CommandRegistry {
     fn builtins() -> Self {
         let mut registry = Self::new();
         registry
+            .register(crate::hosting::VmHostCommand)
+            .expect("unique command");
+        registry
+            .register(crate::hosting::MainHosterCommand)
+            .expect("unique command");
+        registry
             .register(crate::provider::console::ProviderConsole)
             .expect("unique command");
         registry.register(IpCommand).expect("unique command");
@@ -175,7 +181,10 @@ impl CommandRegistry {
                 return Err(format!("bash: {first}: Permission denied"));
             }
             return Ok(Self::text(super::services::LinuxServices::script(
-                sim, device, &path,
+                sim,
+                device,
+                &path,
+                &words[1..],
             )?));
         }
         Err(format!("bash: {name}: command not found"))

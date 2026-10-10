@@ -55,6 +55,7 @@ impl From<cloud_provider_sim::SimError> for UiMessage {
                 vec![needed.to_string(), available.to_string()],
             ),
 
+            Hosting(value) => Self::new("error.hosting", vec![value]),
             Provider(value) => Self::new("error.provider", vec![(value).to_string()]),
             CableDevicesNotInstalled => Self::new("error.cable-devices-not-installed", vec![]),
             CableTooShort { minimum_cm } => {

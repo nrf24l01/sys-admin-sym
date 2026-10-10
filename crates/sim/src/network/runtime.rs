@@ -8,7 +8,46 @@ use crate::{DeviceId, PortId, VlanId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::Hash;
 use std::net::Ipv4Addr;
+use std::sync::Mutex;
+
+/// Read-only checks share the packet engine's revision boundaries.
+/// Snapshots copy caches instead of sharing them with a divergent world.
+type CacheState<K, V> = ((u64, u64), HashMap<K, V>);
+#[derive(Debug)]
+pub(crate) struct RevisionCache<K, V>(Mutex<CacheState<K, V>>);
+
+impl<K, V> Default for RevisionCache<K, V> {
+    fn default() -> Self {
+        Self(Mutex::new(((0, 0), HashMap::new())))
+    }
+}
+impl<K: Clone, V: Clone> Clone for RevisionCache<K, V> {
+    fn clone(&self) -> Self {
+        Self(Mutex::new(self.0.lock().unwrap().clone()))
+    }
+}
+impl<K: Eq + Hash, V: Copy> RevisionCache<K, V> {
+    pub(crate) fn get(&self, revision: (u64, u64), key: K) -> Option<V> {
+        let mut cache = self.0.lock().unwrap();
+        if cache.0 != revision {
+            *cache = (revision, HashMap::new());
+        }
+        cache.1.get(&key).copied()
+    }
+    pub(crate) fn insert(&self, revision: (u64, u64), key: K, value: V) {
+        let mut cache = self.0.lock().unwrap();
+        if cache.0 != revision {
+            *cache = (revision, HashMap::new());
+        }
+        cache.1.insert(key, value);
+    }
+}
+type ManagementReachabilityCache = RevisionCache<(DeviceId, Ipv4Addr), bool>;
+type AddressOwnerCache = RevisionCache<Ipv4Addr, Option<(DeviceId, PortId)>>;
+type TrafficPathKey = (PortId, Ipv4Addr, Option<Ipv4Addr>);
+type TrafficPath = (bool, std::collections::BTreeSet<PortId>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct MacAddress(pub [u8; 6]);
@@ -33,6 +72,8 @@ impl MacAddress {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PortTelemetry {
+    pub tx_bytes: u64,
+    pub rx_bytes: u64,
     pub tx_frames: u64,
     pub rx_frames: u64,
     pub last_tx_ms: Option<u64>,
@@ -105,6 +146,11 @@ impl PortTelemetry {
 
 #[derive(Debug, Clone, Default)]
 pub struct NetworkRuntime {
+    pub(crate) hosting_management: ManagementReachabilityCache,
+    pub(crate) hosting_addresses: AddressOwnerCache,
+    pub(crate) traffic_queues: HashMap<PortId, super::traffic::TrafficQueue>,
+    pub(crate) traffic_probe: bool,
+    pub(crate) traffic_paths: HashMap<TrafficPathKey, TrafficPath>,
     pub(crate) now_ms: u64,
     pub(crate) spanning_tree: HashMap<VlanId, HashSet<PortId>>,
     pub loop_drops: u64,
@@ -119,6 +165,11 @@ pub struct NetworkRuntime {
 impl NetworkRuntime {
     /// Drop learned and transient state when a saved/replaced topology is loaded.
     pub(crate) fn reset(&mut self) {
+        self.hosting_management = ManagementReachabilityCache::default();
+        self.hosting_addresses = AddressOwnerCache::default();
+        self.traffic_queues.clear();
+        self.traffic_paths.clear();
+        self.traffic_probe = false;
         self.now_ms = 0;
         self.telemetry.clear();
         self.spanning_tree.clear();
@@ -136,6 +187,7 @@ impl NetworkRuntime {
             || self.routing_revision != routing_revision
         {
             self.arp.clear();
+            self.traffic_paths.clear();
             self.spanning_tree.clear();
             self.mac_learning.clear();
             self.mac_learning_revision = topology_revision;

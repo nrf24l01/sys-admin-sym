@@ -8,11 +8,14 @@ Optical hardware lives in `crates/sim/src/optics`; keep cage compatibility, cabl
 
 ## Build, Test, and Development Commands
 
-- `cargo run --release`: run the game locally from the repository root so relative `assets` paths resolve.
-- `cargo test --workspace --locked`: run all Rust unit and integration tests using the committed lockfile.
-- `cargo clippy --workspace --all-targets -- -D warnings`: catch lint issues across binaries, libraries, and tests.
-- `cargo fmt --all -- --check`: verify Rust formatting; use `cargo fmt --all` to apply it.
-- `python3 -m unittest discover -s tools -p 'test_package_*.py'`: test game and standalone client ZIP packaging behavior.
+- `make check` (also plain `make` or `make test`): required full verification after each implementation run. Runs formatting, whitespace checks, Clippy, all Rust and Python tests, workspace build, and isolated Linux game/console startup. Fix failures before finishing.
+- `make run` / `make run-release`: run the full verification suite before launching the game.
+- `make test-hosting`: focused hosting simulation and egui interaction tests.
+- `make fmt`: apply Rust formatting.
+- `make check-core`: full non-graphical verification for platforms without the Linux smoke runtime. On Linux, install the dependencies documented in README.md and run `make check`.
+- `make help`: list available targets. `make smoke-built GAME=... CLIENT=...` checks already-built binaries (used by release CI).
+
+The smoke test requires Xvfb, xauth, and Mesa Lavapipe. It uses a temporary working directory and a unique local console endpoint, and keeps logs in `target/check-logs/`. Do not substitute ad hoc command lists for the Make verification entry point. The underlying Cargo and Python commands remain available as individual Make targets.
 
 The game writes `cloud-provider-save.db` in its working directory. Avoid committing local save data or generated `target` output.
 
@@ -22,7 +25,7 @@ Follow Rust 2024 conventions and `rustfmt` defaults (four-space indentation). Us
 
 ## Testing Guidelines
 
-Add regression tests for changed simulation behavior in the matching `crates/sim/tests/*.rs` file. For UI or asset-coordinate changes, add focused module tests where practical. Name tests after the behavior they verify, and run the workspace suite plus Clippy before submitting. CI also runs packaging tests and checks that the Linux build starts. The independent `build-game-ssh.yml` workflow builds Linux/Windows clients and publishes releases for `game-ssh-v*` tags; see `docs/GAME_SSH.md`.
+Add regression tests for changed simulation behavior in the matching `crates/sim/tests/*.rs` file. For UI or asset-coordinate changes, add focused module tests where practical. Name tests after the behavior they verify, and run `make check` before submitting. CI also runs packaging tests and checks that the Linux build starts. The independent `build-game-ssh.yml` workflow builds Linux/Windows clients and publishes releases for `game-ssh-v*` tags; see `docs/GAME_SSH.md`.
 
 ## Commit & Pull Request Guidelines
 

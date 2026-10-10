@@ -7,6 +7,9 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
+      - Makefile
+      - tools/smoke_game.py
+      - tools/test_checks.py
       - crates/terminal/**
       - crates/sim/**
       - assets/equipment/**
@@ -19,6 +22,9 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
+      - Makefile
+      - tools/smoke_game.py
+      - tools/test_checks.py
       - crates/terminal/**
       - crates/sim/**
       - assets/equipment/**
@@ -61,14 +67,8 @@ jobs:
           key: ssh-test-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
             ssh-test-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Check client and simulation lints
-        run: cargo clippy -p cloud-provider-sim -p game-ssh --all-targets --locked -- -D warnings
-      - name: Run client and simulation tests
-        run: cargo test -p cloud-provider-sim -p game-ssh --locked
-      - name: Test standalone ZIP packaging
-        run: python3 -m unittest discover -s tools -p test_package_game_ssh.py
+      - name: Check formatting, client/simulation lints, tests, and packaging
+        run: make fmt-check lint test-rust test-tools CARGO_SCOPE='-p cloud-provider-sim -p game-ssh'
 
   build:
     name: Build ${{ matrix.target }}
