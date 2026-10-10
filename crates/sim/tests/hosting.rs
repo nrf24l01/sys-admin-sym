@@ -1124,6 +1124,53 @@ fn price_sensitivity_changes_discount_value_and_cheap_prices_do_not_hide_bad_qua
 }
 
 #[test]
+fn faster_default_clock_advances_workloads_and_paid_renewals_at_every_game_speed() {
+    let mut l = Lab::new();
+    l.prepare();
+    let service = l.buy(1);
+    let vm = l.vm(service);
+    l.sim.hosting.market.time_scale = DEFAULT_HOSTING_TIME_SCALE;
+    l.sim
+        .hosting
+        .services
+        .get_mut(&service)
+        .unwrap()
+        .expires_at_ms = 3 * HOSTING_TICK_MS;
+    l.sim.hosting.vms.get_mut(&vm).unwrap().expires_at_ms = 3 * HOSTING_TICK_MS;
+    l.demand(
+        vm,
+        WorkloadDemand {
+            cpu_mhz: 500.0,
+            memory_mb: 256.0,
+            network_mbps: 10.0,
+            ..Default::default()
+        },
+    );
+    for speed in SimulationSpeed::ALL {
+        let mut sim = l.sim.clone();
+        sim.execute(Command::SetSimulationSpeed(speed)).unwrap();
+        sim.advance_time(1000);
+        assert_eq!(
+            sim.hosting.now_ms + sim.hosting.pending_ms,
+            510_000 * speed.multiplier()
+        );
+        let machine = &sim.hosting.vms[&vm];
+        assert_eq!(machine.metrics.cpu_used_mhz, 500.0);
+        assert!(machine.metrics.network_mbps > 0.0);
+        assert!(sim.port_telemetry(l.transit).tx_bytes > 0);
+        let renewed = speed.multiplier() >= 2;
+        assert_eq!(sim.hosting.services[&service].renewals, u64::from(renewed));
+        assert_eq!(sim.hosting.payments.len(), if renewed { 2 } else { 1 });
+        if renewed {
+            let payment = sim.hosting.payments.last().unwrap();
+            assert_eq!(payment.at_ms, 3 * HOSTING_TICK_MS);
+            assert!(payment.renewal);
+            assert_eq!(machine.expires_at_ms, 3 * HOSTING_TICK_MS + MONTH_MS);
+        }
+    }
+}
+
+#[test]
 fn all_game_speed_presets_accelerate_workloads_and_subscriptions_without_changing_results() {
     let mut l = Lab::new();
     l.prepare();

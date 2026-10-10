@@ -6,6 +6,9 @@ use std::net::Ipv4Addr;
 pub const VCPU_MHZ: f64 = 3400.0;
 pub const HOSTING_TICK_MS: u64 = 300_000;
 pub const MONTH_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+/// Hosting seconds per real second at the normal game speed (8.5 minutes).
+pub const DEFAULT_HOSTING_TIME_SCALE: u32 = 510;
+pub(crate) const HOSTING_CLOCK_DEFAULTS_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostingCategory {
@@ -369,7 +372,7 @@ impl Default for HostingMarketConfig {
         Self {
             population: 100000,
             prospects_per_day: 200,
-            time_scale: 60,
+            time_scale: DEFAULT_HOSTING_TIME_SCALE,
             periods: vec![
                 SubscriptionOption {
                     months: 1,
@@ -427,6 +430,9 @@ pub struct HostingState {
     pub refunds: Vec<HostingRefund>,
     pub market_stats: BTreeMap<u64, ProductMarketStats>,
     pub market: HostingMarketConfig,
+    /// Distinguishes an old default from an explicitly selected calendar speed.
+    #[serde(default)]
+    pub(crate) clock_defaults_version: u8,
     pub now_ms: u64,
     pub pending_ms: u64,
     pub reputation: f64,
@@ -457,6 +463,7 @@ impl Default for HostingState {
             refunds: vec![],
             market_stats: BTreeMap::new(),
             market: HostingMarketConfig::default(),
+            clock_defaults_version: HOSTING_CLOCK_DEFAULTS_VERSION,
             now_ms: 0,
             pending_ms: 0,
             reputation: 1.0,

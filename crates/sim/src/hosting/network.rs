@@ -33,6 +33,13 @@ impl NetworkSim {
             .collect()
     }
     pub(crate) fn rebuild_hosting_indexes(&mut self) {
+        if self.hosting.clock_defaults_version < HOSTING_CLOCK_DEFAULTS_VERSION {
+            // Upgrade the former one-minute default once; keep custom rates and pause.
+            if self.hosting.market.time_scale == 60 {
+                self.hosting.market.time_scale = DEFAULT_HOSTING_TIME_SCALE;
+            }
+            self.hosting.clock_defaults_version = HOSTING_CLOCK_DEFAULTS_VERSION;
+        }
         if let Some(legacy) = self.hosting.provider_server.take() {
             self.hosting
                 .provider_site_ipv4

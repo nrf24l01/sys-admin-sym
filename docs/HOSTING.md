@@ -213,12 +213,16 @@ simulated customers after loading, without a player start action.
 
 The Market / subscriptions tab controls addressable market population, daily prospects, hosting clock speed and
 positive weighted subscription periods. By default one real second advances
-hosting by one minute. Workloads and market arrivals aggregate in five simulated
+hosting by **8.5 minutes** (510 simulated seconds), 8.5 times the previous base rate.
+Existing saves using the former default of 60 upgrade to 510 once on load, keeping
+elapsed time and subscription dates. Custom clock settings and pause are preserved;
+the new speed remains configurable in Market / subscriptions.
+Workloads and market arrivals aggregate in five simulated
 minute intervals. Set speed to zero to pause hosting. A month is 30 simulated days.
 The top bar's **Speed** selector offers **×1, ×2, ×3, ×5, ×10, ×50 and ×100**.
 It multiplies elapsed time for the existing power, packet and hosting clocks;
 hosting calendar speed is applied afterwards. With the default calendar, ×100
-advances 100 hosting minutes per real second. Workload accounting, orders and
+advances 850 hosting minutes per real second. Workload accounting, orders and
 renewals follow the same simulated intervals at every speed. Changing speed keeps
 partially elapsed intervals, and the selected multiplier persists in saves.
 
