@@ -36,7 +36,6 @@ impl NetworkSim {
                 .ports()
                 .iter()
                 .filter_map(|p| self.port(*p))
-                .filter(|p| p.name == "mgmt0")
                 .any(|p| match &p.config {
                     crate::PortConfig::Server(c) => c
                         .addresses()
@@ -94,12 +93,8 @@ impl NetworkSim {
             .ports
             .iter()
             .filter_map(|port| {
-                (self.port(*port).is_some_and(|p| p.name != "mgmt0"))
-                    .then(|| {
-                        self.port_link_speed(*port)
-                            .map(|speed| u64::from(speed.mbps()))
-                    })
-                    .flatten()
+                self.port_link_speed(*port)
+                    .map(|speed| u64::from(speed.mbps()))
             })
             .sum();
         ServerResources {
@@ -123,7 +118,6 @@ impl NetworkSim {
                 .ports
                 .iter()
                 .copied()
-                .filter(|id| self.port(*id).is_some_and(|p| p.name != "mgmt0"))
                 .any(|port| self.network_reaches(port, false));
             if connected {
                 totals.lan.add(resources);
@@ -132,7 +126,6 @@ impl NetworkSim {
                 .ports
                 .iter()
                 .copied()
-                .filter(|id| self.port(*id).is_some_and(|p| p.name != "mgmt0"))
                 .any(|port| self.network_reaches(port, true));
             if global {
                 totals.global.add(resources);

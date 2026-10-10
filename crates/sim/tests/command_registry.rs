@@ -95,15 +95,15 @@ fn command_objects_complete_current_arguments_in_any_shell_segment() {
     assert_eq!(lab.candidates("ip -br addr show d"), ["dev"]);
     assert_eq!(lab.candidates("ip link set eth0 d"), ["down"]);
     assert_eq!(
-        lab.candidates("ip route add default metric 100 dev mg"),
-        ["mgmt0"]
+        lab.candidates("ip route add default metric 100 dev eth1"),
+        ["eth1"]
     );
-    assert_eq!(lab.candidates("ping -c 3 -I mg"), ["mgmt0"]);
+    assert_eq!(lab.candidates("ping -c 3 -I eth1"), ["eth1"]);
     assert_eq!(
         lab.candidates("echo x | ip link show dev et"),
         ["eth0", "eth1"]
     );
-    assert_eq!(lab.candidates("false || sudo ip a show dev mg"), ["mgmt0"]);
+    assert_eq!(lab.candidates("false || sudo ip a show dev eth1"), ["eth1"]);
     assert_eq!(
         lab.candidates("echo 'x;y' && systemctl restart netw"),
         ["networking", "networking.service"]

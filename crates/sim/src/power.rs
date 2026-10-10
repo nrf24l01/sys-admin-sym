@@ -4,9 +4,11 @@ mod activity;
 mod components;
 mod consumption;
 mod profiles;
+mod redundancy;
 pub(crate) use activity::PowerActivity;
 pub use consumption::*;
 pub use profiles::*;
+pub use redundancy::*;
 
 use crate::{CableRoutePoint, DeviceId, RackId};
 use serde::{Deserialize, Serialize};
@@ -73,8 +75,44 @@ pub struct OutletId {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PowerEndpoint {
+    /// The first inlet, retained for save compatibility.
     Device(DeviceId),
+    DevicePsu {
+        device: DeviceId,
+        inlet: u8,
+    },
     Source(SourceId),
+}
+impl PowerEndpoint {
+    pub fn device_id(self) -> Option<DeviceId> {
+        match self {
+            Self::Device(id) | Self::DevicePsu { device: id, .. } => Some(id),
+            Self::Source(_) => None,
+        }
+    }
+    pub fn inlet(self) -> u8 {
+        match self {
+            Self::DevicePsu { inlet, .. } => inlet,
+            _ => 0,
+        }
+    }
+    pub fn device_inlet(device: DeviceId, inlet: u8) -> Self {
+        if inlet == 0 {
+            Self::Device(device)
+        } else {
+            Self::DevicePsu { device, inlet }
+        }
+    }
+    pub fn same_inlet(self, other: Self) -> bool {
+        self == other
+            || (self.device_id().is_some()
+                && self.device_id() == other.device_id()
+                && self.inlet() == other.inlet())
+    }
+    pub fn canonical(self) -> Self {
+        self.device_id()
+            .map_or(self, |id| Self::device_inlet(id, self.inlet()))
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ElectricalLoad {
@@ -191,6 +229,9 @@ pub struct DevicePower {
     pub requested: bool,
     pub load: ElectricalLoad,
     pub effective: bool,
+    /// Server loads are DC demand; PSU losses are computed separately per live feed.
+    #[serde(default)]
+    pub psus: Option<DevicePsus>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PowerTelemetry {
@@ -234,6 +275,8 @@ pub enum PowerError {
     Tripped,
     #[error("device does not exist")]
     MissingDevice,
+    #[error("invalid device power inlet")]
+    InvalidInlet,
     #[error("Cisco 66 W adapter is overloaded")]
     AdapterOverload,
 }
@@ -271,6 +314,7 @@ impl PowerSystem {
                 requested: true,
                 load: ElectricalLoad::from_watts_pf(watts, pf),
                 effective: false,
+                psus: None,
             },
         );
         self.recompute();
@@ -309,6 +353,7 @@ impl PowerSystem {
         e: PowerEndpoint,
         kind: PowerCordKind,
     ) -> Result<(), PowerError> {
+        let e = e.canonical();
         if !self.source_exists(o.source) {
             return Err(PowerError::MissingSource);
         }
@@ -318,14 +363,22 @@ impl PowerSystem {
         if self.connections.contains_key(&o) {
             return Err(PowerError::OutletOccupied(o));
         }
-        if self.connections.values().any(|x| *x == e) {
+        if self.outlet_for_endpoint(e).is_some() {
             return Err(PowerError::EndpointOccupied);
         }
+        if let Some(id) = e.device_id() {
+            let device = self.devices.get(&id).ok_or(PowerError::MissingDevice)?;
+            if e.inlet() >= device.psus.as_ref().map_or(1, |p| p.count) {
+                return Err(PowerError::InvalidInlet);
+            }
+        }
         match e {
-            PowerEndpoint::Device(d) if !self.devices.contains_key(&d) => {
+            PowerEndpoint::Device(d) | PowerEndpoint::DevicePsu { device: d, .. }
+                if !self.devices.contains_key(&d) =>
+            {
                 return Err(PowerError::MissingDevice);
             }
-            PowerEndpoint::Device(d)
+            PowerEndpoint::Device(d) | PowerEndpoint::DevicePsu { device: d, .. }
                 if matches!(kind, PowerCordKind::Cisco66WAdapter)
                     && self
                         .devices
@@ -425,8 +478,8 @@ impl PowerSystem {
             SourceId::Pdu(i) => self.pdus.get(&i).is_some_and(|p| p.enabled),
         }
     }
-    pub fn device_status(&self, id: DeviceId) -> Option<DevicePower> {
-        self.devices.get(&id).cloned()
+    pub fn device_status(&self, id: DeviceId) -> Option<&DevicePower> {
+        self.devices.get(&id)
     }
     pub fn cord_kind(&self, outlet: OutletId) -> PowerCordKind {
         self.cord_kinds.get(&outlet).copied().unwrap_or_default()
@@ -620,11 +673,9 @@ impl PowerSystem {
                 }
             }
             let l = match e {
-                PowerEndpoint::Device(d) => self
-                    .devices
-                    .get(d)
-                    .filter(|x| x.requested)
-                    .map_or_default(|x| self.cord_kind(*outlet).input_load(x.load)),
+                PowerEndpoint::Device(_) | PowerEndpoint::DevicePsu { .. } => {
+                    self.cord_load(*outlet)
+                }
                 PowerEndpoint::Source(c) => self.input_load(*c, seen),
             };
             out = plus(out, l)
@@ -656,11 +707,9 @@ impl PowerSystem {
                 continue;
             }
             let l = match e {
-                PowerEndpoint::Device(d) => self
-                    .devices
-                    .get(d)
-                    .filter(|x| x.requested)
-                    .map_or_default(|x| self.cord_kind(*outlet).input_load(x.load)),
+                PowerEndpoint::Device(_) | PowerEndpoint::DevicePsu { .. } => {
+                    self.cord_load(*outlet)
+                }
                 PowerEndpoint::Source(c) => self.input_load(*c, seen),
             };
             o = plus(o, l);
@@ -719,6 +768,11 @@ impl PowerSystem {
                 )
             })
     }
+    fn tripped_count(&self) -> usize {
+        self.racks.values().filter(|r| !r.breaker_on).count()
+            + self.ups.values().filter(|u| u.tripped).count()
+            + self.pdus.values().filter(|p| p.tripped).count()
+    }
     fn recompute(&mut self) {
         let mut ss: Vec<_> = self
             .racks
@@ -729,119 +783,107 @@ impl PowerSystem {
             .chain(self.pdus.keys().copied().map(SourceId::Pdu))
             .collect();
         ss.sort_by_key(|s| format!("{s:?}"));
-        for s in ss {
-            let l = self.input_load(s, &mut HashSet::new());
-            match s {
-                SourceId::Rack(i) => {
-                    if !self.available(s, &mut HashSet::new()) {
-                        continue;
-                    }
-                    let outlet_over = (0..4).any(|n| {
-                        let o = OutletId {
-                            source: s,
-                            index: n,
-                        };
-                        if !self.racks.get(&i).is_some_and(|r| r.outlets[n as usize]) {
-                            return false;
+        // A protection trip can transfer load to another feed upstream of a
+        // source already visited. Iterate until no additional source trips.
+        for _ in 0..=ss.len() {
+            let before = self.tripped_count();
+            for s in ss.iter().copied() {
+                let l = self.input_load(s, &mut HashSet::new());
+                match s {
+                    SourceId::Rack(i) => {
+                        if !self.available(s, &mut HashSet::new()) {
+                            continue;
                         }
-                        match self.connections.get(&o) {
-                            Some(PowerEndpoint::Device(d)) => self
-                                .devices
-                                .get(d)
-                                .filter(|x| x.requested)
-                                .is_some_and(|x| {
-                                    x.load.watts > RACK_OUTLET_WATTS
-                                        || x.load.current_ma > RACK_OUTLET_MA
-                                }),
-                            Some(PowerEndpoint::Source(c)) => {
-                                let x = self.input_load(*c, &mut HashSet::new());
-                                x.watts > RACK_OUTLET_WATTS || x.current_ma > RACK_OUTLET_MA
-                            }
-                            None => false,
-                        }
-                    });
-                    if outlet_over || l.current_ma > 16_000 {
-                        if let Some(x) = self.racks.get_mut(&i) {
-                            x.breaker_on = false
-                        }
-                    }
-                }
-                SourceId::Ups(i) => {
-                    let out = self.source_load(s, &mut HashSet::new());
-                    if let Some(x) = self.ups.get_mut(&i) {
-                        if out.watts > x.spec.watts || out.va > x.spec.va {
-                            x.tripped = true;
-                            x.online = false
-                        }
-                    }
-                }
-                SourceId::Pdu(i) => {
-                    if !self.available(s, &mut HashSet::new()) {
-                        continue;
-                    }
-                    if let Some(spec) = self.pdus.get(&i) {
-                        let (max_w, max_va, max_ma, count) = (
-                            RACK_OUTLET_WATTS,
-                            RACK_OUTLET_WATTS,
-                            RACK_OUTLET_MA,
-                            usize::from(spec.outlets.min(8)),
-                        );
-                        let outlet_over = (0..count).any(|n| {
-                            match self.connections.get(&OutletId {
+                        let outlet_over = (0..4).any(|n| {
+                            let o = OutletId {
                                 source: s,
-                                index: n as u8,
-                            }) {
-                                Some(PowerEndpoint::Device(d)) => self
-                                    .devices
-                                    .get(d)
-                                    .filter(|d| d.requested)
-                                    .is_some_and(|d| {
-                                        d.load.watts > max_w
-                                            || d.load.va > max_va
-                                            || d.load.current_ma > max_ma
-                                    }),
+                                index: n,
+                            };
+                            if !self.racks.get(&i).is_some_and(|r| r.outlets[n as usize]) {
+                                return false;
+                            }
+                            match self.connections.get(&o) {
+                                Some(
+                                    PowerEndpoint::Device(_) | PowerEndpoint::DevicePsu { .. },
+                                ) => {
+                                    let x = self.cord_load(o);
+                                    x.watts > RACK_OUTLET_WATTS || x.current_ma > RACK_OUTLET_MA
+                                }
                                 Some(PowerEndpoint::Source(c)) => {
-                                    let q = self.source_load(*c, &mut HashSet::new());
-                                    q.watts > max_w || q.va > max_va || q.current_ma > max_ma
+                                    let x = self.input_load(*c, &mut HashSet::new());
+                                    x.watts > RACK_OUTLET_WATTS || x.current_ma > RACK_OUTLET_MA
                                 }
                                 None => false,
                             }
                         });
-                        if outlet_over || l.watts > max_w || l.va > max_va || l.current_ma > max_ma
-                        {
-                            if let Some(x) = self.pdus.get_mut(&i) {
+                        if outlet_over || l.current_ma > 16_000 {
+                            if let Some(x) = self.racks.get_mut(&i) {
+                                x.breaker_on = false
+                            }
+                        }
+                    }
+                    SourceId::Ups(i) => {
+                        let out = self.source_load(s, &mut HashSet::new());
+                        if let Some(x) = self.ups.get_mut(&i) {
+                            if out.watts > x.spec.watts || out.va > x.spec.va {
                                 x.tripped = true;
+                                x.online = false
+                            }
+                        }
+                    }
+                    SourceId::Pdu(i) => {
+                        if !self.available(s, &mut HashSet::new()) {
+                            continue;
+                        }
+                        if let Some(spec) = self.pdus.get(&i) {
+                            let (max_w, max_va, max_ma, count) = (
+                                RACK_OUTLET_WATTS,
+                                RACK_OUTLET_WATTS,
+                                RACK_OUTLET_MA,
+                                usize::from(spec.outlets.min(8)),
+                            );
+                            let outlet_over = (0..count).any(|n| {
+                                match self.connections.get(&OutletId {
+                                    source: s,
+                                    index: n as u8,
+                                }) {
+                                    Some(
+                                        PowerEndpoint::Device(_) | PowerEndpoint::DevicePsu { .. },
+                                    ) => {
+                                        let q = self.cord_load(OutletId {
+                                            source: s,
+                                            index: n as u8,
+                                        });
+                                        q.watts > max_w || q.va > max_va || q.current_ma > max_ma
+                                    }
+                                    Some(PowerEndpoint::Source(c)) => {
+                                        let q = self.input_load(*c, &mut HashSet::new());
+                                        q.watts > max_w || q.va > max_va || q.current_ma > max_ma
+                                    }
+                                    None => false,
+                                }
+                            });
+                            if outlet_over
+                                || l.watts > spec.watts
+                                || l.va > spec.va
+                                || l.current_ma > spec.current_ma
+                            {
+                                if let Some(x) = self.pdus.get_mut(&i) {
+                                    x.tripped = true;
+                                }
                             }
                         }
                     }
                 }
             }
+            if self.tripped_count() == before {
+                break;
+            }
         }
         let ids: Vec<_> = self.devices.keys().copied().collect();
         for d in ids {
-            let p = self
-                .connections
-                .iter()
-                .filter_map(|(o, e)| {
-                    matches!(e,PowerEndpoint::Device(x)if *x==d).then_some((o.source, o.index))
-                })
-                .min_by_key(|s| format!("{s:?}"));
-            let on = p.is_some_and(|(s, index)| {
-                (if let SourceId::Rack(id) = s {
-                    self.racks.get(&id).is_some_and(|r| {
-                        r.outlets.get(usize::from(index)).copied().unwrap_or(false)
-                    })
-                } else {
-                    true
-                }) && usize::from(index) < self.outlets(s)
-                    && self
-                        .cord_kind(OutletId { source: s, index })
-                        .allows_load(self.devices[&d].load)
-                    && self.available(s, &mut HashSet::new())
-            });
-            if let Some(x) = self.devices.get_mut(&d) {
-                x.effective = x.requested && on
-            }
+            let on = self.device_can_run(d);
+            self.devices.get_mut(&d).unwrap().effective = on;
         }
     }
 }

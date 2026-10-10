@@ -123,7 +123,7 @@ impl NetworkSim {
             .ok_or(SimError::PublicIpv4BlockNotOwned)?;
         if !self
             .port(port)
-            .is_some_and(|p| p.name != "mgmt0" && matches!(p.config, PortConfig::Server(_)))
+            .is_some_and(|p| matches!(p.config, PortConfig::Server(_)))
         {
             return Err(SimError::WrongPortType);
         }

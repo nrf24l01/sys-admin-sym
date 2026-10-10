@@ -707,12 +707,7 @@ fn power_socket_action(
                 state.pending_power_inlet = None;
                 state.pending_power_route.clear();
                 state.notice = Some(("ui.power-cable-selection-cancelled".into(), true));
-            } else if let Some(outlet) = snapshot
-                .power
-                .connections
-                .iter()
-                .find_map(|(outlet, target)| (*target == endpoint).then_some(*outlet))
-            {
+            } else if let Some(outlet) = snapshot.power.outlet_for_endpoint(endpoint) {
                 state.pending_power_outlet = None;
                 state.pending_power_inlet = None;
                 state.pending_power_route.clear();
@@ -1135,6 +1130,50 @@ mod tests {
         power_socket_action(&sim, &mut state, PowerSocket::Inlet(endpoint));
         assert_eq!(state.selected, Selection::PowerCable(outlet()));
         assert_eq!(state.pending_power_inlet, None);
+    }
+
+    #[test]
+    fn second_server_psu_connects_in_both_gesture_directions_with_first_already_fed() {
+        for reverse in [false, true] {
+            let mut sim = NetworkSim::new();
+            let cloud_provider_sim::SimEvent::DeviceAdded(device) = sim
+                .execute(Command::BuyDevice {
+                    kind: cloud_provider_sim::DeviceTemplate::Server,
+                })
+                .unwrap()[0]
+            else {
+                panic!()
+            };
+            sim.execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit: 1,
+            })
+            .unwrap();
+            sim.execute(Command::ConnectPower {
+                outlet: outlet(),
+                endpoint: PowerEndpoint::Device(device),
+            })
+            .unwrap();
+            let second = PowerEndpoint::device_inlet(device, 1);
+            let feed = OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 1,
+            };
+            let mut state = UiState::default();
+            let sockets = if reverse {
+                [PowerSocket::Inlet(second), PowerSocket::Outlet(feed)]
+            } else {
+                [PowerSocket::Outlet(feed), PowerSocket::Inlet(second)]
+            };
+            assert!(power_socket_action(&sim, &mut state, sockets[0]).is_none());
+            let command = power_socket_action(&sim, &mut state, sockets[1]).unwrap();
+            sim.execute(command).unwrap();
+            assert_eq!(sim.power.outlet_for_endpoint(second), Some(feed));
+            power_socket_action(&sim, &mut state, PowerSocket::Inlet(second));
+            assert_eq!(state.selected, Selection::PowerCable(feed));
+            assert_eq!(sim.power.connections.len(), 2);
+        }
     }
 
     #[test]

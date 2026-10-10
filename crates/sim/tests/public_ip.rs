@@ -179,21 +179,15 @@ fn lan_assignment_is_private_and_public_purchase_requires_uplink() {
     );
     assert_eq!(sim.public_ipv4_blocks().len(), 0);
     sim.execute(Command::BuyPublicIpv4Block { uplink }).unwrap();
-    let management = sim
-        .devices()
-        .find_map(|device| match &device.kind {
-            DeviceKind::Server(server) => server
-                .ports
-                .iter()
-                .copied()
-                .find(|id| sim.port(*id).unwrap().name == "mgmt0"),
-            _ => None,
-        })
-        .unwrap();
+    let passive = sim
+        .network_outlets()
+        .find(|o| matches!(o.kind, NetworkOutletKind::Lan { .. }))
+        .unwrap()
+        .port;
     let network = sim.public_ipv4_blocks()[0].network;
     assert!(
         sim.execute(Command::AssignPublicIpv4 {
-            port: management,
+            port: passive,
             network
         })
         .is_err()

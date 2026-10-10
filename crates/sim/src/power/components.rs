@@ -4,26 +4,6 @@ use super::{
 };
 use crate::*;
 
-fn psu_input_mw(output: u32) -> u32 {
-    let utilization = (u64::from(output)
-        / u64::from(server_power_profile().psu.capacity_watts).max(1))
-    .min(1000) as u32;
-    let points = &server_power_profile().psu.efficiency_permille;
-    let [mut x, mut efficiency] = points[0];
-    for &[next_x, next_eff] in points.iter().skip(1) {
-        if utilization <= next_x {
-            let delta = i64::from(next_eff) - i64::from(efficiency);
-            efficiency = (i64::from(efficiency)
-                + delta * i64::from(utilization.saturating_sub(x)) / i64::from(next_x - x))
-                as u32;
-            break;
-        }
-        x = next_x;
-        efficiency = next_eff;
-    }
-    (u64::from(output) * 1000).div_ceil(u64::from(efficiency.max(1))) as u32
-}
-
 impl ServerHardware {
     /// Estimated maximum DC demand for PSU sizing, excluding conversion losses.
     pub fn peak_load_watts(&self) -> u32 {
@@ -130,9 +110,6 @@ impl NetworkSim {
             p.fans.draw_mw(utilization.cpu.max(utilization.storage)),
             p.fans.peak_mw,
         );
-        let losses = psu_input_mw(result.demand_mw) - result.demand_mw;
-        let peak_losses = psu_input_mw(result.peak_mw) - result.peak_mw;
-        result.component(PowerComponentKind::Conversion, losses, peak_losses);
         result
     }
 }

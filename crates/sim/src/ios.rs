@@ -386,31 +386,29 @@ impl NetworkSim {
         {
             let address = address.strip_prefix("root@").unwrap_or(address);
             let Ok(address) = address.parse::<Ipv4Addr>() else {
-                return reply(false, "usage: ssh <management-ip>");
+                return reply(false, "usage: ssh <ip-address>");
             };
-            let source = self.device(device).and_then(|dev| match &dev.kind {
-                DeviceKind::Server(server) => server
-                    .ports
-                    .iter()
-                    .copied()
-                    .find(|id| self.port(*id).is_some_and(|p| p.name == "mgmt0")),
-                _ => None,
-            });
-            let Some(source) = source else {
-                return reply(false, "SSH requires a server management interface");
+            let Some(source) = self
+                .server_route_selection(device, address, None)
+                .map(|r| r.port)
+            else {
+                return reply(
+                    false,
+                    "SSH: no route to host through a configured server interface",
+                );
             };
             let target = self.devices().find_map(|dev| match &dev.kind {
-                DeviceKind::Server(server) if dev.id != device => server.ports.iter().find(|id| self.port(**id).is_some_and(|p| p.name == "mgmt0" && matches!(&p.config, PortConfig::Server(config) if config.ipv4.as_ref().is_some_and(|ip| ip.address == address)))).map(|_| dev.id),
+                DeviceKind::Server(server) if dev.id != device => server.ports.iter().find(|id| self.port(**id).is_some_and(|p| matches!(&p.config, PortConfig::Server(config) if config.addresses().any(|ip| ip.address == address)))).map(|_| dev.id),
                 DeviceKind::Switch(_) if self.switch_management(dev.id).is_some_and(|config| config.address == address) => Some(dev.id),
                 DeviceKind::Router(router) if router.interfaces.iter().any(|interface| interface.address == Some(address)) => Some(dev.id),
                 _ => None,
             });
             let Some(target) = target else {
-                return reply(false, "management IP not found");
+                return reply(false, "SSH target IP not found");
             };
             let reachable = self.ping(source, address).reachable;
             if !reachable {
-                return reply(false, "management IP is unreachable");
+                return reply(false, "SSH target IP is unreachable");
             }
             if matches!(
                 self.device(target).map(|dev| &dev.kind),

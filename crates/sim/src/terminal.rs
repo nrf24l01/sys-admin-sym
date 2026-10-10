@@ -245,7 +245,7 @@ impl NetworkSim {
         match command {
             TerminalCommand::Help => output(
                 true,
-                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>, ssh <management-ip>, exit",
+                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>, ssh <ip-address>, exit",
             ),
             TerminalCommand::Ip => {
                 let lines = server

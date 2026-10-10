@@ -1,5 +1,8 @@
 # Device power consumption
 
+For Dell’s two PSU feeds, per-supply conversion losses and power-loss behavior,
+see [server interfaces and power](SERVER_INTERFACES_AND_POWER.md).
+
 Power now follows installed hardware and simulated work. PSU capacity, CPU TDP,
 NIC ratings and UPS output limits describe sizing limits; they are not constant
 operating consumption. The inspector shows actual powered draw, an estimated

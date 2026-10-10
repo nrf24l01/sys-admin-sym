@@ -502,7 +502,7 @@ fn switch_management_requires_the_correct_vlan_and_policy() {
     }
     let server = device(&mut sim, DeviceTemplate::Server, 1);
     let switch = device(&mut sim, DeviceTemplate::Switch, 2);
-    let mgmt = sim.device(server).unwrap().ports()[2];
+    let mgmt = sim.device(server).unwrap().ports()[1];
     let access = sim.device(switch).unwrap().ports()[0];
     cable(&mut sim, mgmt, access);
     sim.execute(Command::SetIpv4 {

@@ -251,6 +251,38 @@ impl NetworkSim {
             .get(&device)
             .cloned()
             .or_else(|| self.calculate_device_consumption(device))?;
+        if let Some(psus) = self
+            .power
+            .devices
+            .get(&device)
+            .and_then(|p| p.psus.as_ref())
+        {
+            let feeds = (0..psus.count)
+                .filter(|inlet| {
+                    self.power
+                        .psu_telemetry(device, *inlet)
+                        .is_some_and(|p| p.input_available)
+                })
+                .count()
+                .max(1) as u32;
+            let input = |dc: u32| {
+                (0..feeds)
+                    .map(|index| {
+                        psus.profile
+                            .input_mw(dc / feeds + u32::from(index < dc % feeds))
+                    })
+                    .sum::<u32>()
+            };
+            let losses = input(result.demand_mw).saturating_sub(result.demand_mw);
+            let peak_losses = input(result.peak_mw).saturating_sub(result.peak_mw);
+            result.component(PowerComponentKind::Conversion, losses, peak_losses);
+            result.current = if self.device(device)?.powered {
+                self.power.device_input_load(device)
+            } else {
+                ElectricalLoad::default()
+            };
+            return Some(result);
+        }
         result.current = if self.device(device)?.powered {
             ElectricalLoad::from_watts_pf(
                 result.demand_mw.div_ceil(1000),
@@ -275,10 +307,18 @@ impl NetworkSim {
         let mut changed = false;
         for (id, consumption) in loads {
             let watts = consumption.demand_mw.div_ceil(1000);
+            let psus =
+                matches!(self.devices[&id].kind, DeviceKind::Server(_)).then(|| DevicePsus {
+                    count: u8::try_from(server_catalog().chassis.psu_bays)
+                        .expect("PSU count fits u8"),
+                    profile: server_power_profile().psu.clone(),
+                    dc_demand_mw: consumption.demand_mw,
+                });
             self.runtime.consumption.insert(id, consumption);
             let load = ElectricalLoad::from_watts_pf(watts, self.device_power_factor(id));
             let power = self.power.devices.get_mut(&id).unwrap();
-            if power.load != load {
+            if power.load != load || power.psus != psus {
+                power.psus = psus;
                 power.load = load;
                 changed = true;
             }

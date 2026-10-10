@@ -60,6 +60,7 @@ impl ServerCatalog {
         let c = &self.chassis;
         let m = &c.memory;
         if c.cpu_sockets == 0
+            || !(1..=2).contains(&c.psu_bays)
             || c.max_cpu_tdp_w == 0
             || c.supported_cpu_ids.is_empty()
             || c.dimm_slots != m.slots.len()

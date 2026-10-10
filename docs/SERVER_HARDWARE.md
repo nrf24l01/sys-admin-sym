@@ -11,7 +11,10 @@ The chassis specifies CPU sockets, supported CPU IDs, maximum CPU TDP, whether
 CPUs must match, and whether components can be changed while powered on. Drive
 bays specify their interfaces. PCIe slots specify their owning CPU, electrical
 lanes, physical connector width and generation. The existing `power` profile in
-`server_config.json` defines PSU capacity and conversion efficiency.
+`server_config.json` defines per-PSU capacity and conversion efficiency. Both
+rear power inlets are connectable independently; see
+[interfaces and redundant power](SERVER_INTERFACES_AND_POWER.md) for feed
+failover, boot behavior, JSON settings and save migration.
 
 The chassis `memory` object specifies total capacity, channels per CPU, DIMMs per
 channel, named socket topology, preferred population order, allowed DIMM counts,

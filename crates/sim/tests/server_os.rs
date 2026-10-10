@@ -230,11 +230,11 @@ fn network_configuration_file_applies_atomically_and_survives_reboot() {
 #[test]
 fn ssh_service_controls_management_connections_and_commands_run_on_remote_guest() {
     let mut lab = GuestLab::new(2);
-    lab.connect(lab.port(0, "mgmt0"), lab.port(1, "mgmt0"));
-    lab.run(0, "ip addr add 192.0.2.1/24 dev mgmt0");
+    lab.connect(lab.port(0, "eth1"), lab.port(1, "eth1"));
+    lab.run(0, "ip addr add 192.0.2.1/24 dev eth1");
     lab.run(
         1,
-        "ip addr add 192.0.2.2/24 dev mgmt0; systemctl disable --now ssh",
+        "ip addr add 192.0.2.2/24 dev eth1; systemctl disable --now ssh",
     );
     assert!(
         !lab.sim
@@ -437,16 +437,16 @@ fn an_unpatched_room_socket_does_not_supply_a_dhcp_lease() {
     let mut lab = GuestLab::new(1);
     lab.run(
         0,
-        "printf 'auto mgmt0\niface mgmt0 inet dhcp\n' > /etc/network/interfaces",
+        "printf 'auto eth1\niface eth1 inet dhcp\n' > /etc/network/interfaces",
     );
-    assert!(!lab.sim.execute_console(lab.guests[0], "ifup mgmt0").success);
+    assert!(!lab.sim.execute_console(lab.guests[0], "ifup eth1").success);
     let lan = lab
         .sim
         .network_outlets()
         .find(|outlet| outlet.kind == NetworkOutletKind::Lan { rack: RackId(1) })
         .unwrap()
         .port;
-    lab.connect(lab.port(0, "mgmt0"), lan);
-    assert!(!lab.sim.execute_console(lab.guests[0], "ifup mgmt0").success);
-    assert!(!lab.run(0, "ip -br addr show dev mgmt0")[0].contains("10.0.0.10/16"));
+    lab.connect(lab.port(0, "eth1"), lan);
+    assert!(!lab.sim.execute_console(lab.guests[0], "ifup eth1").success);
+    assert!(!lab.run(0, "ip -br addr show dev eth1")[0].contains("10.0.0.10/16"));
 }

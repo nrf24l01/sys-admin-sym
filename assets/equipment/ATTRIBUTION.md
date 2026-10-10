@@ -194,3 +194,12 @@ uses the existing generic RAM image; its power curve is a project-authored
 estimate. The R360's represented CPU support list includes cataloged processors,
 not every processor sold by Dell. Router port roles follow the Cisco guide linked
 in [IOS guide](../../docs/IOS_GUIDE.md).
+
+## R360 networking and redundant PSU behavior
+
+The R360 onboard NIC count, dual PSU support and hot-spare distinction follow
+[Dell's NIC specifications](https://www.dell.com/support/manuals/en-bm/poweredge-r360/r360_ism/nic-port-specifications?guid=guid-7be6485b-7c21-4030-9f52-d3a10af9cc8e),
+[PSU specifications](https://www.dell.com/support/manuals/en-ca/poweredge-r360/r360_ism/psu-specifications?guid=guid-ff8a8542-c09e-4bb9-9b35-710b1366b973&lang=en-us)
+and [hot-spare documentation](https://www.dell.com/support/manuals/en-us/poweredge-r360/r360_ism/hot-spare-feature?guid=guid-0bac5ab4-79f5-4a6b-a473-83e87d82b321).
+The game uses balanced load sharing with project-authored efficiency estimates,
+not Dell hot-spare mode or measured server power traces. No new image assets.

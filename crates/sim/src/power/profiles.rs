@@ -57,13 +57,32 @@ impl PowerProfile {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PsuPowerProfile {
     #[serde(deserialize_with = "positive")]
     pub capacity_watts: u32,
     #[serde(deserialize_with = "efficiency_curve")]
     pub efficiency_permille: Vec<[u32; 2]>,
+}
+impl PsuPowerProfile {
+    pub fn input_mw(&self, output: u32) -> u32 {
+        let utilization = (u64::from(output) / u64::from(self.capacity_watts)).min(1000) as u32;
+        let points = &self.efficiency_permille;
+        let [mut x, mut efficiency] = points[0];
+        for &[next_x, next_eff] in points.iter().skip(1) {
+            if utilization <= next_x {
+                let delta = i64::from(next_eff) - i64::from(efficiency);
+                efficiency = (i64::from(efficiency)
+                    + delta * i64::from(utilization.saturating_sub(x)) / i64::from(next_x - x))
+                    as u32;
+                break;
+            }
+            x = next_x;
+            efficiency = next_eff;
+        }
+        (u64::from(output) * 1000).div_ceil(u64::from(efficiency)) as u32
+    }
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

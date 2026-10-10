@@ -5,8 +5,8 @@
     "ru": "Dell PowerEdge R360"
   },
   "desc": {
-    "en": "1U R360 chassis · integrated 600 W PSU · full pack available with CPU, RAM, NIC and SSD",
-    "ru": "Корпус R360 1U · встроенный БП 600 Вт · доступен комплект с CPU, RAM, NIC и SSD"
+    "en": "1U R360 chassis · two 600 W redundant PSUs · full pack available with CPU, RAM, NIC and SSD",
+    "ru": "Корпус R360 1U · два резервных БП по 600 Вт · доступен комплект с CPU, RAM, NIC и SSD"
   },
   "type": "server",
   "texture": "equipment/server_front.png",
@@ -35,18 +35,6 @@
         ],
         "right_up": [
           0.226,
-          0.595
-        ],
-        "speed": "1G",
-        "side": "back"
-      },
-      {
-        "left_down": [
-          0.243,
-          0.345
-        ],
-        "right_up": [
-          0.279,
           0.595
         ],
         "speed": "1G",

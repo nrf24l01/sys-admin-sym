@@ -113,9 +113,21 @@ impl NetworkSim {
             .devices
             .retain(|id, _| self.devices.contains_key(id));
         self.power.connections.retain(|_, endpoint| match endpoint {
-            PowerEndpoint::Device(id) => self.devices.contains_key(id),
+            PowerEndpoint::Device(id) | PowerEndpoint::DevicePsu { device: id, .. } => {
+                self.devices.get(id).is_some_and(|d| {
+                    usize::from(endpoint.inlet())
+                        < if matches!(d.kind, DeviceKind::Server(_)) {
+                            server_catalog().chassis.psu_bays
+                        } else {
+                            1
+                        }
+                })
+            }
             PowerEndpoint::Source(_) => true,
         });
+        for endpoint in self.power.connections.values_mut() {
+            *endpoint = endpoint.canonical();
+        }
         // Saves written before typed cords existed used IEC implicitly. Routers
         // are the sole device supplied with the Cisco DC adapter.
         self.power
@@ -221,57 +233,7 @@ impl NetworkSim {
         self.refresh_device_loads();
         self.power.recompute_now();
         self.sync_effective_power();
-        // Migrate legacy servers that predate the dedicated management NIC.
-        let legacy_servers: Vec<_> =
-            self.devices
-                .iter()
-                .filter_map(|(id, device)| match &device.kind {
-                    DeviceKind::Server(server)
-                        if !server.ports.iter().any(|id| {
-                            self.ports.get(id).is_some_and(|port| port.name == "mgmt0")
-                        }) =>
-                    {
-                        Some((*id, server.ports.len()))
-                    }
-                    _ => None,
-                })
-                .collect();
-        for (device, count) in legacy_servers {
-            let mut existing: std::collections::HashSet<_> = self.devices[&device]
-                .ports()
-                .iter()
-                .filter_map(|port| self.ports.get(port).map(|port| port.name.clone()))
-                .collect();
-            let mut current = count;
-            while current < 2 {
-                let name = if !existing.contains("eth1") {
-                    "eth1"
-                } else {
-                    "eth0"
-                };
-                let port = self.alloc_port(
-                    device,
-                    name.into(),
-                    PortConnector::Rj45,
-                    PortConfig::Server(ServerPortConfig::default()),
-                );
-                if let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind
-                {
-                    server.ports.push(port);
-                }
-                existing.insert(name.to_string());
-                current += 1;
-            }
-            let port = self.alloc_port(
-                device,
-                "mgmt0".into(),
-                PortConnector::Rj45,
-                PortConfig::Server(ServerPortConfig::default()),
-            );
-            if let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind {
-                server.ports.push(port);
-            }
-        }
+        self.remove_legacy_server_management_ports();
         for device in self.devices.values_mut() {
             if let DeviceKind::Server(server) = &mut device.kind
                 && let Some(hardware) = &mut server.hardware
@@ -412,6 +374,46 @@ impl NetworkSim {
         self.reconcile_provider();
         self.migrate_provider_inventory();
         self.normalize_optics();
+        self.refresh_device_loads();
+        self.sync_effective_power();
+    }
+
+    fn remove_legacy_server_management_ports(&mut self) {
+        let removed: std::collections::HashSet<_> = self
+            .ports
+            .values()
+            .filter(|p| {
+                p.name == "mgmt0"
+                    && self
+                        .devices
+                        .get(&p.device)
+                        .is_some_and(|d| matches!(d.kind, DeviceKind::Server(_)))
+            })
+            .map(|p| p.id)
+            .collect();
+        let mut cables: Vec<_> = self
+            .links
+            .values()
+            .filter(|l| removed.contains(&l.a) || removed.contains(&l.b))
+            .map(|l| l.id)
+            .collect();
+        cables.sort_unstable();
+        // Return existing finished leads without refunding bulk stock/connectors.
+        for cable in cables {
+            let _ = self.disconnect(cable);
+        }
+        for id in &removed {
+            self.detach_module(*id);
+            self.ports.remove(id);
+        }
+        for device in self.devices.values_mut() {
+            if let DeviceKind::Server(server) = &mut device.kind {
+                server.ports.retain(|id| !removed.contains(id));
+            }
+        }
+        for os in self.server_operating_systems.values_mut() {
+            os.routes.retain(|route| !removed.contains(&route.port));
+        }
     }
 
     fn ensure_network_outlets(&mut self) {
@@ -1015,7 +1017,7 @@ impl NetworkSim {
             + 1;
         let (name, kind) = match template {
             DeviceTemplate::Server => {
-                let ports = ["eth0", "eth1", "mgmt0"]
+                let ports = ["eth0", "eth1"]
                     .into_iter()
                     .map(|name| {
                         self.alloc_port(
@@ -1584,7 +1586,7 @@ impl NetworkSim {
         self.power.devices.remove(&id);
         self.power
             .connections
-            .retain(|_, endpoint| !matches!(endpoint, PowerEndpoint::Device(d) if *d == id));
+            .retain(|_, endpoint| endpoint.device_id() != Some(id));
         self.power
             .cord_kinds
             .retain(|outlet, _| self.power.connections.contains_key(outlet));
@@ -1712,7 +1714,7 @@ impl NetworkSim {
         };
         self.power.connections.retain(|outlet, endpoint| {
             outlet.source != source.unwrap_or(SourceId::Rack(RackId(0)))
-                && !matches!(endpoint, PowerEndpoint::Device(d) if *d == id)
+                && endpoint.device_id() != Some(id)
                 && !matches!(endpoint, PowerEndpoint::Source(s) if Some(*s) == source)
         });
         self.power
@@ -1738,7 +1740,19 @@ impl NetworkSim {
             }
         }
         match endpoint {
-            PowerEndpoint::Device(id) => {
+            PowerEndpoint::Device(id) | PowerEndpoint::DevicePsu { device: id, .. } => {
+                let count = if self
+                    .devices
+                    .get(&id)
+                    .is_some_and(|d| matches!(d.kind, DeviceKind::Server(_)))
+                {
+                    server_catalog().chassis.psu_bays
+                } else {
+                    1
+                };
+                if usize::from(endpoint.inlet()) >= count {
+                    return Err(SimError::Power("invalid device power inlet".into()));
+                }
                 let d = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
                 if d.rack.is_none()
                     || matches!(
@@ -1774,7 +1788,7 @@ impl NetworkSim {
     }
 
     fn inferred_power_cord(&self, endpoint: PowerEndpoint) -> PowerCordKind {
-        match endpoint {
+        match endpoint.canonical() {
             PowerEndpoint::Device(id)
                 if self
                     .devices
@@ -1799,7 +1813,7 @@ impl NetworkSim {
                 "Cisco adapter cords terminate at a device, not a power source".into(),
             ));
         }
-        if let PowerEndpoint::Device(id) = endpoint {
+        if let Some(id) = endpoint.device_id() {
             let d = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
             let router = matches!(d.kind, DeviceKind::Router(_));
             if router != matches!(kind, PowerCordKind::Cisco66WAdapter) {
@@ -1941,6 +1955,7 @@ impl NetworkSim {
             .cord_routes
             .retain(|outlet, _| self.power.connections.contains_key(outlet));
         let mut changed = false;
+        let mut server_transitions = Vec::new();
         for (id, device) in &mut self.devices {
             let source = match &device.kind {
                 DeviceKind::Ups(x) => x.source,
@@ -1960,6 +1975,9 @@ impl NetworkSim {
             if let Some(status) = self.power.device_status(*id) {
                 let assembled = !matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()));
                 let next = device.rack.is_some() && status.effective && assembled;
+                if device.powered != next && matches!(device.kind, DeviceKind::Server(_)) {
+                    server_transitions.push((*id, next));
+                }
                 if next {
                     self.runtime
                         .device_started
@@ -1974,6 +1992,11 @@ impl NetworkSim {
         }
         if changed {
             self.topology_revision = self.topology_revision.saturating_add(1);
+        }
+        // Boots may request DHCP leases; preserve deterministic allocation order.
+        server_transitions.sort_unstable_by_key(|(id, _)| *id);
+        for (id, powered) in server_transitions {
+            self.server_power_transition(id, powered);
         }
     }
 
@@ -2345,6 +2368,59 @@ fn canonical_network(address: Ipv4Addr, prefix: u8) -> Ipv4Addr {
 #[cfg(test)]
 mod route_tests {
     use super::*;
+    #[test]
+    fn legacy_management_port_is_removed_without_losing_real_nics_or_cable_inventory() {
+        let mut sim = NetworkSim::new();
+        sim.money = 100_000;
+        let SimEvent::DeviceAdded(device) = sim.execute(Command::BuyServerFullPack).unwrap()[0]
+        else {
+            panic!()
+        };
+        sim.execute(Command::PlaceDevice {
+            device,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        let real = sim.devices[&device].ports().to_vec();
+        let management = sim.alloc_port(
+            device,
+            "mgmt0".into(),
+            PortConnector::Rj45,
+            PortConfig::Server(ServerPortConfig::default()),
+        );
+        if let DeviceKind::Server(server) = &mut sim.devices.get_mut(&device).unwrap().kind {
+            server.ports.insert(2, management);
+        }
+        let lan = sim
+            .network_outlets()
+            .find(|o| matches!(o.kind, NetworkOutletKind::Lan { rack: RackId(1) }))
+            .unwrap()
+            .port;
+        for supply in [CableSupply::CableBox305m, CableSupply::Rj45Pack20] {
+            sim.execute(Command::BuyCableSupply { supply }).unwrap();
+        }
+        sim.execute(Command::Connect {
+            a: management,
+            b: lan,
+        })
+        .unwrap();
+        let cable = sim.link_for_port(management).unwrap().clone();
+        let stock = sim.cable_inventory.cable_cm;
+        let connectors = sim.cable_inventory.connectors;
+        let saved = ron::to_string(&sim).unwrap();
+        let mut loaded: NetworkSim = ron::from_str(&saved).unwrap();
+        loaded.rebuild_indexes();
+        assert_eq!(loaded.devices[&device].ports(), real);
+        assert!(loaded.port(management).is_none());
+        assert!(loaded.link_for_port(lan).is_none());
+        assert_eq!(loaded.cable_inventory.patch_cables_cm, [cable.length_cm]);
+        assert_eq!(loaded.cable_inventory.cable_cm, stock);
+        assert_eq!(loaded.cable_inventory.connectors, connectors);
+        loaded.rebuild_indexes();
+        assert_eq!(loaded.cable_inventory.patch_cables_cm, [cable.length_cm]);
+        assert_eq!(loaded.devices[&device].ports(), real);
+    }
     #[test]
     fn older_single_rack_save_expands_to_predefined_room() {
         let mut sim = NetworkSim::new();

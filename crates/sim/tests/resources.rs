@@ -36,7 +36,7 @@ fn integrated_power_supply_allows_assembled_server_to_be_ready() {
 }
 
 #[test]
-fn server_has_dedicated_management_nic_and_no_network_credit_when_disconnected() {
+fn server_has_only_two_onboard_nics_and_no_network_credit_when_disconnected() {
     let mut sim = NetworkSim::new();
     let id = match sim
         .execute(Command::BuyDevice {
@@ -52,11 +52,14 @@ fn server_has_dedicated_management_nic_and_no_network_credit_when_disconnected()
     let DeviceKind::Server(server) = &device.kind else {
         panic!("expected server")
     };
-    assert!(
+    assert_eq!(server.ports.len(), 2);
+    assert_eq!(
         server
             .ports
             .iter()
-            .any(|id| sim.port(*id).unwrap().name == "mgmt0")
+            .map(|id| sim.port(*id).unwrap().name.as_str())
+            .collect::<Vec<_>>(),
+        ["eth0", "eth1"]
     );
     assert_eq!(sim.datacenter_resources().lan.compute_mhz, 0);
     assert_eq!(sim.datacenter_resources().global.compute_mhz, 0);
