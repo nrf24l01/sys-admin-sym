@@ -831,6 +831,7 @@ fn poll_worker(
             WorkerResponse::Events(events) => {
                 state.notice = events.first().map(|event| {
                     let message = match event {
+                        cloud_provider_sim::SimEvent::BankChanged => "bank.updated".into(),
                         cloud_provider_sim::SimEvent::CableSuppliesPurchased(_) => {
                             "ui.cable-supplies-purchased".into()
                         }

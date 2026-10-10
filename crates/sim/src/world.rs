@@ -27,6 +27,8 @@ pub struct NetworkSim {
     pub(crate) device_workloads: HashMap<DeviceId, DeviceWorkload>,
     pub money: i64,
     #[serde(default)]
+    pub(crate) bank: BankState,
+    #[serde(default)]
     pub(crate) cable_inventory: CableInventory,
     #[serde(default)]
     pub(crate) cable_settings: CableSettings,
@@ -76,6 +78,7 @@ impl NetworkSim {
             power: PowerSystem::new(),
             device_workloads: HashMap::new(),
             money: 6_000,
+            bank: BankState::default(),
             cable_inventory: CableInventory::default(),
             cable_settings: CableSettings::default(),
             server_parts: HashMap::new(),
@@ -514,6 +517,7 @@ impl NetworkSim {
 
     /// Advance the deterministic packet clock used for port activity LEDs.
     pub fn advance_time(&mut self, ms: u64) {
+        self.bank.advance(ms, &mut self.money);
         let mut remaining = ms;
         while remaining > 0 {
             self.refresh_device_loads();
@@ -626,6 +630,7 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::Bank(command) => return self.configure_bank(command),
             Command::Purchase { item, quantity } => return self.purchase_quantity(item, quantity),
             Command::Optics(command) => self.configure_optics(command)?,
             Command::Provider(command) => {
@@ -952,6 +957,7 @@ impl NetworkSim {
         self.reconcile_provider();
         self.refresh_device_loads();
         self.sync_effective_power();
+        self.bank.collect_due(&mut self.money);
         Ok(events)
     }
 

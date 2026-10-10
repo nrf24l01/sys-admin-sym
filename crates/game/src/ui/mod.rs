@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use cloud_provider_sim::*;
 use std::collections::HashMap;
+mod bank;
 mod cable_settings;
 mod cables;
 mod equipment;
@@ -412,6 +413,7 @@ pub fn main_ui(
         &mut actions,
     );
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
+    bank::show(&mut viewport_ui, &snapshot.0, &mut state.bank, &mut actions);
     let shop_selection = state.selected;
     if state.shop.open {
         let shop_textures = images.shop_texture_ids(
@@ -486,6 +488,21 @@ fn top_bar(viewport: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) -> eg
                     .clicked()
                 {
                     state.shop.open = !state.shop.open;
+                }
+                if ui
+                    .selectable_label(
+                        state.bank.open,
+                        egui::RichText::new(bank::summary(sim)).color(
+                            if sim.bank().overdue() > 0 {
+                                egui::Color32::LIGHT_RED
+                            } else {
+                                ui.visuals().text_color()
+                            },
+                        ),
+                    )
+                    .clicked()
+                {
+                    state.bank.open = !state.bank.open;
                 }
                 if ui
                     .selectable_label(state.settings.open, tr("ui.settings"))

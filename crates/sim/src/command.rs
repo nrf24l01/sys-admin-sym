@@ -7,6 +7,7 @@ use std::net::Ipv4Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
+    Bank(crate::BankCommand),
     Purchase {
         item: crate::PurchaseItem,
         quantity: u32,

@@ -1,0 +1,11 @@
+{
+  "minimum_loan": 500,
+  "maximum_loan": 25000,
+  "amount_step": 100,
+  "payment_interval_minutes": 5,
+  "terms": [
+    { "id": "short", "installments": 6, "interest_bps": 500 },
+    { "id": "standard", "installments": 12, "interest_bps": 1000 },
+    { "id": "long", "installments": 24, "interest_bps": 1800 }
+  ]
+}

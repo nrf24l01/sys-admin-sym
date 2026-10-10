@@ -2,6 +2,7 @@
 //!
 //! This crate deliberately has no dependency on Bevy, egui, SQLite or threads.
 
+pub mod bank;
 pub mod cabling;
 pub mod command;
 pub mod completion;
@@ -33,6 +34,7 @@ pub mod switching;
 pub mod terminal;
 pub mod world;
 
+pub use bank::*;
 pub use cabling::*;
 pub use command::*;
 pub use completion::*;

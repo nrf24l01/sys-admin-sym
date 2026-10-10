@@ -1,9 +1,11 @@
+mod bank;
 mod messages;
 mod network;
 mod settings;
 mod shop;
 mod state;
 
+pub use bank::*;
 pub use messages::*;
 pub use network::*;
 pub use settings::*;

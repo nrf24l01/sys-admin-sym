@@ -3,6 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SimError {
+    #[error("bank: {0}")]
+    Bank(#[from] crate::BankError),
     #[error("purchase quantity must be between 1 and 100")]
     InvalidPurchaseQuantity,
     #[error("optical hardware: {0}")]

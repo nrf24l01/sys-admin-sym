@@ -21,6 +21,13 @@ The shop receives a correlated worker result after the committed snapshot;
 compatibility previews share installation rules with domain commands.
 See [Equipment shop](docs/SHOP.md) for browsing and extension behavior.
 
+Bank offers live in `assets/equipment/bank.json`. `Command::Bank` credits loans
+and applies repayments in `sim::bank`; the Bank window only previews contracts
+and sends typed commands. A saved bank clock advances with game time, schedules
+automatic installments, and preserves arrears across loads. Cash never becomes
+negative through repayment, and existing contracts retain their quoted terms.
+See [Bank loans](docs/BANK.md).
+
 ## Crates
 
 - `crates/sim`: pure domain model. It depends only on `serde` and `thiserror`.
