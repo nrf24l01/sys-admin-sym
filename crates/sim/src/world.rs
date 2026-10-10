@@ -6,6 +6,10 @@ use std::net::Ipv4Addr;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSim {
     #[serde(default)]
+    simulation_speed: SimulationSpeed,
+    #[serde(default)]
+    pub hosting: HostingState,
+    #[serde(default)]
     pub optics: OpticsState,
     #[serde(default)]
     pub(crate) provider: ProviderNetwork,
@@ -65,6 +69,8 @@ impl Default for NetworkSim {
 impl NetworkSim {
     pub fn new() -> Self {
         let mut sim = Self {
+            simulation_speed: SimulationSpeed::default(),
+            hosting: HostingState::default(),
             optics: OpticsState::default(),
             provider: ProviderNetwork::default(),
             devices: HashMap::new(),
@@ -236,6 +242,7 @@ impl NetworkSim {
         self.refresh_device_loads();
         self.power.recompute_now();
         self.sync_effective_power();
+        self.migrate_hosting_management_ports();
         self.remove_legacy_server_management_ports();
         for device in self.devices.values_mut() {
             if let DeviceKind::Server(server) = &mut device.kind
@@ -285,6 +292,30 @@ impl NetworkSim {
         // replaced topology: learned MAC/ARP entries and port LEDs refer to
         // the old physical graph.
         self.runtime.reset();
+        self.rebuild_hosting_indexes();
+        for os in self.server_operating_systems.values_mut() {
+            os.filesystem
+                .entries
+                .entry("/root/setup-main-hoster-server.sh".into())
+                .or_insert(GuestFile {
+                    contents: "#!/bin/sh\nmain-hoster setup\n".into(),
+                    directory: false,
+                    mode: 0o755,
+                });
+            if let Some(script) = os.filesystem.entries.get_mut("/root/vm-prepare.sh")
+                && script.contents == "#!/bin/sh\nvm-host prepare\n"
+            {
+                script.contents = "#!/bin/sh\nvm-host prepare \"$1\"\n".into();
+            }
+            os.filesystem
+                .entries
+                .entry("/root/vm-prepare.sh".into())
+                .or_insert(GuestFile {
+                    contents: "#!/bin/sh\nvm-host prepare \"$1\"\n".into(),
+                    directory: false,
+                    mode: 0o755,
+                });
+        }
         // Saves created before connector types existed named SFP ports explicitly.
         // Restore that physical distinction before accepting their links.
         for port in self.ports.values_mut() {
@@ -515,9 +546,13 @@ impl NetworkSim {
         self.link_status(id).speed
     }
 
-    /// Advance the deterministic packet clock used for port activity LEDs.
+    pub fn simulation_speed(&self) -> SimulationSpeed {
+        self.simulation_speed
+    }
+
+    /// Advance the existing clocks from elapsed real time at the selected speed.
     pub fn advance_time(&mut self, ms: u64) {
-        self.bank.advance(ms, &mut self.money);
+        let ms = ms.saturating_mul(self.simulation_speed.multiplier());
         let mut remaining = ms;
         while remaining > 0 {
             self.refresh_device_loads();
@@ -532,6 +567,9 @@ impl NetworkSim {
             self.sync_effective_power();
             remaining -= step;
         }
+        self.refresh_device_loads();
+        self.sync_effective_power();
+        self.advance_hosting(ms);
         self.refresh_device_loads();
         self.sync_effective_power();
     }
@@ -630,8 +668,16 @@ impl NetworkSim {
 
     pub fn execute(&mut self, command: Command) -> Result<Vec<SimEvent>, SimError> {
         let mut events = match command {
+            Command::SetSimulationSpeed(speed) => {
+                self.simulation_speed = speed;
+                vec![]
+            }
             Command::Bank(command) => return self.configure_bank(command),
             Command::Purchase { item, quantity } => return self.purchase_quantity(item, quantity),
+            Command::Hosting(command) => {
+                self.configure_hosting(command).map_err(SimError::Hosting)?;
+                vec![SimEvent::ConnectivityChanged]
+            }
             Command::Optics(command) => self.configure_optics(command)?,
             Command::Provider(command) => {
                 let router = match &command {
@@ -702,6 +748,10 @@ impl NetworkSim {
             }
             Command::BuyPublicIpv4Pool => {
                 self.buy_public_ipv4_pool()?;
+                vec![SimEvent::ConnectivityChanged]
+            }
+            Command::BuyPublicIpv4Subnet { prefix } => {
+                self.buy_public_ipv4_subnet(prefix)?;
                 vec![SimEvent::ConnectivityChanged]
             }
             Command::BuyPublicIpv4Block { uplink } => {
@@ -1556,6 +1606,16 @@ impl NetworkSim {
     }
 
     fn sell_device(&mut self, id: DeviceId) -> Result<(), SimError> {
+        if self.hosting_provider_server() == Some(id) {
+            return Err(SimError::Hosting(
+                "Detach the provider site before selling its server".into(),
+            ));
+        }
+        if self.hosting.vms.values().any(|v| v.host == id) {
+            return Err(SimError::Hosting(
+                "Terminate hosted services before selling their node".into(),
+            ));
+        }
         let device = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
         if device.rack.is_some() {
             return Err(SimError::DeviceInstalled);
@@ -1573,6 +1633,7 @@ impl NetworkSim {
             }
         }
         let device = self.devices.remove(&id).expect("checked");
+        self.hosting.nodes.remove(&id);
         if let DeviceKind::Server(server) = &device.kind
             && let Some(hardware) = &server.hardware
         {

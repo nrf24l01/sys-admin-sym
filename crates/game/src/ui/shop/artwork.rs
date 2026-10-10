@@ -121,7 +121,7 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
                 "patch_panel" => 8,
                 "fiber_panel" => 9,
                 "cable_manager" => 10,
-                "public_ipv4_pool" => 11,
+                "public_ipv4_pool" | "public_ipv4_pool_24" => 11,
                 _ => return None,
             };
             Some(Artwork {

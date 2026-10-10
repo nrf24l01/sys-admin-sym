@@ -84,3 +84,23 @@ impl ProviderNetwork {
         self.pools.iter().any(|p| p.prefix.contains_prefix(prefix))
     }
 }
+
+impl crate::NetworkSim {
+    pub(crate) fn provider_bind_virtual(&mut self, port: PortId, uplink: PortId, vlan: VlanId) {
+        let binding = self
+            .provider
+            .bindings
+            .iter()
+            .find(|b| b.port == uplink && b.vlan == vlan)
+            .copied();
+        if let Some(binding) = binding {
+            self.provider
+                .bindings
+                .push(InterfaceBinding { port, ..binding });
+        }
+    }
+    pub(crate) fn provider_remove_virtual(&mut self, port: PortId) {
+        self.provider.bindings.retain(|b| b.port != port);
+        self.provider.leases.retain(|l| l.client != port);
+    }
+}

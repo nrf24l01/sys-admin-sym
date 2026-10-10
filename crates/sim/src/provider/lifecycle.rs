@@ -35,8 +35,7 @@ impl NetworkSim {
             return;
         }
         for block in &self.public_ipv4_blocks {
-            let prefix =
-                Ipv4Prefix::new(block.network, PublicIpv4Block::PREFIX).expect("legacy /29 prefix");
+            let prefix = block.range();
             if !self
                 .provider
                 .pools

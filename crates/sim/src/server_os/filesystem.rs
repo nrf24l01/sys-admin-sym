@@ -88,6 +88,22 @@ impl Default for GuestFilesystem {
             fs.write(path, contents, false)
                 .expect("default guest filesystem");
         }
+        fs.entries.insert(
+            "/root/vm-prepare.sh".into(),
+            GuestFile {
+                contents: "#!/bin/sh\nvm-host prepare \"$1\"\n".into(),
+                directory: false,
+                mode: 0o755,
+            },
+        );
+        fs.entries.insert(
+            "/root/setup-main-hoster-server.sh".into(),
+            GuestFile {
+                contents: "#!/bin/sh\nmain-hoster setup\n".into(),
+                directory: false,
+                mode: 0o755,
+            },
+        );
         fs.written_bytes = 0;
         fs
     }

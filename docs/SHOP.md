@@ -63,7 +63,13 @@ remaining balance; unavailable purchases explain the failure. Purchases are
 committed atomically in the simulation and accept 1–100 units. A correlated
 worker reply follows the committed snapshot before the next purchase is enabled.
 Failed transactions preserve money, inventories, devices and IDs. IPv4
-availability excludes overlapping provider pools, not only previously sold /29s.
+availability excludes overlapping provider pools. Both `/29` and `/24` ranges
+are sold in IP resources and IP RANGES, using the same owned inventory and
+allocation engine. A `/24` costs 32 times a `/29` and contains 256 addresses
+before network, broadcast, gateway and infrastructure reservations. Legacy `/29`
+inventory remains stable; additional `/24` inventory uses isolated benchmark
+address space. Configure delivery and router interfaces after purchase, then
+restrict each hosting node to an owned range or smaller CIDR in HOSTING.
 Finished fiber/DAC/AOC assemblies never consume or return bulk RJ45 materials.
 
 The shop adapts domain catalogs and prices into one presentation catalog in
@@ -71,7 +77,8 @@ The shop adapts domain catalogs and prices into one presentation catalog in
 come from domain-created previews rather than duplicated GUI port constants.
 `crates/sim/src/shop.rs` owns purchase quotes and atomic quantities. Component and
 optical model previews share the installation/endpoint rules used by commands.
-Shop browsing state is session-only; the save schema is unchanged.
+Shop browsing state is session-only. Purchased IPv4 masks are saved; older
+purchases without a mask retain their original `/29` prefix.
 
 `assets/equipment/shop_products.png` provides twelve padded transparent artwork
 cells for components, supplies, panels, cable management and address allocation.

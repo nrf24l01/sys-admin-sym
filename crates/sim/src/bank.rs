@@ -8,7 +8,10 @@ pub struct BankCatalog {
     pub minimum_loan: i64,
     pub maximum_loan: i64,
     pub amount_step: i64,
+    #[serde(default)]
     pub payment_interval_minutes: u32,
+    #[serde(default)]
+    pub payment_interval_months: u32,
     pub terms: Vec<LoanTerm>,
 }
 
@@ -28,7 +31,10 @@ impl BankCatalog {
             && self.amount_step > 0
             && self.minimum_loan % self.amount_step == 0
             && self.maximum_loan % self.amount_step == 0
-            && (1..=1440).contains(&self.payment_interval_minutes)
+            && ((self.payment_interval_months == 0
+                && (1..=1440).contains(&self.payment_interval_minutes))
+                || (self.payment_interval_minutes == 0
+                    && (1..=120).contains(&self.payment_interval_months)))
             && !self.terms.is_empty()
             && self.terms.len() <= 16
             && self.terms.iter().enumerate().all(|(index, term)| {
@@ -38,6 +44,14 @@ impl BankCatalog {
                     && term.interest_bps <= 10_000
                     && self.terms[..index].iter().all(|other| other.id != term.id)
             })
+    }
+
+    pub fn interval_ms(&self) -> u64 {
+        if self.payment_interval_months > 0 {
+            u64::from(self.payment_interval_months) * crate::hosting::MONTH_MS
+        } else {
+            u64::from(self.payment_interval_minutes) * 60_000
+        }
     }
 
     pub fn quote(&self, amount: i64, term_id: &str) -> Result<LoanQuote, BankError> {
@@ -59,7 +73,7 @@ impl BankCatalog {
             interest: interest as i64,
             term_id: term.id.clone(),
             installments: term.installments,
-            interval_ms: u64::from(self.payment_interval_minutes) * 60_000,
+            interval_ms: self.interval_ms(),
         })
     }
 }

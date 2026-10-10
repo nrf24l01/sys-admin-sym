@@ -23,7 +23,7 @@ See [Equipment shop](docs/SHOP.md) for browsing and extension behavior.
 
 Bank offers live in `assets/equipment/bank.json`. `Command::Bank` credits loans
 and applies repayments in `sim::bank`; the Bank window only previews contracts
-and sends typed commands. A saved bank clock advances with game time, schedules
+and sends typed commands. A saved bank clock advances at the hosting calendar rate, including pause and speed, schedules
 automatic installments, and preserves arrears across loads. Cash never becomes
 negative through repayment, and existing contracts retain their quoted terms.
 See [Bank loans](docs/BANK.md).
@@ -82,8 +82,8 @@ and a 960 GB SSD in one atomic purchase. Separate power supplies are no longer
 sold; older saves receive a one-time refund for owned or installed PSUs. Server
 compute capacity sums core count times clock MHz across CPUs. Memory capacity
 uses the installed module's DDR generation and DIMM class coefficients. Live
-network capacity sums negotiated rates on connected data ports; `mgmt0` is a
-separate management NIC and does not contribute resource capacity.
+network capacity sums negotiated rates on connected real Ethernet ports. Private
+management connectivity uses the interface chosen by the server routing table.
 The initial R360 slot layout follows Dell's
 [expansion slot guide](https://www.dell.com/support/manuals/en-in/poweredge-r360/r360_ism/expansion-card-installation-guidelines?guid=guid-9ffebd78-0ef4-4614-b698-c450c609054f&lang=en-us)
 documentation. Installed PCIe cards cover the corresponding rear slot in the
@@ -99,7 +99,7 @@ drives are saved in a separate storage inventory; installation validates the
 bay interface and updates the server's power load. The Linux console projects
 installed drives as `/dev/sd*` devices, while `ethtool` and `netstat -i` read
 the simulated network ports and runtime counters. Drive ratings describe the
-model; filesystem and measured disk I/O are not simulated yet.
+model; host filesystems remain text simulations; hosting guests consume installed disk capacity and I/O ratings (see `docs/HOSTING.md`).
 
 Cable inventory is domain state: a 305 m bulk box is raw stock, connector packs
 provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
@@ -189,7 +189,8 @@ rates are inventory capacity, not guaranteed end-to-end bandwidth.
 remaining after the largest circuit fails. Traced Ethernet paths retain
 intermediate ports for bottleneck diagnostics. Management SSH requires packet
 reachability and the server's SSH service; switch management includes a subnet,
-VLAN and optional gateway. `mgmt0` remains an OS interface, not a standby BMC.
+VLAN and optional gateway. Servers expose real Ethernet interfaces; their BMC
+is not a Linux interface.
 
 See [provider design](docs/PROVIDER_NETWORK_DESIGN.md) for object responsibilities
 and [provider operations](docs/PROVIDER_NETWORK_GUIDE.md) for configuration,
@@ -281,6 +282,40 @@ The router adapter has a four-pin inlet (not a barrel jack), 12 V / 5.5 A
 output, 90% efficiency, and PF 0.90; its upstream draw is calculated once at
 the adapter boundary.
 
+## Hosting customers and virtualization
+
+`sim::hosting` owns products, prepared hypervisors, guests, atomic orders, shared
+IPv4 reservations, weighted resource scheduling, customer demand, subscriptions
+and payment/refund history. Paid services retain immutable provisioning contracts
+and IPv4 leases independently of live guest interfaces. VM destruction releases
+compute/storage and preserves the contract; recreation uses the original node,
+specifications, addresses and expiry. Permanent refunds settle only unused prepaid
+time and release leases through the existing shared allocator.
+`Command::Hosting` follows the existing command/snapshot
+boundary; the HOSTING window never directly mutates authoritative state.
+`./vm-prepare.sh <controller-ip>` runs through the Linux filesystem, shell and
+command registry, with scoped positional arguments. A separately purchased
+provider server installs `hosting-provider.service` by running
+`./setup-main-hoster-server.sh` in its console. The HOSTING window connects only
+its owned public IPv4, resolving the actual machine through configured interfaces.
+The service listens on configured addresses; node registration supplies a private
+address through the preparation command. Public transit gates sales,
+while private Ethernet packet paths and saved controller registrations gate node operations.
+
+Node IPv4 policies intersect product ranges with owned CIDR slices. Prepared
+nodes reuse `provider::allocation` and the Ethernet engine's ARP probes to assign
+data addresses through real connected gateways. Automatically assigned interfaces
+and restrictions are saved, with defaults preserving older manual configuration;
+policy edits retain addresses supporting existing guests. The existing shop
+supports `/29` and `/24` inventory through the same purchasing and ownership path.
+
+VM IPv4 ports belong to their physical host but are separate from its inventory
+of physical NICs. A host bridge in `network::ethernet` forwards these interfaces
+through the existing packet engine. `network::traffic` aggregates traffic along
+traced routes and accounts for negotiated NIC/transit bottlenecks, queues, bytes,
+latency and packet loss. Hosting clock and deterministic random state are saved;
+network forwarding caches remain transient. See [Hosting gameplay](docs/HOSTING.md)
+for the complete preparation, publication, provisioning and subscription workflow.
 ## Catalyst switch services
 
 `crates/sim/src/switching` owns model specifications, save migration, converged

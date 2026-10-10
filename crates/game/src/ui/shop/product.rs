@@ -176,13 +176,24 @@ pub(super) fn ownership(ui: &mut egui::Ui, offer: &Offer, sim: &NetworkSim) {
             "ui.rj45-connectors",
             &[sim.cable_inventory().connectors.to_string()],
         ),
-        PurchaseItem::PublicIpv4Pool => tr_args(
-            "shop.ipv4-owned",
-            &[
-                sim.public_ipv4_blocks().len().to_string(),
-                sim.available_public_ipv4_pools().to_string(),
-            ],
-        ),
+        PurchaseItem::PublicIpv4Pool | PurchaseItem::PublicIpv4Pool24 => {
+            let prefix = if matches!(offer.item, PurchaseItem::PublicIpv4Pool24) {
+                24
+            } else {
+                29
+            };
+            tr_args(
+                "shop.ipv4-owned",
+                &[
+                    sim.public_ipv4_blocks()
+                        .iter()
+                        .filter(|b| b.prefix == prefix)
+                        .count()
+                        .to_string(),
+                    sim.available_public_ipv4_subnets(prefix).to_string(),
+                ],
+            )
+        }
         _ => {
             let (free, installed) = offer.ownership(sim);
             tr_args("shop.ownership", &[free.to_string(), installed.to_string()])

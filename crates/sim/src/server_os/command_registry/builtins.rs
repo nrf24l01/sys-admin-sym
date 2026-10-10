@@ -108,9 +108,9 @@ impl ShellBuiltins {
             "hostname" | "hostnamectl" => LinuxDiagnostics::hostname(sim, device, command, args),
             "bash" | "sh" => {
                 if args.first().is_some_and(|arg| arg == "-c") { let input = args.get(1).ok_or("shell: -c requires a command")?; let output = LinuxShell::execute(sim, device, input); if output.success { Ok(output.lines) } else { Err(output.lines.join("\n")) } }
-                else { LinuxServices::script(sim, device, args.first().ok_or("usage: sh SCRIPT or bash -c COMMAND")?) }
+                else { LinuxServices::script(sim, device, args.first().ok_or("usage: sh SCRIPT or bash -c COMMAND")?, &args[1..]) }
             }
-            "source" | "." => LinuxServices::script(sim, device, args.first().ok_or("source: missing filename")?),
+            "source" | "." => LinuxServices::script(sim, device, args.first().ok_or("source: missing filename")?, &args[1..]),
             "getent" | "nslookup" | "dig" => {
                 let name = if command == "getent" { if args.first().is_none_or(|arg| arg != "hosts") { return Err("usage: getent hosts NAME".into()); } args.get(1) } else { args.first() }.ok_or("missing host name")?;
                 let address = LinuxDiagnostics::resolve_host(sim, device, name)?;

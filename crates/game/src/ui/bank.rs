@@ -107,7 +107,7 @@ fn loan_offer(
                     "bank.installment-value",
                     &[
                         quote.first_payment().to_string(),
-                        (quote.interval_ms / 60_000).to_string(),
+                        duration(quote.interval_ms),
                     ],
                 ),
             );
@@ -231,13 +231,25 @@ fn term_label(term: &LoanTerm) -> String {
     tr_args(
         "bank.term-option",
         &[
-            (term.installments * bank_catalog().payment_interval_minutes).to_string(),
+            duration(u64::from(term.installments) * bank_catalog().interval_ms()),
             format!("{:.2}", f64::from(term.interest_bps) / 100.0),
         ],
     )
 }
 
 fn duration(ms: u64) -> String {
+    const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+    if ms >= DAY_MS {
+        let hours = ms.div_ceil(3_600_000);
+        return tr_args(
+            "bank.calendar-duration",
+            &[
+                (hours / 720).to_string(),
+                ((hours % 720) / 24).to_string(),
+                (hours % 24).to_string(),
+            ],
+        );
+    }
     let seconds = ms.div_ceil(1000);
     tr_args(
         "bank.time",

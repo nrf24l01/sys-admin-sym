@@ -47,6 +47,7 @@ pub struct NetworkSummaryCache {
 
 #[derive(Resource, Default)]
 pub struct UiState {
+    pub hosting: super::HostingUiState,
     pub network_summary: NetworkSummaryCache,
     pub routing_device: Option<DeviceId>,
     pub ranges_open: bool,

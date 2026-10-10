@@ -33,7 +33,8 @@ pub(super) fn show(
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
-                        sim.money >= PublicIpv4Block::PRICE && sim.public_ipv4_blocks().len() < 32,
+                        sim.money >= PublicIpv4Block::PRICE
+                            && sim.available_public_ipv4_pools() > 0,
                         egui::Button::new(crate::localization::tr_args(
                             "ui.order-29-range",
                             &[(PublicIpv4Block::PRICE).to_string()],
@@ -42,6 +43,21 @@ pub(super) fn show(
                     .clicked()
                 {
                     actions.write(UiAction::BuyPublicIpv4Pool);
+                }
+                if ui
+                    .add_enabled(
+                        sim.money >= PublicIpv4Block::PRICE_24
+                            && sim.available_public_ipv4_subnets(24) > 0,
+                        egui::Button::new(crate::localization::tr_args(
+                            "ui.order-24-range",
+                            &[PublicIpv4Block::PRICE_24.to_string()],
+                        )),
+                    )
+                    .clicked()
+                {
+                    actions.write(UiAction::NetworkCommand(Command::BuyPublicIpv4Subnet {
+                        prefix: 24,
+                    }));
                 }
                 ui.weak(crate::localization::tr_args(
                     "ui.range-s-owned",

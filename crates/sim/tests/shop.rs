@@ -119,6 +119,77 @@ fn address_availability_accounts_for_overlapping_provider_pools() {
 }
 
 #[test]
+fn purchased_24s_share_existing_inventory_and_persist_their_actual_masks() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let before = sim.money;
+    purchase(&mut sim, PurchaseItem::PublicIpv4Pool24, 1).unwrap();
+    let block = sim.public_ipv4_blocks()[0];
+    assert_eq!(block.range(), "203.0.113.0/24".parse().unwrap());
+    assert_eq!(sim.money, before - PublicIpv4Block::PRICE_24);
+    assert_eq!(block.host_addresses().count(), 253);
+    assert_eq!(sim.available_public_ipv4_pools(), 0);
+    let snapshot = ron::to_string(&sim).unwrap();
+    assert_eq!(
+        purchase(&mut sim, PurchaseItem::PublicIpv4Pool, 1),
+        Err(SimError::PublicIpv4Exhausted)
+    );
+    assert_eq!(ron::to_string(&sim).unwrap(), snapshot);
+    let mut loaded: NetworkSim = ron::from_str(&snapshot).unwrap();
+    loaded.rebuild_indexes();
+    assert_eq!(loaded.public_ipv4_blocks(), &[block]);
+    assert!(loaded.provider().owns(block.range()));
+    let SimEvent::DeviceAdded(server) = loaded.execute(Command::BuyServerFullPack).unwrap()[0]
+    else {
+        panic!()
+    };
+    let port = loaded.device(server).unwrap().ports()[0];
+    let address = loaded.assign_public_ipv4(port, block.network).unwrap();
+    assert!(block.contains_host(address));
+    let PortConfig::Server(config) = &loaded.port(port).unwrap().config else {
+        panic!()
+    };
+    assert_eq!(config.ipv4.as_ref().unwrap().prefix, 24);
+}
+
+#[test]
+fn buying_24s_after_29s_avoids_overlap_and_failed_bulk_orders_are_atomic() {
+    let mut sim = NetworkSim::new();
+    sim.money = 1_000_000;
+    purchase(&mut sim, PurchaseItem::PublicIpv4Pool, 1).unwrap();
+    let small = sim.public_ipv4_blocks()[0];
+    assert_eq!(sim.available_public_ipv4_subnets(24), 32);
+    let snapshot = ron::to_string(&sim).unwrap();
+    assert_eq!(
+        purchase(&mut sim, PurchaseItem::PublicIpv4Pool24, 33),
+        Err(SimError::PublicIpv4Exhausted)
+    );
+    assert_eq!(ron::to_string(&sim).unwrap(), snapshot);
+    purchase(&mut sim, PurchaseItem::PublicIpv4Pool24, 2).unwrap();
+    for large in &sim.public_ipv4_blocks()[1..] {
+        assert_eq!(large.prefix, 24);
+        assert!(!large.range().contains_prefix(small.range()));
+        assert!(sim.provider().owns(large.range()));
+    }
+    assert_eq!(sim.available_public_ipv4_subnets(24), 30);
+    sim.money = PublicIpv4Block::PRICE_24 - 1;
+    let snapshot = ron::to_string(&sim).unwrap();
+    assert!(matches!(
+        purchase(&mut sim, PurchaseItem::PublicIpv4Pool24, 1),
+        Err(SimError::InsufficientFunds { .. })
+    ));
+    assert_eq!(ron::to_string(&sim).unwrap(), snapshot);
+}
+
+#[test]
+fn legacy_purchased_blocks_default_to_their_original_29_mask() {
+    let block: PublicIpv4Block = ron::from_str("(network:\"203.0.113.0\",uplink:(0))").unwrap();
+    assert_eq!(block.prefix, 29);
+    assert_eq!(block.host_addresses().count(), 5);
+    assert_eq!(block.range(), "203.0.113.0/29".parse().unwrap());
+}
+
+#[test]
 fn compatibility_preview_uses_installation_rules_without_requiring_inventory() {
     let mut sim = NetworkSim::new();
     let events = purchase(&mut sim, PurchaseItem::ServerChassis, 1).unwrap();

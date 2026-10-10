@@ -358,13 +358,27 @@ impl LinuxServices {
         sim: &mut NetworkSim,
         device: DeviceId,
         path: &str,
+        args: &[String],
     ) -> Result<Vec<String>, String> {
         let cwd = sim.guest_mut(device).cwd.clone();
         let contents = sim
             .guest_mut(device)
             .filesystem
             .read(&GuestFilesystem::normalize(&cwd, path))?;
+        // Scope positional parameters to this invocation, including nested scripts.
+        let env = &mut sim.guest_mut(device).environment;
+        let previous: Vec<_> = env
+            .iter()
+            .filter(|(key, _)| key.chars().all(|c| c.is_ascii_digit()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        env.retain(|key, _| !key.chars().all(|c| c.is_ascii_digit()));
+        env.insert("0".into(), path.into());
+        for (i, arg) in args.iter().enumerate() {
+            env.insert((i + 1).to_string(), arg.clone());
+        }
         let mut lines = Vec::new();
+        let mut success = true;
         for command in contents
             .lines()
             .filter(|line| !line.trim().starts_with('#'))
@@ -372,10 +386,18 @@ impl LinuxServices {
             let output = LinuxShell::execute(sim, device, command);
             lines.extend(output.lines);
             if !output.success {
-                return Err(lines.join("\n"));
+                success = false;
+                break;
             }
         }
-        Ok(lines)
+        let env = &mut sim.guest_mut(device).environment;
+        env.retain(|key, _| !key.chars().all(|c| c.is_ascii_digit()));
+        env.extend(previous);
+        if success {
+            Ok(lines)
+        } else {
+            Err(lines.join("\n"))
+        }
     }
 }
 

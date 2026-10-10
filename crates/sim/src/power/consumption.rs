@@ -74,10 +74,34 @@ impl NetworkSim {
     }
 
     pub fn device_workload(&self, device: DeviceId) -> DeviceWorkload {
-        self.device_workloads
+        let mut workload = self
+            .device_workloads
             .get(&device)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if let Some(node) = self.hosting.nodes.get(&device) {
+            let ssd = self.hosting_capacity(device, hosting::HostingStorage::Ssd);
+            let hdd = self.hosting_capacity(device, hosting::HostingStorage::Hdd);
+            let ratio = |used: f64, capacity: f64| {
+                if capacity > 0.0 {
+                    (used / capacity * 1000.0).clamp(0.0, 1000.0) as u16
+                } else {
+                    0
+                }
+            };
+            workload.cpu = workload
+                .cpu
+                .saturating_add(ratio(node.usage.cpu_used_mhz, ssd.cpu_mhz))
+                .min(1000);
+            workload.memory = workload
+                .memory
+                .saturating_add(ratio(node.usage.memory_used_mb, ssd.ram_mb))
+                .min(1000);
+            let storage = ratio(node.usage.disk_iops, ssd.iops + hdd.iops)
+                .max(ratio(node.usage.disk_mb_s, ssd.disk_mb_s + hdd.disk_mb_s));
+            workload.storage = workload.storage.saturating_add(storage).min(1000);
+        }
+        workload
     }
     pub(crate) fn set_device_workload(
         &mut self,
@@ -131,7 +155,15 @@ impl NetworkSim {
                         .map_or(0, |w| w.total(now))
                         .saturating_mul(8);
                     // Full duplex: TX + RX may use twice the physical rate.
-                    traffic += (bits / 2).min(u64::from(speed.mbps()) * 1_000_000);
+                    let aggregate = self
+                        .runtime
+                        .aggregate_network_mbps
+                        .get(id)
+                        .copied()
+                        .unwrap_or(0.0);
+                    traffic += (bits / 2)
+                        .saturating_add((aggregate * 1_000_000.0) as u64)
+                        .min(u64::from(speed.mbps()) * 1_000_000);
                 }
             }
         }
