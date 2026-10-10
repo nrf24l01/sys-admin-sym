@@ -95,7 +95,10 @@ impl NetworkSim {
                             names.push(port.name.clone());
                         } else {
                             let name = self.ios_interface_name(device, *id);
-                            names.push(name.replace("GigabitEthernet", "Gi"));
+                            names.push(
+                                name.replace("TenGigabitEthernet", "Te")
+                                    .replace("GigabitEthernet", "Gi"),
+                            );
                             names.push(name);
                             if let PortConfig::Router(config) = &port.config {
                                 names.extend(
@@ -108,8 +111,26 @@ impl NetworkSim {
                         }
                     }
                 }
+                if let DeviceKind::Switch(switch) = &dev.kind {
+                    names.extend(
+                        switch
+                            .services
+                            .etherchannel
+                            .members
+                            .values()
+                            .map(|member| format!("Port-channel{}", member.group)),
+                    );
+                }
                 names
             }
+            "<group>" => (1..=6).map(|number| number.to_string()).collect(),
+            "<queue>" => (1..=4).map(|number| number.to_string()).collect(),
+            "<mode>" => ["on", "active", "passive", "auto", "desirable"]
+                .map(str::to_owned)
+                .to_vec(),
+            "<method>" => ["src-mac", "dst-mac", "src-dst-mac"]
+                .map(str::to_owned)
+                .to_vec(),
             "<drive>" => {
                 let DeviceKind::Server(server) = &dev.kind else {
                     return Vec::new();

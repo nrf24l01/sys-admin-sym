@@ -10,7 +10,6 @@
       "write_mb_s": 210,
       "read_iops": 180,
       "write_iops": 170,
-      "power_w": 9,
       "price": 130,
       "display_name": {
         "en": "2 TB Enterprise SATA HDD",
@@ -19,6 +18,10 @@
       "desc": {
         "en": "Enterprise hard drive for bulk storage.",
         "ru": "Серверный жёсткий диск для хранения больших объёмов данных."
+      },
+      "power": {
+        "idle_mw": 5000,
+        "peak_mw": 9000
       }
     },
     {
@@ -31,7 +34,6 @@
       "write_mb_s": 520,
       "read_iops": 98000,
       "write_iops": 30000,
-      "power_w": 4,
       "price": 230,
       "display_name": {
         "en": "960 GB Enterprise SATA SSD",
@@ -40,6 +42,10 @@
       "desc": {
         "en": "Enterprise solid-state drive for fast storage.",
         "ru": "Серверный твердотельный накопитель для быстрого хранения данных."
+      },
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 4000
       }
     }
   ]

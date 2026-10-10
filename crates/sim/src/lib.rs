@@ -2,10 +2,12 @@
 //!
 //! This crate deliberately has no dependency on Bevy, egui, SQLite or threads.
 
+pub mod bank;
 pub mod cabling;
 pub mod command;
 pub mod completion;
 pub mod device;
+mod equipment_config;
 pub mod error;
 pub mod event;
 pub mod hosting;
@@ -23,15 +25,18 @@ pub mod provider;
 pub mod rack;
 pub mod remote;
 pub mod resources;
+pub mod router_hardware;
 pub mod server_hardware;
 pub mod server_os;
 pub mod shop;
 mod shop_compatibility;
 pub mod storage;
+pub mod switching;
 pub mod terminal;
 pub mod time;
 pub mod world;
 
+pub use bank::*;
 pub use cabling::*;
 pub use command::*;
 pub use completion::*;
@@ -53,10 +58,12 @@ pub use provider::*;
 pub use rack::*;
 pub use remote::*;
 pub use resources::*;
+pub use router_hardware::*;
 pub use server_hardware::*;
 pub use server_os::*;
 pub use shop::*;
 pub use storage::*;
+pub use switching::*;
 pub use terminal::*;
 pub use time::*;
 pub use world::*;

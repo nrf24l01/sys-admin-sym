@@ -253,7 +253,8 @@ pub(super) fn show(
                 for (outlet, endpoint) in &sim.power.connections {
                     let source_rack = source_rack_for(outlet.source);
                     let target_rack = match endpoint {
-                        cloud_provider_sim::PowerEndpoint::Device(id) => {
+                        cloud_provider_sim::PowerEndpoint::Device(id)
+                        | cloud_provider_sim::PowerEndpoint::DevicePsu { device: id, .. } => {
                             sim.device(*id).and_then(|d| d.rack).map(|p| p.rack)
                         }
                         cloud_provider_sim::PowerEndpoint::Source(source) => {

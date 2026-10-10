@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SimEvent {
+    BankChanged,
     CableSuppliesPurchased(crate::CableSupply),
     DeviceAdded(DeviceId),
     DeviceMoved { device: DeviceId },

@@ -9,6 +9,7 @@ pub(super) fn offers() -> Vec<Offer> {
                 cores,
                 frequency_mhz,
                 tdp_w,
+                memory,
                 ..
             } => (
                 ShopSection::Cpu,
@@ -17,16 +18,23 @@ pub(super) fn offers() -> Vec<Offer> {
                     Attribute::number("cores", *cores),
                     Attribute::number("frequency", *frequency_mhz),
                     Attribute::number("watts", *tdp_w),
+                    Attribute::number("max-memory", memory.max_capacity_gb),
+                    Attribute::number("memory-channels", memory.channels as u64),
                 ],
             ),
             ServerPartKind::Ram {
                 memory_type,
                 capacity_gb,
+                speed_mt_s,
+                ranks,
+                ..
             } => (
                 ShopSection::Ram,
                 vec![
                     Attribute::text("memory-type", memory_type.clone()),
                     Attribute::number("capacity", *capacity_gb),
+                    Attribute::number("memory-speed", *speed_mt_s),
+                    Attribute::number("ranks", *ranks),
                 ],
             ),
             ServerPartKind::PciCard {
@@ -38,7 +46,6 @@ pub(super) fn offers() -> Vec<Offer> {
                         lanes,
                         generation,
                         width,
-                        power_w,
                         cage,
                     },
             } => {
@@ -47,7 +54,7 @@ pub(super) fn offers() -> Vec<Offer> {
                     Attribute::number("pcie-generation", *generation),
                     Attribute::number("pcie-width", *width),
                     Attribute::number("lanes", *lanes),
-                    Attribute::number("watts", *power_w),
+                    Attribute::number("watts", part.power.peak_watts()),
                 ];
                 if *connector == PortConnector::Sfp {
                     attributes.extend([
@@ -104,7 +111,7 @@ pub(super) fn offers() -> Vec<Offer> {
             Attribute::number("write", drive.write_mb_s),
             Attribute::number("read-iops", drive.read_iops),
             Attribute::number("write-iops", drive.write_iops),
-            Attribute::number("watts", drive.power_w),
+            Attribute::number("watts", drive.power.peak_watts()),
         ];
         offers.push(offer);
     }

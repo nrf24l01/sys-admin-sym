@@ -9,7 +9,7 @@ The full server pack includes these parts.
 
 Buy a **separate physical server** for the provider site and node controller.
 Connect its public interface to the customer network and assign a usable public
-IPv4 from an owned range. Connect another interface (usually **mgmt0**) to a
+IPv4 from an owned range. Connect another interface (usually **a private Ethernet interface (for example eth1)**) to a
 private management network and assign its internal IPv4. Configure transit and
 return routes for the public address through the existing network tools.
 
@@ -34,7 +34,7 @@ capacity; congestion reduces successful visits and purchases. Disconnecting this
 address does not uninstall or stop the server's service. Inspect, stop or restart
 `hosting-provider` with the existing console's `systemctl` commands.
 
-Connect each virtualization node's **mgmt0** to that private network and configure
+Connect each virtualization node's **a private Ethernet interface (for example eth1)** to that private network and configure
 its IP. In that node's server console run, using the provider server's **internal**
 address (not its public address or the router's address):
 
@@ -44,7 +44,7 @@ vm-host status
 ```
 
 Preparation requires a powered operational node and a successful packet path
-from mgmt0 to the installed main hoster server. Internal registration can precede
+from the interface selected by the Linux routing table to the installed main hoster server. Internal registration can precede
 connecting its public address; placement requires both connections. Registration
 is saved and idempotent.
 A public storefront outage pauses new sales. Internal controller outages prevent
@@ -220,7 +220,7 @@ the new speed remains configurable in Market / subscriptions.
 Workloads and market arrivals aggregate in five simulated
 minute intervals. Set speed to zero to pause hosting. A month is 30 simulated days.
 The top bar's **Speed** selector offers **×1, ×2, ×3, ×5, ×10, ×50 and ×100**.
-It multiplies elapsed time for the existing power, packet and hosting clocks;
+It multiplies elapsed time for the existing power, packet, hosting and bank clocks;
 hosting calendar speed is applied afterwards. With the default calendar, ×100
 advances 850 hosting minutes per real second. Workload accounting, orders and
 renewals follow the same simulated intervals at every speed. Changing speed keeps
@@ -270,6 +270,14 @@ server/public/private selections migrate to a public destination address while
 retaining the installed service and node registrations. Only the original distributed
 preparation script is upgraded to accept arguments; player-edited scripts are kept. Learned ARP/MAC state and
 network queues are rebuilt after load; service identity and allocations remain.
+Legacy hosting management links on `mgmt0` migrate to an unused real RJ45 interface,
+including their IP configuration and saved routes. If every real interface is already
+occupied, reconnect and configure a real private interface to restore management;
+existing services and IP leases are retained. Persistent `/etc/network/interfaces`
+configuration restores addresses after physical power cycles.
+
+Bank installments use this same calendar rate, pause setting and speed presets;
+see [Bank loans](BANK.md) for monthly terms and saved-contract compatibility.
 
 The current hardware catalog offers SATA HDD and SSD; no NVMe is advertised.
 The existing packet engine supports IPv4 and ICMP, not IPv6 or application TCP/UDP

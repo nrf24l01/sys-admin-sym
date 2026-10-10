@@ -71,5 +71,14 @@
         "side": "back"
       }
     ]
+  },
+  "power": {
+    "capacity_watts": 1000,
+    "capacity_va": 1500,
+    "battery_wh": 900,
+    "efficiency_percent": 90,
+    "charge_watts": 120,
+    "self_watts": 8,
+    "outlets": 4
   }
 }

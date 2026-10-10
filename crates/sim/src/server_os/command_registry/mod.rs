@@ -4,6 +4,8 @@ mod diagnostics;
 mod domains;
 mod input;
 mod ip_suggestions;
+mod power;
+mod snmp;
 mod suggestions;
 
 use crate::*;
@@ -66,6 +68,14 @@ impl CommandRegistry {
         registry
             .register(crate::hosting::MainHosterCommand)
             .expect("unique command");
+        registry
+            .register(power::PowerCommand)
+            .expect("unique command");
+        for name in ["snmpget", "snmpwalk", "snmpset"] {
+            registry
+                .register(snmp::SnmpCommand(name))
+                .expect("unique command");
+        }
         registry
             .register(crate::provider::console::ProviderConsole)
             .expect("unique command");

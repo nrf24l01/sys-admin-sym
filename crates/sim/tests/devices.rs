@@ -12,7 +12,7 @@ fn buy(sim: &mut NetworkSim, kind: DeviceTemplate) -> DeviceId {
 fn physical_templates_and_port_metadata_are_realistic() {
     let mut sim = NetworkSim::new();
     let server = buy(&mut sim, DeviceTemplate::Server);
-    assert_eq!(sim.device(server).unwrap().ports().len(), 3);
+    assert_eq!(sim.device(server).unwrap().ports().len(), 2);
     assert!(
         sim.device(server)
             .unwrap()

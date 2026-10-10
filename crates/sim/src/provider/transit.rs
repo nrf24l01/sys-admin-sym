@@ -195,6 +195,7 @@ impl NetworkSim {
             VlanId(1),
             mac,
             Ipv4Packet {
+                dscp: 0,
                 source: packet.destination,
                 destination: packet.source,
                 ttl: 64,
@@ -255,6 +256,7 @@ impl NetworkSim {
                 continue;
             };
             let packet = Ipv4Packet {
+                dscp: 0,
                 source,
                 destination: address,
                 ttl: 64,

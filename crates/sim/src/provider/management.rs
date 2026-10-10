@@ -66,10 +66,11 @@ impl NetworkSim {
             vlan,
             mac,
             Ipv4Packet {
+                dscp: 0,
                 source: management.address,
                 destination: packet.source,
                 ttl: 64,
-                protocol: 1,
+                protocol: packet.protocol,
             },
             IcmpMessage::EchoReply {
                 identifier,

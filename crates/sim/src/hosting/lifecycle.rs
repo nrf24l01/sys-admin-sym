@@ -147,6 +147,10 @@ impl NetworkSim {
 
     pub(super) fn remove_hosting_vm(&mut self, vm: u64) {
         if let Some(vm) = self.hosting.vms.remove(&vm) {
+            for port in &vm.interfaces {
+                self.remove_aggregate_traffic_source(*port);
+            }
+
             for port in vm.interfaces {
                 self.remove_host_bridge(port);
                 self.provider_remove_virtual(port);

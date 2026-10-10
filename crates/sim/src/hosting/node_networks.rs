@@ -161,7 +161,13 @@ impl NetworkSim {
             }) = self.ports.get_mut(&port)
                 && name != "mgmt0"
             {
-                let desired = tags.remove(&port).unwrap_or_default();
+                let mut desired = tags.remove(&port).unwrap_or_default();
+                // Guest bridge reconciliation must preserve the host's tagged IP transport.
+                desired.extend(
+                    c.addresses()
+                        .filter_map(|a| a.vlan)
+                        .filter(|v| c.tagged_vlans.contains(v)),
+                );
                 if c.tagged_vlans != desired {
                     c.tagged_vlans = desired;
                     self.routing_revision += 1;

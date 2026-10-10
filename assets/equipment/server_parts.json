@@ -6,7 +6,6 @@
     "dimm_slots": 4,
     "memory_type": "DDR5 ECC UDIMM",
     "psu_bays": 2,
-    "integrated_psu_watts": 600,
     "drive_bays": [
       {
         "name": "Bay 1",
@@ -60,7 +59,8 @@
           0.1,
           0.62,
           0.43
-        ]
+        ],
+        "cpu_socket": 0
       },
       {
         "name": "PCIe 2",
@@ -72,9 +72,88 @@
           0.57,
           0.62,
           0.9
-        ]
+        ],
+        "cpu_socket": 0
       }
-    ]
+    ],
+    "supported_cpu_ids": [
+      "xeon_e_2434"
+    ],
+    "max_cpu_tdp_w": 95,
+    "memory": {
+      "max_capacity_gb": 128,
+      "channels_per_cpu": 2,
+      "dimms_per_channel": 2,
+      "identical_dimms": true,
+      "supported_dimm_counts": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "population_order": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "slots": [
+        {
+          "name": "A1",
+          "cpu_socket": 0,
+          "channel": 0,
+          "position": 0
+        },
+        {
+          "name": "A2",
+          "cpu_socket": 0,
+          "channel": 1,
+          "position": 0
+        },
+        {
+          "name": "A3",
+          "cpu_socket": 0,
+          "channel": 0,
+          "position": 1
+        },
+        {
+          "name": "A4",
+          "cpu_socket": 0,
+          "channel": 1,
+          "position": 1
+        }
+      ],
+      "supported_modules": [
+        {
+          "capacity_gb": 16,
+          "ranks": 1,
+          "voltage_mv": 1100,
+          "rated_speeds_mt_s": [
+            4800,
+            5600
+          ],
+          "operating_speeds_mt_s": [
+            4400,
+            4000
+          ]
+        },
+        {
+          "capacity_gb": 32,
+          "ranks": 2,
+          "voltage_mv": 1100,
+          "rated_speeds_mt_s": [
+            4800,
+            5600
+          ],
+          "operating_speeds_mt_s": [
+            4400,
+            3600
+          ]
+        }
+      ]
+    },
+    "identical_cpus": true,
+    "parts_hot_swappable": false
   },
   "parts": [
     {
@@ -94,6 +173,23 @@
       "desc": {
         "en": "LGA1700 · 4 cores at 3400 MHz · 20 PCIe lanes · 55 W TDP",
         "ru": "LGA1700 · 4 ядра, 3400 МГц · 20 линий PCIe · TDP 55 Вт"
+      },
+      "power": {
+        "idle_mw": 8000,
+        "peak_mw": 55000
+      },
+      "threads": 8,
+      "max_sockets": 1,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC UDIMM"
+        ],
+        "channels": 2,
+        "dimms_per_channel": 2,
+        "max_capacity_gb": 128,
+        "max_speed_mt_s": 4800,
+        "max_dimms": 4
       }
     },
     {
@@ -108,9 +204,39 @@
         "ru": "DDR5 ECC UDIMM 16 ГБ"
       },
       "desc": {
-        "en": "16 GB DDR5 ECC memory module.",
-        "ru": "Модуль памяти DDR5 ECC объёмом 16 ГБ."
-      }
+        "en": "16 GB · DDR5-4800 ECC UDIMM · 1 rank · 1.1 V",
+        "ru": "16 ГБ · DDR5-4800 ECC UDIMM · 1 ранг · 1,1 В"
+      },
+      "power": {
+        "idle_mw": 1600,
+        "peak_mw": 4000
+      },
+      "speed_mt_s": 4800,
+      "ranks": 1,
+      "voltage_mv": 1100
+    },
+    {
+      "id": "ddr5_ecc_32gb",
+      "name": "32 GB DDR5 ECC UDIMM",
+      "price": 170,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC UDIMM",
+      "capacity_gb": 32,
+      "display_name": {
+        "en": "32 GB DDR5 ECC UDIMM",
+        "ru": "DDR5 ECC UDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR5-4800 ECC UDIMM · 2 ranks · 1.1 V",
+        "ru": "32 ГБ · DDR5-4800 ECC UDIMM · 2 ранга · 1,1 В"
+      },
+      "power": {
+        "idle_mw": 2200,
+        "peak_mw": 6000
+      },
+      "speed_mt_s": 4800,
+      "ranks": 2,
+      "voltage_mv": 1100
     },
     {
       "id": "intel_i350_t4",
@@ -123,8 +249,7 @@
         "generation": 2,
         "width": 4,
         "rj45_ports": 4,
-        "speed_mbps": 1000,
-        "power_w": 5
+        "speed_mbps": 1000
       },
       "display_name": {
         "en": "Intel I350-T4",
@@ -133,6 +258,11 @@
       "desc": {
         "en": "4 × RJ45 · 1000 Mb/s · PCIe Gen 2 x4",
         "ru": "4 × RJ45 · 1000 Мбит/с · PCIe Gen 2 x4"
+      },
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 5000,
+        "link_share_permille": 250
       }
     },
     {
@@ -154,7 +284,6 @@
         "generation": 2,
         "width": 8,
         "speed_mbps": 10000,
-        "power_w": 6,
         "connector": "Sfp",
         "ports": 2,
         "cage": {
@@ -173,6 +302,11 @@
           ],
           "max_power_mw": 2000
         }
+      },
+      "power": {
+        "idle_mw": 2400,
+        "peak_mw": 6000,
+        "link_share_permille": 250
       }
     }
   ]

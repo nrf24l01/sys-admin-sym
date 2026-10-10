@@ -30,6 +30,16 @@ pub(crate) struct TrafficQueue {
 }
 
 impl NetworkSim {
+    pub(crate) fn remove_aggregate_traffic_source(&mut self, source: PortId) {
+        if let Some(rates) = self.runtime.aggregate_network_sources.remove(&source) {
+            for (port, rate) in rates {
+                if let Some(total) = self.runtime.aggregate_network_mbps.get_mut(&port) {
+                    *total = (*total - rate).max(0.0);
+                }
+            }
+        }
+    }
+
     pub fn simulate_traffic(
         &mut self,
         flows: &[TrafficFlow],
@@ -102,6 +112,8 @@ impl NetworkSim {
         self.runtime
             .traffic_queues
             .retain(|port, _| loads.contains_key(port));
+        self.runtime.aggregate_network_mbps.clear();
+        self.runtime.aggregate_network_sources.clear();
         let mut results = BTreeMap::new();
         for flow in flows {
             let (reachable, path) = &paths[&flow.id];
@@ -118,6 +130,18 @@ impl NetworkSim {
             let rate = flow.demand_mbps.min(flow.limit_mbps).max(0.0) * fraction;
             let bytes = (rate * 125000.0 * seconds) as u64;
             for port in path {
+                *self
+                    .runtime
+                    .aggregate_network_mbps
+                    .entry(*port)
+                    .or_default() += rate;
+                *self
+                    .runtime
+                    .aggregate_network_sources
+                    .entry(flow.source)
+                    .or_default()
+                    .entry(*port)
+                    .or_default() += rate;
                 let t = self.runtime.telemetry.entry(*port).or_default();
                 t.tx_bytes = t.tx_bytes.saturating_add(bytes);
                 t.rx_bytes = t.rx_bytes.saturating_add(bytes);

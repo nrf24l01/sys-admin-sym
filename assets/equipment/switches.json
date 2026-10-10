@@ -1,0 +1,65 @@
+[
+  {
+    "id": "c1000_24t_4g_l",
+    "name": "Cisco Catalyst C1000-24T-4G-L",
+    "copper_ports": 24,
+    "uplinks": 4,
+    "cage": {
+      "kind": "sfp",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "max_power_mw": 2000
+    },
+    "switching_mbps": 56000,
+    "forwarding_kpps": 41670,
+    "weight_grams": 2630,
+    "cpu_mhz": 800,
+    "dram_mb": 512,
+    "flash_mb": 256,
+    "power": {
+      "idle_mw": 15840,
+      "peak_mw": 22800,
+      "link_share_permille": 250,
+      "power_factor_percent": 90
+    }
+  },
+  {
+    "id": "c1000_24t_4x_l",
+    "name": "Cisco Catalyst C1000-24T-4X-L",
+    "copper_ports": 24,
+    "uplinks": 4,
+    "cage": {
+      "kind": "sfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps1",
+          "lanes": 1,
+          "fec": "none"
+        },
+        {
+          "speed": "Gbps10",
+          "lanes": 1,
+          "fec": "none"
+        }
+      ],
+      "max_power_mw": 2000
+    },
+    "switching_mbps": 128000,
+    "forwarding_kpps": 95230,
+    "weight_grams": 2780,
+    "cpu_mhz": 800,
+    "dram_mb": 512,
+    "flash_mb": 256,
+    "power": {
+      "idle_mw": 18000,
+      "peak_mw": 25680,
+      "link_share_permille": 250,
+      "power_factor_percent": 90
+    }
+  }
+]

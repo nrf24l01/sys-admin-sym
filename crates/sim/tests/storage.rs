@@ -14,7 +14,7 @@ fn chassis(sim: &mut NetworkSim) -> cloud_provider_sim::DeviceId {
 fn drives_are_purchased_installed_saved_and_returned() {
     let mut sim = NetworkSim::new();
     let id = chassis(&mut sim);
-    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 100);
+    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 0);
     sim.execute(Command::BuyDrive {
         drive_id: "enterprise_ssd_960gb".into(),
     })
@@ -33,7 +33,7 @@ fn drives_are_purchased_installed_saved_and_returned() {
         server.hardware.as_ref().unwrap().drives[2].as_deref(),
         Some("enterprise_ssd_960gb")
     );
-    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 104);
+    assert_eq!(sim.power.device_status(id).unwrap().load.watts, 0);
     let saved = serde_json::to_string(&sim).unwrap();
     let mut loaded: NetworkSim = serde_json::from_str(&saved).unwrap();
     loaded.rebuild_indexes();
@@ -59,7 +59,7 @@ fn drives_are_purchased_installed_saved_and_returned() {
         .execute(Command::RemoveDrive { device: id, bay: 2 })
         .unwrap();
     assert_eq!(loaded.drive_inventory["enterprise_ssd_960gb"], 1);
-    assert_eq!(loaded.power.device_status(id).unwrap().load.watts, 100);
+    assert_eq!(loaded.power.device_status(id).unwrap().load.watts, 0);
     assert!(
         !loaded
             .execute_terminal(

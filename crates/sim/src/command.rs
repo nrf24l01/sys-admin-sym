@@ -9,6 +9,7 @@ use std::net::Ipv4Addr;
 pub enum Command {
     SetSimulationSpeed(crate::SimulationSpeed),
     Hosting(crate::HostingCommand),
+    Bank(crate::BankCommand),
     Purchase {
         item: crate::PurchaseItem,
         quantity: u32,
@@ -17,6 +18,9 @@ pub enum Command {
     Optics(crate::OpticsCommand),
     BuyCableSupply {
         supply: crate::CableSupply,
+    },
+    SetCableSettings {
+        settings: crate::CableSettings,
     },
     ConnectCable {
         a: PortId,
@@ -143,6 +147,10 @@ pub enum Command {
         prefix: u8,
         internet_connected: bool,
     },
+    SetRouterSwitchport {
+        port: PortId,
+        switchport: bool,
+    },
     SetStaticRoute {
         router: DeviceId,
         route: Route,
@@ -154,6 +162,10 @@ pub enum Command {
     SetHostname {
         device: DeviceId,
         hostname: String,
+    },
+    SetDeviceWorkload {
+        device: DeviceId,
+        workload: crate::DeviceWorkload,
     },
     SetPower {
         device: DeviceId,

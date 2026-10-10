@@ -91,17 +91,11 @@ impl NetworkSim {
         {
             return false;
         }
-        let Some(mgmt) = self
-            .device(host)
-            .unwrap()
-            .ports()
-            .iter()
-            .copied()
-            .find(|p| self.port(*p).is_some_and(|p| p.name == "mgmt0"))
-        else {
+        let Some(route) = self.server_route_selection(host, target, None) else {
             return false;
         };
-        if !self.port_link_up(mgmt) {
+        let mgmt = route.port;
+        if !route.source.address.is_private() || !self.port_link_up(mgmt) {
             return false;
         }
         let revision = (self.topology_revision, self.routing_revision);
@@ -138,7 +132,16 @@ impl NetworkSim {
         };
         let mut c = NodeCapacity {
             cpu_mhz: self.server_resources(host).compute_mhz as f64,
-            network_mbps: self.server_resources(host).network_mbps as f64,
+            network_mbps: s.ports.iter().filter(|id| {
+                if let Some(networks) = self.hosting.nodes.get(&host).and_then(|n| n.networks.as_ref()) {
+                    networks.iter().any(|n| n.port == **id)
+                } else {
+                    self.port(**id).is_some_and(|p| matches!(&p.config, PortConfig::Server(c)
+                        if c.addresses().any(|a| a.gateway.is_some_and(|g| a.contains(g))
+                            && Ipv4Prefix::new(a.address, a.prefix).is_ok_and(|subnet|
+                                self.provider.pools().iter().any(|pool| subnet.contains_prefix(pool.prefix) || pool.prefix.contains_prefix(subnet))))))
+                }
+            }).filter_map(|id| self.port_link_speed(*id)).map(|speed| f64::from(speed.mbps())).sum(),
             ..Default::default()
         };
         if let Some(h) = &s.hardware {

@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum SimError {
     #[error("hosting: {0}")]
     Hosting(String),
+    #[error("bank: {0}")]
+    Bank(#[from] crate::BankError),
     #[error("purchase quantity must be between 1 and 100")]
     InvalidPurchaseQuantity,
     #[error("optical hardware: {0}")]
@@ -17,6 +19,8 @@ pub enum SimError {
     CableTooShort { minimum_cm: u32 },
     #[error("Ethernet cable length cannot exceed 100 m")]
     CableTooLong,
+    #[error("extra cable allowance must be 0–100% and 0–100 m")]
+    InvalidCableSettings,
     #[error("not enough cable: need {needed_cm} cm, have {available_cm} cm; buy a 305 m box")]
     InsufficientCable { needed_cm: u32, available_cm: u32 },
     #[error("need two RJ45 connectors, have {available}; buy a connector pack")]

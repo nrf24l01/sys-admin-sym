@@ -1,5 +1,5 @@
-use super::{CableAssemblyModel, CageProfile, TransceiverModel};
-use crate::LocalizedText;
+use super::{CableAssemblyModel, TransceiverModel};
+use crate::{LocalizedText, SwitchModel};
 use serde::Deserialize;
 use std::sync::OnceLock;
 #[derive(Debug, Deserialize)]
@@ -14,7 +14,7 @@ pub struct OpticalHardwareModel {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OpticalHardwareProfile {
-    Switch { cage: CageProfile },
+    Switch { model: SwitchModel },
     FiberPanel,
 }
 #[derive(Debug, Deserialize)]
@@ -26,8 +26,10 @@ pub struct OpticsCatalog {
 pub fn optics_catalog() -> &'static OpticsCatalog {
     static CATALOG: OnceLock<OpticsCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../assets/equipment/optics.json"))
-            .expect("valid optical equipment catalog")
+        crate::equipment_config::equipment_catalog(
+            "optics.json",
+            include_str!("../../../../assets/equipment/optics.json"),
+        )
     })
 }
 impl OpticsCatalog {

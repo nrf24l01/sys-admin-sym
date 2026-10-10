@@ -246,6 +246,7 @@ pub fn link_fault(fault: cloud_provider_sim::LinkFault) -> String {
         FiberMismatch => "optics.fault.fiber-mismatch",
         WavelengthMismatch => "optics.fault.wavelength-mismatch",
         PolarityMismatch => "optics.fault.polarity-mismatch",
+        CableTooShort => "cable.fault-too-short",
         TooLong => "optics.fault.too-long",
         LowLight => "optics.fault.low-light",
         ReceiverOverload => "optics.fault.receiver-overload",

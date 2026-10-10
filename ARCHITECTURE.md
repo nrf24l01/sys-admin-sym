@@ -21,6 +21,13 @@ The shop receives a correlated worker result after the committed snapshot;
 compatibility previews share installation rules with domain commands.
 See [Equipment shop](docs/SHOP.md) for browsing and extension behavior.
 
+Bank offers live in `assets/equipment/bank.json`. `Command::Bank` credits loans
+and applies repayments in `sim::bank`; the Bank window only previews contracts
+and sends typed commands. A saved bank clock advances at the hosting calendar rate, including pause and speed, schedules
+automatic installments, and preserves arrears across loads. Cash never becomes
+negative through repayment, and existing contracts retain their quoted terms.
+See [Bank loans](docs/BANK.md).
+
 ## Crates
 
 - `crates/sim`: pure domain model. It depends only on `serde` and `thiserror`.
@@ -75,8 +82,8 @@ and a 960 GB SSD in one atomic purchase. Separate power supplies are no longer
 sold; older saves receive a one-time refund for owned or installed PSUs. Server
 compute capacity sums core count times clock MHz across CPUs. Memory capacity
 uses the installed module's DDR generation and DIMM class coefficients. Live
-network capacity sums negotiated rates on connected data ports; `mgmt0` is a
-separate management NIC and does not contribute resource capacity.
+network capacity sums negotiated rates on connected real Ethernet ports. Private
+management connectivity uses the interface chosen by the server routing table.
 The initial R360 slot layout follows Dell's
 [expansion slot guide](https://www.dell.com/support/manuals/en-in/poweredge-r360/r360_ism/expansion-card-installation-guidelines?guid=guid-9ffebd78-0ef4-4614-b698-c450c609054f&lang=en-us)
 documentation. Installed PCIe cards cover the corresponding rear slot in the
@@ -99,17 +106,25 @@ provide RJ45 plugs, and each new link consumes a requested cut plus two plugs.
 Disconnecting stores the finished lead for reuse. Rack cable shape is presentation
 state only: a fixed-endpoint Verlet rope applies gravity and damping while the
 network link keeps its exact physical length.
+Saved `CableSettings` add a percentage and/or fixed service-loop allowance to
+automatic copper cuts and can prefer the shortest suitable reusable lead of the
+chosen color. Quotes and connection commands share route validation and material
+accounting. New leads retain their cut length across reroutes and save loads;
+the inspector compares that length with the routed minimum. See
+[`docs/CABLE_MANAGEMENT.md`](docs/CABLE_MANAGEMENT.md).
 Ethernet and power adapters supply cable identities, projected paths, lengths,
 selection state, and connector artwork to one generic `CableLayer`. The parent
 owns slack allocation, rope simulation, dragging, hit testing, connector placement,
 and jacket/highlight rendering. Visible sections share the available cable length
-proportionally; automatic lengths use the same 5% slack rule for both families.
+proportionally. Copper route minima include 5% installation slack on the port
+legs; saved extra allowances are added when cutting a new lead. Finished optical
+assemblies keep their catalog lengths.
 
 `PortConnector` records the socket independently from VLAN/IP configuration.
 `optics` owns cage capabilities, separate transceiver and finished assembly
 inventories, typed installation commands, and the shared `link_status` evaluator.
-The original Catalyst has four 1G SFP cages; a separate JSON hardware profile
-provides 1/10G SFP+ uplinks, and the PCIe catalog includes an Intel X520-DA2
+The Catalyst 4G and 4X have independent hardware profiles in `switches.json`,
+with four 1G SFP or 1/10G SFP+ cages respectively, and the PCIe catalog includes an Intel X520-DA2
 (two SFP+ cages, PCIe 2.0 x8). Generic prototype NIC IDs migrate on load without
 recreating their interfaces.
 LC patch panels reuse passive paired-port forwarding without regenerating signals.
@@ -174,7 +189,8 @@ rates are inventory capacity, not guaranteed end-to-end bandwidth.
 remaining after the largest circuit fails. Traced Ethernet paths retain
 intermediate ports for bottleneck diagnostics. Management SSH requires packet
 reachability and the server's SSH service; switch management includes a subnet,
-VLAN and optional gateway. `mgmt0` remains an OS interface, not a standby BMC.
+VLAN and optional gateway. Servers expose real Ethernet interfaces; their BMC
+is not a Linux interface.
 
 See [provider design](docs/PROVIDER_NETWORK_DESIGN.md) for object responsibilities
 and [provider operations](docs/PROVIDER_NETWORK_GUIDE.md) for configuration,
@@ -284,7 +300,7 @@ provider server installs `hosting-provider.service` by running
 its owned public IPv4, resolving the actual machine through configured interfaces.
 The service listens on configured addresses; node registration supplies a private
 address through the preparation command. Public transit gates sales,
-while mgmt0 packet paths and saved controller registrations gate node operations.
+while private Ethernet packet paths and saved controller registrations gate node operations.
 
 Node IPv4 policies intersect product ranges with owned CIDR slices. Prepared
 nodes reuse `provider::allocation` and the Ethernet engine's ARP probes to assign
@@ -300,3 +316,41 @@ traced routes and accounts for negotiated NIC/transit bottlenecks, queues, bytes
 latency and packet loss. Hosting clock and deterministic random state are saved;
 network forwarding caches remain transient. See [Hosting gameplay](docs/HOSTING.md)
 for the complete preparation, publication, provisioning and subscription workflow.
+## Catalyst switch services
+
+`crates/sim/src/switching` owns model specifications, save migration, converged
+EtherChannel membership, QoS classification/queue budgets and semantic SNMPv2c.
+Forwarding consumes channel membership and QoS in the existing Ethernet path;
+spanning tree collapses bundles and blocks every active member together.
+Switch services serialize with running/startup device configuration, while
+packet counters, queue budgets and boot times remain transient runtime state.
+IOS commands and simulated Linux SNMP tools call these domain services.
+See [the Catalyst guide](docs/CATALYST_SWITCHES.md) for supported operations
+and the boundary between deterministic behavior and firmware/wire protocols.
+
+## Operating power estimates
+
+`crates/sim/src/power/consumption.rs` combines hardware-dependent idle and active
+component curves, guest work, per-card traffic and PSU conversion. Estimated
+parameters live in per-model `power` blocks in equipment JSON catalogs. Each
+catalog/profile reads installed files once, with embedded defaults when absent;
+editing power values requires a restart, not a rebuild. Ratings remain separate
+from operating curves, and saved UPS/PDU state adopts current model settings. Consumption snapshots are cached in transient
+network runtime; sustained `DeviceWorkload` inputs persist in the world.
+The existing electrical topology consumes the resulting operating demand.
+Time advancement integrates changing load across activity bucket boundaries
+without looping through long idle periods. See [power consumption](docs/POWER_CONSUMPTION.md).
+
+## Hardware compatibility and router LAN switching
+
+`server_hardware/limits.rs` validates CPU/chassis limits and DIMM topology from
+`server_parts.json`. `shop_compatibility.rs` shares these rules with installation
+and shop previews. Physical DIMM indices persist separately from component IDs;
+legacy saves receive the configured population order. Catalogs load once.
+
+`router_hardware.rs` reads JSON port roles, converts flex ports through the domain
+command, and manages logical SVI ports separately from physical rack ports. The
+Ethernet engine bridges router LAN switchports and delivers VLAN frames to SVIs;
+SVIs inject frames back into that bridge. Shared link status reports their member
+availability. Transit routing observes `routing_enabled`, while local endpoints
+and switching remain available. Startup snapshots include logical ports.

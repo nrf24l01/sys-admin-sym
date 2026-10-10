@@ -18,7 +18,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1000,
       "dom": true,
       "price": 35,
       "kind": "optical",
@@ -39,7 +38,11 @@
           "max_length_cm": 55000,
           "attenuation_mdb_per_km": 3500
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 1000
+      }
     },
     {
       "id": "sfp_1g_lx10",
@@ -59,7 +62,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1000,
       "dom": true,
       "price": 45,
       "kind": "optical",
@@ -75,7 +77,11 @@
           "max_length_cm": 1000000,
           "attenuation_mdb_per_km": 400
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 1000
+      }
     },
     {
       "id": "sfp_1g_copper",
@@ -105,10 +111,13 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1000,
       "dom": false,
       "price": 40,
-      "kind": "copper"
+      "kind": "copper",
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 1000
+      }
     },
     {
       "id": "sfpplus_10g_sr",
@@ -128,7 +137,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1500,
       "dom": true,
       "price": 60,
       "kind": "optical",
@@ -149,7 +157,11 @@
           "max_length_cm": 40000,
           "attenuation_mdb_per_km": 3500
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1500,
+        "peak_mw": 1500
+      }
     },
     {
       "id": "sfpplus_10g_lr",
@@ -169,7 +181,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1500,
       "dom": true,
       "price": 90,
       "kind": "optical",
@@ -185,7 +196,11 @@
           "max_length_cm": 1000000,
           "attenuation_mdb_per_km": 400
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1500,
+        "peak_mw": 1500
+      }
     },
     {
       "id": "sfp_1g_bidi_u",
@@ -205,7 +220,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1000,
       "dom": true,
       "price": 60,
       "kind": "optical",
@@ -221,7 +235,11 @@
           "max_length_cm": 1000000,
           "attenuation_mdb_per_km": 400
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 1000
+      }
     },
     {
       "id": "sfp_1g_bidi_d",
@@ -241,7 +259,6 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1000,
       "dom": true,
       "price": 60,
       "kind": "optical",
@@ -257,7 +274,11 @@
           "max_length_cm": 1000000,
           "attenuation_mdb_per_km": 400
         }
-      ]
+      ],
+      "power": {
+        "idle_mw": 1000,
+        "peak_mw": 1000
+      }
     },
     {
       "id": "dac_10g_end",
@@ -277,10 +298,13 @@
           "fec": "none"
         }
       ],
-      "power_mw": 100,
       "dom": false,
       "price": 0,
-      "kind": "direct_attach"
+      "kind": "direct_attach",
+      "power": {
+        "idle_mw": 100,
+        "peak_mw": 100
+      }
     },
     {
       "id": "aoc_10g_end",
@@ -300,10 +324,13 @@
           "fec": "none"
         }
       ],
-      "power_mw": 1500,
       "dom": false,
       "price": 0,
-      "kind": "direct_attach"
+      "kind": "direct_attach",
+      "power": {
+        "idle_mw": 1500,
+        "peak_mw": 1500
+      }
     }
   ],
   "cables": [
@@ -696,8 +723,8 @@
     {
       "id": "switch_10g",
       "display_name": {
-        "en": "Catalyst C1000-24T-4X-L",
-        "ru": "Catalyst C1000-24T-4X-L"
+        "en": "Cisco Catalyst C1000-24T-4X-L",
+        "ru": "Cisco Catalyst C1000-24T-4X-L"
       },
       "desc": {
         "en": "24 × 1G RJ45 + 4 × 1/10G SFP+ cages",
@@ -705,22 +732,7 @@
       },
       "price": 900,
       "kind": "switch",
-      "cage": {
-        "kind": "sfp_plus",
-        "modes": [
-          {
-            "speed": "Gbps1",
-            "lanes": 1,
-            "fec": "none"
-          },
-          {
-            "speed": "Gbps10",
-            "lanes": 1,
-            "fec": "none"
-          }
-        ],
-        "max_power_mw": 2000
-      }
+      "model": "c1000_24t_4x_l"
     },
     {
       "id": "fiber_panel",

@@ -6,9 +6,11 @@ fn server_attributes(offer: &mut Offer, chassis: &ServerChassis) {
         Attribute::text("memory-type", chassis.memory_type.clone()),
         Attribute::number("cpu-sockets", chassis.cpu_sockets as u64),
         Attribute::number("ram-slots", chassis.dimm_slots as u64),
+        Attribute::number("max-memory", chassis.memory.max_capacity_gb),
+        Attribute::number("memory-channels", chassis.memory.channels_per_cpu as u64),
         Attribute::number("drive-bays", chassis.drive_bays.len() as u64),
         Attribute::number("pcie-slots", chassis.pcie_slots.len() as u64),
-        Attribute::number("psu-watts", chassis.integrated_psu_watts),
+        Attribute::number("psu-watts", server_power_profile().psu.capacity_watts),
     ]);
     let interfaces: std::collections::BTreeSet<_> = chassis
         .drive_bays
@@ -114,6 +116,16 @@ fn rack_attributes(offer: &mut Offer, command: Command) {
         }
     }
     match &device.kind {
+        DeviceKind::Switch(switch) => {
+            let spec = switch.model.spec();
+            offer.attributes.extend([
+                Attribute::number("switching-capacity", spec.switching_mbps),
+                Attribute::number("forwarding-rate", spec.forwarding_kpps),
+                Attribute::number("switch-idle-power", spec.power.idle_mw),
+                Attribute::number("switch-traffic-power", spec.power.peak_mw),
+                Attribute::text("poe", "no"),
+            ]);
+        }
         DeviceKind::Ups(ups) => {
             if let Some(source) = ups.source {
                 offer.attributes.push(Attribute::number(

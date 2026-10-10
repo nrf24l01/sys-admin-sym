@@ -1351,7 +1351,7 @@ mod tests {
         let management = ports
             .iter()
             .copied()
-            .find(|p| sim.port(*p).unwrap().name == "mgmt0")
+            .find(|p| sim.port(*p).unwrap().name == "eth1")
             .unwrap();
         for (port, address) in [(ports[0], "203.0.113.2"), (management, "10.0.0.10")] {
             sim.execute(Command::SetIpv4 {

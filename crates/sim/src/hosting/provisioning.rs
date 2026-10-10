@@ -437,6 +437,7 @@ impl NetworkSim {
         self.hosting.revenue_remainder_cents += p.amount_cents;
         self.money += (self.hosting.revenue_remainder_cents / 100) as i64;
         self.hosting.revenue_remainder_cents %= 100;
+        self.bank.collect_due(&mut self.money);
         if !p.renewal {
             self.hosting.order_services.insert(p.order, p.service);
         }

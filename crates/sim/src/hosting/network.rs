@@ -32,6 +32,58 @@ impl NetworkSim {
             .map(|(id, traffic)| (id, traffic.reachable))
             .collect()
     }
+    /// Keep installed hosting controllers and prepared nodes connected when retiring
+    /// the old synthetic management NIC. Other hardware keeps main's normal migration.
+    pub(crate) fn migrate_hosting_management_ports(&mut self) {
+        let mut legacy: Vec<_> = self
+            .ports
+            .values()
+            .filter(|p| {
+                p.name == "mgmt0"
+                    && (self.hosting.nodes.contains_key(&p.device)
+                        || self.hosting_provider_installed(p.device))
+            })
+            .map(|p| (p.id, p.device))
+            .collect();
+        legacy.sort_unstable();
+        for (old, host) in legacy {
+            let Some(new) = self.devices[&host].ports().iter().copied().find(|id| {
+                self.ports.get(id).is_some_and(|p| p.name != "mgmt0" && p.connector == PortConnector::Rj45
+                    && matches!(&p.config, PortConfig::Server(c) if c.addresses().next().is_none()))
+                    && !self.links.values().any(|l| l.a == *id || l.b == *id)
+            }) else { continue; };
+            let config = self.ports[&old].config.clone();
+            let enabled = self.ports[&old].enabled;
+            let name = self.ports[&new].name.clone();
+            self.ports.get_mut(&new).unwrap().config = config;
+            self.ports.get_mut(&new).unwrap().enabled = enabled;
+            for link in self.links.values_mut() {
+                if link.a == old {
+                    link.a = new;
+                }
+                if link.b == old {
+                    link.b = new;
+                }
+            }
+            if let Some(link) = self.port_links.remove(&old) {
+                self.port_links.insert(new, link);
+            }
+            if let Some(os) = self.server_operating_systems.get_mut(&host) {
+                for route in &mut os.routes {
+                    if route.port == old {
+                        route.port = new;
+                    }
+                }
+                if let Ok(config) = os.filesystem.read("/etc/network/interfaces") {
+                    let config = config.replace("mgmt0", &name);
+                    let _ = os
+                        .filesystem
+                        .write("/etc/network/interfaces", &config, false);
+                }
+            }
+        }
+    }
+
     pub(crate) fn rebuild_hosting_indexes(&mut self) {
         if self.hosting.clock_defaults_version < HOSTING_CLOCK_DEFAULTS_VERSION {
             // Upgrade the former one-minute default once; keep custom rates and pause.

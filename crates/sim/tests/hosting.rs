@@ -77,13 +77,20 @@ impl Lab {
             .ports()
             .iter()
             .copied()
-            .find(|p| sim.port(*p).unwrap().name == "mgmt0")
+            .find(|p| sim.port(*p).unwrap().name == "eth1")
             .unwrap();
         let rp = sim.device(router).unwrap().ports().to_vec();
+        for port in [rp[8], rp[9]] {
+            sim.execute(Command::SetRouterSwitchport {
+                port,
+                switchport: false,
+            })
+            .unwrap();
+        }
         for (port, address, bits) in [
             (rp[0], "192.0.2.2", 30),
-            (rp[2], "203.0.113.1", 24),
-            (rp[3], "10.0.0.1", 24),
+            (rp[8], "203.0.113.1", 24),
+            (rp[9], "10.0.0.1", 24),
         ] {
             sim.execute(Command::ConfigureRouterInterface {
                 port,
@@ -111,7 +118,7 @@ impl Lab {
             .min_by_key(|o| o.port)
             .unwrap()
             .port;
-        for (a, b) in [(data, rp[2]), (mgmt, rp[3]), (rp[0], transit)] {
+        for (a, b) in [(data, rp[8]), (mgmt, rp[9]), (rp[0], transit)] {
             sim.execute(Command::Connect { a, b }).unwrap();
         }
         sim.execute(Command::Provider(ProviderCommand::SetTransit(
@@ -157,7 +164,7 @@ impl Lab {
             .ports()
             .iter()
             .copied()
-            .find(|p| sim.port(*p).unwrap().name == "mgmt0")
+            .find(|p| sim.port(*p).unwrap().name == "eth1")
             .unwrap();
         for (port, address, gateway) in [
             (controller_public, "203.0.113.18", Some(ip("203.0.113.1"))),
@@ -170,8 +177,8 @@ impl Lab {
             .unwrap();
         }
         for (unit, node_port, router_port, control_port) in [
-            (4, data, rp[2], controller_public),
-            (5, mgmt, rp[3], controller_management),
+            (4, data, rp[8], controller_public),
+            (5, mgmt, rp[9], controller_management),
         ] {
             let link = sim.link_for_port(node_port).unwrap().id;
             sim.execute(Command::Disconnect { link }).unwrap();
@@ -192,6 +199,17 @@ impl Lab {
             ] {
                 sim.execute(Command::Connect { a, b }).unwrap();
             }
+        }
+        // Persist host interface configuration so real power cycles restore networking.
+        for (server, public, private) in [
+            (host, "203.0.113.100", "10.0.0.2"),
+            (controller, "203.0.113.18", "10.0.0.10"),
+        ] {
+            let command = format!(
+                "printf 'auto eth0 eth1\\niface eth0 inet static\\n address {public}/24\\n gateway 203.0.113.1\\niface eth1 inet static\\n address {private}/24\\n' > /etc/network/interfaces"
+            );
+            let output = sim.execute_console(server, &command);
+            assert!(output.success, "{:?}", output.lines);
         }
         let setup = sim.execute_console(controller, "./setup-main-hoster-server.sh");
         assert!(setup.success, "{:?}", setup.lines);
@@ -780,7 +798,10 @@ fn automatic_node_addressing_requires_a_real_gateway_and_resumes_sales_after_rec
     assert!(l.sim.hosting_provider_site_status().is_ok());
     assert!(l.sim.hosting_node_eligible(l.host));
     let reason = l.sim.hosting_availability(l.plan).unwrap_err();
-    assert!(reason.contains("data interface"), "{reason}");
+    assert!(
+        reason.contains("Network bandwidth: requested 100.00 Mbps, available 0.00 Mbps"),
+        "{reason}"
+    );
     assert!(!reason.contains("management"), "{reason}");
     assert_eq!(
         l.sim.hosting.market_stats[&l.plan].expected_orders_per_day,
@@ -828,7 +849,7 @@ fn automatic_node_ips_and_guests_obey_individual_slices_of_a_purchased_24() {
         .find(|d| matches!(d.kind, DeviceKind::Router(_)))
         .unwrap()
         .id;
-    let router_port = l.sim.device(router).unwrap().ports()[4];
+    let router_port = l.sim.device(router).unwrap().ports()[1];
     l.sim
         .execute(Command::ConfigureRouterInterface {
             port: router_port,
@@ -870,7 +891,7 @@ fn automatic_node_ips_and_guests_obey_individual_slices_of_a_purchased_24() {
         .unwrap()
         .ports()
         .iter()
-        .find(|p| l.sim.port(**p).unwrap().name == "mgmt0")
+        .find(|p| l.sim.port(**p).unwrap().name == "eth1")
         .unwrap();
     l.sim
         .execute(Command::SetIpv4 {
@@ -1725,7 +1746,7 @@ fn capacity_diagnostics_report_all_failed_resources_on_all_candidate_nodes() {
         .unwrap()
         .ports()
         .iter()
-        .find(|id| l.sim.port(**id).unwrap().name == "mgmt0")
+        .find(|id| l.sim.port(**id).unwrap().name == "eth1")
         .unwrap();
     let peer = l.sim.link_for_port(l.mgmt).unwrap().other(l.mgmt).unwrap();
     let switch = l.sim.port(peer).unwrap().device;
@@ -2625,7 +2646,7 @@ fn changing_public_destination_resolves_the_new_installed_server_and_requires_no
         .unwrap()
         .ports()
         .iter()
-        .find(|p| l.sim.port(**p).unwrap().name == "mgmt0")
+        .find(|p| l.sim.port(**p).unwrap().name == "eth1")
         .unwrap();
     for (old, new, address, gateway) in [
         (
@@ -3359,10 +3380,6 @@ fn invalid_node_interface_subnet_and_vlan_maps_are_atomic_and_legacy_saves_defau
     };
     for mappings in [
         vec![HostingNodeNetwork {
-            port: l.mgmt,
-            ..valid
-        }],
-        vec![HostingNodeNetwork {
             port: l.controller_public,
             ..valid
         }],
@@ -3529,4 +3546,160 @@ fn guest_rules_share_one_bridge_without_losing_other_allowed_subnets() {
         panic!()
     };
     assert!(c.addresses().next().is_none());
+}
+
+#[test]
+fn guest_workloads_contribute_to_physical_node_power_consumption() {
+    let mut l = Lab::new();
+    l.prepare();
+    let service = l.buy(1);
+    let vm = l.vm(service);
+    let idle = l.sim.device_consumption(l.host).unwrap();
+    l.demand(
+        vm,
+        WorkloadDemand {
+            cpu_mhz: 6800.0,
+            memory_mb: 2048.0,
+            read_iops: 200.0,
+            disk_mb_s: 50.0,
+            network_mbps: 100.0,
+            ..Default::default()
+        },
+    );
+    l.tick();
+    let loaded = l.sim.device_consumption(l.host).unwrap();
+    assert!(loaded.utilization.cpu > idle.utilization.cpu);
+    assert!(loaded.utilization.memory > idle.utilization.memory);
+    assert!(loaded.utilization.storage > idle.utilization.storage);
+    assert!(loaded.demand_mw > idle.demand_mw);
+    assert!(loaded.network_utilization > idle.network_utilization);
+    l.sim.hosting.market.time_scale = 0;
+    apply(
+        &mut l.sim,
+        HostingCommand::SetVmPower {
+            vm,
+            power: VmPower::Stopped,
+        },
+    );
+    l.sim.advance_time(1000);
+    let stopped = l.sim.device_workload(l.host);
+    assert_eq!(stopped.cpu, 0);
+    assert_eq!(stopped.memory, 0);
+    assert_eq!(stopped.storage, 0);
+    assert!(
+        l.sim
+            .device_consumption(l.host)
+            .unwrap()
+            .network_utilization
+            < loaded.network_utilization
+    );
+}
+
+#[test]
+fn legacy_hosting_management_links_migrate_to_free_real_interfaces_without_losing_services() {
+    let mut l = Lab::new();
+    l.prepare();
+    let service = l.buy(1);
+    let vm = l.vm(service);
+    let mut saved = ron::to_string(&l.sim).unwrap();
+    for port in [l.mgmt, l.controller_management] {
+        let original = l.sim.port(port).unwrap();
+        let mut legacy = original.clone();
+        legacy.name = "mgmt0".into();
+        let original = ron::to_string(original).unwrap();
+        assert!(saved.contains(&original));
+        saved = saved.replace(&original, &ron::to_string(&legacy).unwrap());
+    }
+    let mut loaded: NetworkSim = ron::from_str(&saved).unwrap();
+    loaded.rebuild_indexes();
+    assert!(loaded.ports().all(|p| p.name != "mgmt0"));
+    assert!(loaded.hosting_node_eligible(l.host));
+    assert!(loaded.hosting_provider_site_status().is_ok());
+    assert_eq!(loaded.hosting.vms[&vm].ips, l.sim.hosting.vms[&vm].ips);
+    assert_eq!(loaded.hosting.payments.len(), 1);
+    assert_eq!(loaded.money, l.sim.money);
+}
+
+#[test]
+fn hosting_reconciliation_preserves_tagged_host_management_addresses() {
+    let l = Lab::new();
+    let mut saved = ron::to_string(&l.sim).unwrap();
+    for port in [l.mgmt, l.controller_management] {
+        let original = l.sim.port(port).unwrap();
+        let mut tagged = original.clone();
+        let PortConfig::Server(config) = &mut tagged.config else {
+            panic!()
+        };
+        config.ipv4.as_mut().unwrap().vlan = Some(VlanId(30));
+        config.tagged_vlans.insert(VlanId(30));
+        let original = ron::to_string(original).unwrap();
+        assert!(saved.contains(&original));
+        saved = saved.replace(&original, &ron::to_string(&tagged).unwrap());
+    }
+    let mut loaded: NetworkSim = ron::from_str(&saved).unwrap();
+    loaded.rebuild_indexes();
+    let peer = loaded.link_for_port(l.mgmt).unwrap().other(l.mgmt).unwrap();
+    let switch = loaded.port(peer).unwrap().device;
+    loaded
+        .execute(Command::CreateVlan {
+            switch,
+            vlan: Vlan {
+                id: VlanId(30),
+                name: "Private management".into(),
+            },
+        })
+        .unwrap();
+    for port in [l.mgmt, l.controller_management] {
+        let peer = loaded.link_for_port(port).unwrap().other(port).unwrap();
+        loaded
+            .execute(Command::SetSwitchPortMode {
+                port: peer,
+                mode: SwitchPortMode::Trunk {
+                    native_vlan: Some(VlanId(1)),
+                    allowed: vec![VlanId(1), VlanId(30)],
+                },
+            })
+            .unwrap();
+    }
+    loaded
+        .configure_hosting(HostingCommand::SetNodeNetworks {
+            node: l.host,
+            networks: Some(vec![HostingNodeNetwork {
+                port: l.data,
+                subnet: prefix("203.0.113.0/29"),
+                vlan: Some(VlanId(10)),
+            }]),
+        })
+        .unwrap();
+    let output = loaded.execute_console(l.host, "./vm-prepare.sh 10.0.0.10");
+    assert!(output.success, "{:?}", output.lines);
+    assert!(loaded.hosting_node_eligible(l.host));
+    loaded.advance_time(HOSTING_TICK_MS);
+    assert!(loaded.hosting_node_eligible(l.host));
+    let PortConfig::Server(config) = &loaded.port(l.mgmt).unwrap().config else {
+        panic!()
+    };
+    assert!(config.tagged_vlans.contains(&VlanId(30)));
+}
+
+#[test]
+fn guest_bandwidth_counts_public_subnets_inside_owned_ranges_and_excludes_private_management() {
+    let mut l = Lab::new();
+    l.sim
+        .execute(Command::SetIpv4 {
+            port: l.data,
+            config: Ipv4InterfaceConfig::new(
+                ip("203.0.113.2"),
+                30,
+                Some(ip("203.0.113.1")),
+                VlanId(1),
+            ),
+        })
+        .unwrap();
+    assert_eq!(
+        l.sim
+            .hosting_capacity(l.host, HostingStorage::Ssd)
+            .network_mbps,
+        1000.0
+    );
 }

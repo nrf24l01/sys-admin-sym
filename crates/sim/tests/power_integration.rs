@@ -170,7 +170,13 @@ fn ups_pdu_chain_survives_outage_then_depletes_and_restores() {
     assert!(sim.power.source_telemetry(ups_source).unwrap().available);
     assert!(sim.execute_console(server, "ip addr").success);
     let revision = sim.topology_revision;
-    sim.advance_time(8 * 60 * 60 * 1000);
+    let runtime = sim
+        .power
+        .source_telemetry(ups_source)
+        .unwrap()
+        .runtime_seconds
+        .unwrap();
+    sim.advance_time((runtime + 1) * 1000);
     assert!(!sim.device(server).unwrap().powered);
     assert!(sim.power.source_telemetry(ups_source).unwrap().battery_mwh < before);
     assert!(sim.topology_revision > revision);
@@ -207,16 +213,16 @@ fn router_uses_supplied_adapter_and_explicit_wrong_cord_is_atomic() {
     })
     .unwrap();
     assert_eq!(sim.power.cord_kind(outlet), PowerCordKind::Cisco66WAdapter);
-    // 60 W DC load through 90% adapter efficiency and PF .90: 67 W / 75 VA.
+    // An idle router estimates 8 W DC; the 90% adapter draws 9 W / 10 VA.
     let load = sim
         .power
         .source_telemetry(SourceId::Rack(RackId(1)))
         .unwrap()
         .output;
-    assert_eq!(load.watts, 67);
-    assert_eq!(load.va, 75);
+    assert_eq!(load.watts, 9);
+    assert_eq!(load.va, 10);
     let status = sim.power.device_status(router).unwrap();
-    assert_eq!(status.load.watts, 60);
+    assert_eq!(status.load.watts, 8);
 }
 
 #[test]
@@ -261,8 +267,8 @@ fn adapter_loss_is_seen_by_ups_and_pdu_once() {
     );
     connect(&mut sim, us, 0, PowerEndpoint::Device(router));
     let direct = sim.power.source_telemetry(us).unwrap();
-    assert_eq!(direct.output.watts, 67);
-    assert_eq!(direct.output.va, 75);
+    assert_eq!(direct.output.watts, 9);
+    assert_eq!(direct.output.va, 10);
     sim.execute(Command::DisconnectPower {
         outlet: OutletId {
             source: us,
@@ -272,7 +278,7 @@ fn adapter_loss_is_seen_by_ups_and_pdu_once() {
     .unwrap();
     connect(&mut sim, us, 0, PowerEndpoint::Source(ps));
     connect(&mut sim, ps, 0, PowerEndpoint::Device(router));
-    assert_eq!(sim.power.source_telemetry(us).unwrap().output.watts, 72);
+    assert_eq!(sim.power.source_telemetry(us).unwrap().output.watts, 14);
 }
 
 #[test]

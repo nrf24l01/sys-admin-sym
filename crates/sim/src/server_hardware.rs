@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+mod limits;
+pub use limits::*;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerCatalog {
     pub chassis: ServerChassis,
@@ -14,9 +17,12 @@ pub struct ServerChassis {
     pub cpu_sockets: usize,
     pub dimm_slots: usize,
     pub memory_type: String,
+    pub supported_cpu_ids: Vec<String>,
+    pub max_cpu_tdp_w: u16,
+    pub identical_cpus: bool,
+    pub parts_hot_swappable: bool,
+    pub memory: ChassisMemoryLimits,
     pub psu_bays: usize,
-    #[serde(default = "ServerChassis::default_integrated_psu_watts")]
-    pub integrated_psu_watts: u16,
     pub drive_bays: Vec<DriveBay>,
     pub pcie_slots: Vec<PcieSlot>,
 }
@@ -31,6 +37,7 @@ pub struct DriveBay {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PcieSlot {
     pub name: String,
+    pub cpu_socket: usize,
     pub lanes: u8,
     pub generation: u8,
     pub width: u8,
@@ -57,6 +64,7 @@ pub struct ServerPart {
     #[serde(default)]
     pub desc: crate::LocalizedText,
     pub price: i64,
+    pub power: crate::PowerProfile,
     #[serde(flatten)]
     pub kind: ServerPartKind,
 }
@@ -72,10 +80,17 @@ pub enum ServerPartKind {
         frequency_mhz: u32,
         pcie_lanes: u8,
         tdp_w: u16,
+        threads: u16,
+        max_sockets: usize,
+        pcie_generation: u8,
+        memory: CpuMemoryLimits,
     },
     Ram {
         memory_type: String,
         capacity_gb: u16,
+        speed_mt_s: u32,
+        ranks: u8,
+        voltage_mv: u16,
     },
     PowerSupply {
         capacity_w: u16,
@@ -90,6 +105,7 @@ impl ServerPartKind {
         let Self::Ram {
             memory_type,
             capacity_gb,
+            ..
         } = self
         else {
             return None;
@@ -128,15 +144,20 @@ pub enum PciCard {
         #[serde(default)]
         cage: Option<crate::CageProfile>,
         speed_mbps: u32,
-        power_w: u16,
     },
 }
 
 pub fn server_catalog() -> &'static ServerCatalog {
     static CATALOG: OnceLock<ServerCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../assets/equipment/server_parts.json"))
-            .expect("valid server hardware catalog")
+        let catalog: ServerCatalog = crate::equipment_config::equipment_catalog(
+            "server_parts.json",
+            include_str!("../../../assets/equipment/server_parts.json"),
+        );
+        catalog.validate().unwrap_or_else(|error| {
+            panic!("invalid equipment config assets/equipment/server_parts.json: {error}")
+        });
+        catalog
     })
 }
 
@@ -177,6 +198,9 @@ impl ServerFullPack {
 pub struct ServerHardware {
     pub cpus: Vec<String>,
     pub ram: Vec<String>,
+    /// Physical DIMM indices parallel to `ram`; absent in legacy saves.
+    #[serde(default)]
+    pub ram_slot_indices: Vec<usize>,
     pub power_supplies: Vec<String>,
     /// Read old saves and refund previously purchased fans once on load.
     #[serde(default, rename = "cooling", skip_serializing)]
@@ -190,6 +214,32 @@ pub struct ServerHardware {
 }
 
 impl ServerHardware {
+    pub fn pcie_link_generation(&self, index: usize) -> Option<u8> {
+        let catalog = server_catalog();
+        let slot = catalog.chassis.pcie_slots.get(index)?;
+        let cpu = catalog
+            .parts
+            .iter()
+            .find(|p| self.cpus.get(slot.cpu_socket) == Some(&p.id))?;
+        let card = catalog
+            .parts
+            .iter()
+            .find(|p| self.pcie.get(index).and_then(Option::as_ref) == Some(&p.id))?;
+        let ServerPartKind::Cpu {
+            pcie_generation, ..
+        } = &cpu.kind
+        else {
+            return None;
+        };
+        let ServerPartKind::PciCard {
+            card: PciCard::Ethernet { generation, .. },
+        } = &card.kind
+        else {
+            return None;
+        };
+        Some(slot.generation.min(*pcie_generation).min(*generation))
+    }
+
     pub fn compute_mhz(&self) -> u64 {
         let catalog = server_catalog();
         self.cpus
@@ -216,55 +266,18 @@ impl ServerHardware {
             .sum()
     }
 
+    /// Estimated maximum component load for sizing; current consumption is
+    /// available through NetworkSim::device_consumption.
     pub fn load_watts(&self) -> u32 {
-        let catalog = server_catalog();
-        let cpu_w: u32 = self
-            .cpus
-            .iter()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match part.kind {
-                ServerPartKind::Cpu { tdp_w, .. } => Some(u32::from(tdp_w)),
-                _ => None,
-            })
-            .sum();
-        let card_w: u32 = self
-            .pcie
-            .iter()
-            .flatten()
-            .filter_map(|id| catalog.parts.iter().find(|part| &part.id == id))
-            .filter_map(|part| match &part.kind {
-                ServerPartKind::PciCard {
-                    card: PciCard::Ethernet { power_w, .. },
-                } => Some(u32::from(*power_w)),
-                _ => None,
-            })
-            .sum();
-        let drive_w: u32 = self
-            .drives
-            .iter()
-            .flatten()
-            .filter_map(|id| {
-                crate::drive_catalog()
-                    .drives
-                    .iter()
-                    .find(|drive| &drive.id == id)
-            })
-            .map(|drive| u32::from(drive.power_w))
-            .sum();
-        100 + cpu_w + self.ram.len() as u32 * 5 + card_w + drive_w
+        self.peak_load_watts()
     }
 
     pub fn ready(&self) -> bool {
         if self.cpus.is_empty() || self.ram.is_empty() {
             return false;
         }
-        u32::from(server_catalog().chassis.integrated_psu_watts) >= self.load_watts()
-    }
-}
-
-impl ServerChassis {
-    fn default_integrated_psu_watts() -> u16 {
-        600
+        self.validate_limits(server_catalog()).is_ok()
+            && crate::server_power_profile().psu.capacity_watts >= self.load_watts()
     }
 }
 

@@ -38,6 +38,16 @@ impl Attribute {
 }
 
 pub(super) fn display_value(key: &str, value: &str) -> String {
+    if let Ok(number) = value.parse::<u64>() {
+        match key {
+            "switch-idle-power" | "switch-traffic-power" => {
+                return format!("{} W", number as f64 / 1000.0);
+            }
+            "switching-capacity" => return format!("{} Gb/s", number as f64 / 1000.0),
+            "forwarding-rate" => return format!("{} Mpps", number as f64 / 1000.0),
+            _ => {}
+        }
+    }
     let suffix = match key {
         "rack" => " U",
         "capacity" => " GB",
@@ -64,7 +74,7 @@ pub(super) fn display_value(key: &str, value: &str) -> String {
     {
         return format!("{}G", speed as f64 / 1000.0);
     }
-    if matches!(key, "type" | "strands" | "dom" | "configuration") {
+    if matches!(key, "type" | "strands" | "dom" | "configuration" | "poe") {
         return tr(&format!("shop.value.{value}"));
     }
     format!("{value}{suffix}")

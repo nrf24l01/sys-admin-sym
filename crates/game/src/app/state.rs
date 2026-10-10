@@ -29,7 +29,7 @@ pub enum CableVisibility {
     Hidden,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Selection {
     #[default]
     None,
@@ -55,6 +55,7 @@ pub struct UiState {
     pub range_uplink: Option<PortId>,
     pub range_loaded_for: Option<cloud_provider_sim::Ipv4Prefix>,
     pub shop: super::ShopState,
+    pub bank: super::BankWindowState,
     pub settings: super::SettingsWindowState,
     pub workspace: Workspace,
     pub selected: Selection,

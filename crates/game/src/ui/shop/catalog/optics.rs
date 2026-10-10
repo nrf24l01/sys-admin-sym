@@ -14,7 +14,7 @@ pub(super) fn offers() -> Vec<Offer> {
         offer.attributes = vec![
             Attribute::text("type", "transceiver"),
             Attribute::text("cage", cage_name(module.cage)),
-            Attribute::number("power", module.power_mw),
+            Attribute::number("power", module.power.peak_mw),
             Attribute::text("dom", if module.dom { "yes" } else { "no" }),
         ];
         offer.attributes.extend(

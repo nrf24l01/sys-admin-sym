@@ -245,7 +245,7 @@ impl NetworkSim {
         match command {
             TerminalCommand::Help => output(
                 true,
-                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>, ssh <management-ip>, exit",
+                "commands: ip addr|link|route, ethtool [-i] <iface>, netstat -i, lsblk, smartctl -a /dev/sdX, free -h, lscpu, uname -a, hostname, arp, ping <ip>, traceroute <ip>, ssh <ip-address>, exit",
             ),
             TerminalCommand::Ip => {
                 let lines = server
@@ -472,20 +472,46 @@ impl NetworkSim {
                     },
                     |cpu| cpu.name.as_str(),
                 );
+                let mut lines = vec![
+                    "Architecture: x86_64".into(),
+                    format!(
+                        "Socket(s): {}",
+                        if server.hardware.is_some() {
+                            cpus.len()
+                        } else {
+                            1
+                        }
+                    ),
+                    format!("Model name: {model}"),
+                ];
+                if let Some(cpu) = cpus.first()
+                    && let crate::ServerPartKind::Cpu {
+                        cores,
+                        threads,
+                        frequency_mhz,
+                        memory,
+                        max_sockets,
+                        pcie_lanes,
+                        pcie_generation,
+                        ..
+                    } = &cpu.kind
+                {
+                    lines.extend([
+                        format!("CPU(s): {}", usize::from(*threads) * cpus.len()),
+                        format!("Core(s) per socket: {cores}"),
+                        format!("Thread(s) per core: {}", threads / cores),
+                        format!("CPU MHz: {frequency_mhz}"),
+                        format!("Maximum sockets: {max_sockets}"),
+                        format!("Memory channels per CPU: {}", memory.channels),
+                        format!("Maximum DIMMs per CPU: {}", memory.max_dimms),
+                        format!("Maximum memory per CPU: {} GB", memory.max_capacity_gb),
+                        format!("Maximum memory speed: {} MT/s", memory.max_speed_mt_s),
+                        format!("PCIe: Gen {pcie_generation}, {pcie_lanes} lanes"),
+                    ]);
+                }
                 TerminalOutput {
                     success: true,
-                    lines: vec![
-                        "Architecture: x86_64".into(),
-                        format!(
-                            "Socket(s): {}",
-                            if server.hardware.is_some() {
-                                cpus.len()
-                            } else {
-                                1
-                            }
-                        ),
-                        format!("Model name: {model}"),
-                    ],
+                    lines,
                 }
             }
             TerminalCommand::Free => {

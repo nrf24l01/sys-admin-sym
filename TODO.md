@@ -1,7 +1,7 @@
 # What implement to game
 
-[ ] Normal terminals
+[X] Normal terminals
 [ ] Hoster gameplay
-[ ] SFP SUPPORT
-[ ] Normal OS
-[ ] Powerlines and UPS
+[X] SFP SUPPORT
+[X] Normal OS
+[X] Powerlines and UPS

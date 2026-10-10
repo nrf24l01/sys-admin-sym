@@ -33,6 +33,17 @@ impl From<cloud_provider_sim::SimError> for UiMessage {
     fn from(error: cloud_provider_sim::SimError) -> Self {
         use cloud_provider_sim::SimError::*;
         match error {
+            Bank(error) => Self::new(
+                match error {
+                    cloud_provider_sim::BankError::InvalidAmount => "bank.error-amount",
+                    cloud_provider_sim::BankError::UnknownTerm => "bank.error-term",
+                    cloud_provider_sim::BankError::ActiveLoan => "bank.one-loan-help",
+                    cloud_provider_sim::BankError::NoActiveLoan => "bank.error-inactive",
+                    cloud_provider_sim::BankError::InvalidRepayment => "bank.error-repayment",
+                    cloud_provider_sim::BankError::Capacity => "bank.error-capacity",
+                },
+                vec![],
+            ),
             InvalidPurchaseQuantity => Self::new("shop.invalid-quantity", vec![]),
             Optics(error) => Self::new(super::optics_error_id(error), vec![]),
             InsufficientCable {
@@ -62,6 +73,7 @@ impl From<cloud_provider_sim::SimError> for UiMessage {
                 Self::new("error.cable-too-short", vec![(minimum_cm).to_string()])
             }
             CableTooLong => Self::new("error.cable-too-long", vec![]),
+            InvalidCableSettings => Self::new("error.invalid-cable-settings", vec![]),
             InsufficientConnectors { available } => Self::new(
                 "error.insufficient-connectors",
                 vec![(available).to_string()],

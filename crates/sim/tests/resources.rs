@@ -1,5 +1,6 @@
 use cloud_provider_sim::{
-    Command, DeviceKind, DeviceTemplate, NetworkSim, ServerHardware, ServerPartKind, server_catalog,
+    Command, DeviceKind, DeviceTemplate, NetworkSim, ServerHardware, ServerPartKind,
+    server_power_profile,
 };
 
 #[test]
@@ -8,6 +9,9 @@ fn memory_score_accounts_for_ddr_generation_and_module_type() {
         ServerPartKind::Ram {
             memory_type: memory_type.into(),
             capacity_gb: 30,
+            speed_mt_s: 4800,
+            ranks: 1,
+            voltage_mv: 1100,
         }
         .memory_score_gb()
         .unwrap()
@@ -28,11 +32,11 @@ fn integrated_power_supply_allows_assembled_server_to_be_ready() {
     assert!(hardware.ready());
     assert_eq!(hardware.compute_mhz(), 4 * 3400);
     assert_eq!(hardware.memory_score_gb(), 16 * 5 * 10 / 30);
-    assert_eq!(server_catalog().chassis.integrated_psu_watts, 600);
+    assert_eq!(server_power_profile().psu.capacity_watts, 600);
 }
 
 #[test]
-fn server_has_dedicated_management_nic_and_no_network_credit_when_disconnected() {
+fn server_has_only_two_onboard_nics_and_no_network_credit_when_disconnected() {
     let mut sim = NetworkSim::new();
     let id = match sim
         .execute(Command::BuyDevice {
@@ -48,11 +52,14 @@ fn server_has_dedicated_management_nic_and_no_network_credit_when_disconnected()
     let DeviceKind::Server(server) = &device.kind else {
         panic!("expected server")
     };
-    assert!(
+    assert_eq!(server.ports.len(), 2);
+    assert_eq!(
         server
             .ports
             .iter()
-            .any(|id| sim.port(*id).unwrap().name == "mgmt0")
+            .map(|id| sim.port(*id).unwrap().name.as_str())
+            .collect::<Vec<_>>(),
+        ["eth0", "eth1"]
     );
     assert_eq!(sim.datacenter_resources().lan.compute_mhz, 0);
     assert_eq!(sim.datacenter_resources().global.compute_mhz, 0);

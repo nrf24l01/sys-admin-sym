@@ -7,6 +7,15 @@ impl NetworkSim {
         if let Some(status) = self.virtual_link_status(port) {
             return status;
         }
+        if self.router_svi(port).is_some() {
+            let speed = self.svi_link_speed(port);
+            return LinkStatus {
+                speed,
+                fault: speed.is_none().then_some(LinkFault::NoCable),
+                path: vec![port],
+                optical: Vec::new(),
+            };
+        }
         let path = self.mechanical_path(port);
         if path.is_empty() {
             let fault = if self.cage_profile(port).is_some() && self.endpoint_module(port).is_none()
@@ -99,12 +108,10 @@ impl NetworkSim {
             return failure(LinkFault::Disabled);
         }
         if segments.iter().any(|link| {
-            self.connected_assembly(link.id).is_some()
-                && self
-                    .minimum_routed_cable_length(link.a, link.b, &link.route)
-                    .is_ok_and(|minimum| minimum > link.length_cm)
+            self.minimum_routed_cable_length(link.a, link.b, &link.route)
+                .is_ok_and(|minimum| minimum > link.length_cm)
         }) {
-            return failure(LinkFault::TooLong);
+            return failure(LinkFault::CableTooShort);
         }
         let length: u64 = segments.iter().map(|link| u64::from(link.length_cm)).sum();
         let assemblies: Vec<_> = segments

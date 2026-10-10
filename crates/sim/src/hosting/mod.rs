@@ -154,7 +154,10 @@ impl NetworkSim {
     fn check_vm_management(&self, vm: u64) -> Result<(), String> {
         let host = self.hosting.vms.get(&vm).ok_or("Unknown VM")?.host;
         if !self.hosting_node_eligible(host) {
-            return Err("Node must be powered, prepared and reachable on mgmt0".into());
+            return Err(
+                "Node must be powered, prepared and reachable through its management network"
+                    .into(),
+            );
         }
         Ok(())
     }
@@ -166,7 +169,10 @@ impl NetworkSim {
         let controller = self.hosting_management_controller(management_ip)
             .ok_or("vm-prepare: address must belong to an operational main hoster server; run ./setup-main-hoster-server.sh there first")?;
         if !self.hosting_management_reaches(host, management_ip) {
-            return Err("vm-prepare: main hoster server must be reachable on mgmt0".into());
+            return Err(
+                "vm-prepare: main hoster server must be reachable through its management network"
+                    .into(),
+            );
         }
         let node = self.hosting.nodes.entry(host).or_default();
         node.prepared_at_ms.get_or_insert(self.hosting.now_ms);
@@ -178,21 +184,57 @@ impl NetworkSim {
         Ok(())
     }
     pub(crate) fn advance_hosting(&mut self, ms: u64) {
-        self.hosting.pending_ms = self
-            .hosting
-            .pending_ms
-            .saturating_add(ms.saturating_mul(u64::from(self.hosting.market.time_scale)));
-        while self.hosting.pending_ms >= HOSTING_TICK_MS {
-            self.hosting.pending_ms -= HOSTING_TICK_MS;
-            self.hosting.now_ms = self.hosting.now_ms.saturating_add(HOSTING_TICK_MS);
-            self.auto_configure_hosting_nodes();
-            self.tick_hosting_workloads();
-            self.tick_hosting_subscriptions();
-            self.refresh_hosting_market();
-            self.tick_hosting_market();
+        let mut remaining = ms.saturating_mul(u64::from(self.hosting.market.time_scale));
+        if self.hosting.products.is_empty()
+            && self.hosting.nodes.is_empty()
+            && self.hosting.vms.is_empty()
+            && self.hosting.services.is_empty()
+        {
+            // Empty calendars can skip workload ticks, including very large time jumps.
+            let total = u128::from(self.hosting.pending_ms) + u128::from(remaining);
+            let elapsed = total / u128::from(HOSTING_TICK_MS) * u128::from(HOSTING_TICK_MS);
+            self.hosting.now_ms = self
+                .hosting
+                .now_ms
+                .saturating_add(elapsed.min(u128::from(u64::MAX)) as u64);
+            self.hosting.pending_ms = (total % u128::from(HOSTING_TICK_MS)) as u64;
+            self.bank.advance(remaining, &mut self.money);
+            return;
+        }
+        self.bank.collect_due(&mut self.money);
+        while remaining > 0 {
+            let step = remaining.min(HOSTING_TICK_MS - self.hosting.pending_ms);
+            self.bank.advance(step, &mut self.money);
+            self.hosting.pending_ms += step;
+            remaining -= step;
+            if self.hosting.pending_ms == HOSTING_TICK_MS {
+                self.hosting.pending_ms = 0;
+                self.hosting.now_ms = self.hosting.now_ms.saturating_add(HOSTING_TICK_MS);
+                self.auto_configure_hosting_nodes();
+                self.tick_hosting_workloads();
+                self.tick_hosting_subscriptions();
+                self.refresh_hosting_market();
+                self.tick_hosting_market();
+            }
         }
     }
     pub(crate) fn refresh_hosting_usage(&mut self) {
+        let inactive: Vec<_> = self
+            .runtime
+            .aggregate_network_sources
+            .keys()
+            .copied()
+            .filter(|port| {
+                self.port(*port).is_none()
+                    || self
+                        .virtual_uplink(*port)
+                        .is_some_and(|_| !self.virtual_port_running(*port))
+            })
+            .collect();
+        for port in inactive {
+            self.remove_aggregate_traffic_source(port);
+        }
+
         for n in self.hosting.nodes.values_mut() {
             let oom = n.usage.oom_events;
             n.usage = NodeUsage {
@@ -206,6 +248,9 @@ impl NetworkSim {
             usage.sold_ram_mb += vm.plan.ram_mb;
             usage.virtual_disk_gb += vm.plan.disk_gb;
             usage.physical_disk_gb += vm.physical_disk_gb;
+            if vm.power != VmPower::Running {
+                continue;
+            }
             usage.cpu_demand_mhz += vm.demand.cpu_mhz;
             usage.cpu_used_mhz += vm.metrics.cpu_used_mhz;
             usage.memory_used_mb += vm.metrics.resident_mb;

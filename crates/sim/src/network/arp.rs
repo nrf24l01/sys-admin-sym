@@ -39,6 +39,9 @@ impl NetworkSim {
 
     pub fn wire_vlan_for(&self, port: PortId, vlan: VlanId) -> Option<VlanId> {
         let p = self.port(port)?;
+        if self.router_svi(port).is_some() {
+            return Some(vlan);
+        }
         match &p.config {
             PortConfig::Server(config) => config.tagged_vlans.contains(&vlan).then_some(vlan),
             PortConfig::Switch(config) => match config.mode {
@@ -127,6 +130,7 @@ impl NetworkSim {
             return Ok(mac);
         }
         let request = EthernetFrame {
+            qos: crate::FrameQos::default(),
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
             vlan: self.wire_vlan_for(port, vlan),
@@ -150,6 +154,7 @@ impl NetworkSim {
                 continue;
             }
             let reply = EthernetFrame {
+                qos: crate::FrameQos::default(),
                 source: MacAddress::for_port(delivery.port),
                 destination: request.source,
                 vlan: self.wire_vlan_for(delivery.port, delivery.vlan),
@@ -196,6 +201,7 @@ impl NetworkSim {
     ) -> bool {
         self.prepare_runtime();
         let probe = EthernetFrame {
+            qos: crate::FrameQos::default(),
             source: MacAddress::for_port(port),
             destination: MacAddress([0xff; 6]),
             vlan: self.wire_vlan_for(port, vlan),
@@ -253,7 +259,12 @@ mod tests {
             powered: true,
         })
         .unwrap();
-        let port = sim.device(router).unwrap().ports()[2];
+        let port = sim.device(router).unwrap().ports()[8];
+        sim.execute(Command::SetRouterSwitchport {
+            port,
+            switchport: false,
+        })
+        .unwrap();
         (sim, port)
     }
 

@@ -35,9 +35,28 @@ impl LinuxShell {
                 os.history.remove(0);
             }
         }
+        let before = (os.filesystem.read_bytes.get(), os.filesystem.written_bytes);
         let result = Self::run(sim, device, input);
         let os = sim.guest_mut(device);
         os.shell_depth = os.shell_depth.saturating_sub(1);
+        if os.shell_depth == 0 {
+            let bytes = os
+                .filesystem
+                .read_bytes
+                .get()
+                .saturating_sub(before.0)
+                .saturating_add(os.filesystem.written_bytes.saturating_sub(before.1));
+            let monitoring = matches!(
+                input.split_whitespace().next(),
+                None | Some("power" | "uptime" | "ps")
+            );
+            let cpu_us = if monitoring {
+                0
+            } else {
+                200 + bytes / 50 + input.len() as u64
+            };
+            sim.record_guest_work(device, cpu_us.min(1_000_000), bytes);
+        }
         result
     }
 

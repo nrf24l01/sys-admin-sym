@@ -2,8 +2,8 @@
 
 ## Player workflow
 
-1. Open **Shop → Network → Optics & fiber**. Buy two compatible modules and a
-   finished fiber cord. Buy the Catalyst C1000-24T-4X-L profile or an
+1. Open **Shop → Cables & modules**. Buy two compatible modules and a
+   finished fiber cord. Buy the Catalyst C1000-24T-4X-L from **Network → Switches** or an
    Intel X520-DA2 PCIe adapter when you need 10G. The original C1000-24T-4G-L
    has 1G cages.
 2. Install and power the devices. A server needs a CPU and RAM, and its SFP+

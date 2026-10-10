@@ -27,24 +27,7 @@ pub(super) fn show(
                         "ui.rj45-connectors",
                         &[(stock.connectors).to_string()],
                     ));
-                    let mut automatic = state.cable_length_cm.is_none();
-                    if ui
-                        .checkbox(&mut automatic, tr("ui.auto-shortest-path-5"))
-                        .changed()
-                    {
-                        state.cable_length_cm = if automatic { None } else { Some(100) };
-                    }
-                    if let Some(cm) = &mut state.cable_length_cm {
-                        ui.horizontal(|ui| {
-                            ui.label(tr("ui.cut-length"));
-                            ui.add(
-                                egui::DragValue::new(cm)
-                                    .range(1..=10000)
-                                    .speed(1)
-                                    .suffix(tr("ui.cm")),
-                            );
-                        });
-                    }
+                    super::cable_settings::show(ui, sim, state, actions);
                     ui.horizontal(|ui| {
                         ui.label(tr("ui.jacket-color"));
                         for color in [
