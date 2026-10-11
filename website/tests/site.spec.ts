@@ -1,10 +1,10 @@
 import { mkdir } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 
-const releaseEndpoint = /https:\/\/api\.github\.com\/repos\/.*\/releases/
-const base = 'https://github.com/nrf24l01/sys-admin-sym/releases'
-const assets = ['cloud-provider-sim-x86_64-pc-windows-msvc.zip', 'cloud-provider-sim-x86_64-unknown-linux-gnu.zip', 'game-ssh-x86_64-pc-windows-msvc.zip']
-const published = [{ tag_name: 'v0.1.0', draft: false, prerelease: false, published_at: '2026-10-01T12:00:00Z', html_url: `${base}/tag/v0.1.0`, assets: [...assets, `${assets[0]}.sha256`].map(name => ({ name, size: 12582912, browser_download_url: `${base}/download/v0.1.0/${name}` })) }]
+const downloadBase = 'https://cdn.example.test/sys-admin-sym'
+const gameWindows = 'cloud-provider-sim-x86_64-pc-windows-msvc.zip'
+const gameLinux = 'cloud-provider-sim-x86_64-unknown-linux-gnu.zip'
+const clientWindows = 'game-ssh-x86_64-pc-windows-msvc.zip'
 
 async function loadImagesForScreenshot(page: Page) {
   for (const image of await page.locator('main img').all()) {
@@ -15,10 +15,13 @@ async function loadImagesForScreenshot(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route(releaseEndpoint, route => route.fulfill({ json: [] }))
+  await page.route('**/runtime-config.js', route => route.fulfill({
+    contentType: 'application/javascript',
+    body: `window.__APP_CONFIG__ = { downloadBaseUrl: "${downloadBase}" };`,
+  }))
 })
 
-test('shows real imagery, release-only downloads, and an operable rack view', async ({ page }) => {
+test('shows real imagery, direct package downloads, and an operable rack view', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('/')
@@ -29,11 +32,11 @@ test('shows real imagery, release-only downloads, and an operable rack view', as
   await page.getByRole('button', { name: 'Front', exact: true }).click()
   await page.getByRole('link', { name: 'Download the game', exact: true }).click()
   await expect(page).toHaveURL(/#downloads$/)
-  await expect(page.getByText('Published ZIPs are not available yet.', { exact: false })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Cloud Provider Simulator.*Download ZIP/ })).toBeVisible()
   await expect(page.locator('#downloads a[href*="/actions/"]')).toHaveCount(0)
   await page.getByRole('tab', { name: 'Windows' }).click()
-  await expect(page.getByRole('button', { name: 'Cloud Provider Simulator — Windows — Not available' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'game-ssh — Windows — Not available' })).toBeDisabled()
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}`)
+  await expect(page.getByRole('link', { name: 'game-ssh — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${clientWindows}`)
   await page.getByRole('button', { name: 'Linux installation' }).click()
   await expect(page.getByText('chmod +x cloud-provider-sim', { exact: false })).toBeVisible()
   await expect(page.locator('main img')).toHaveCount(8)
@@ -42,32 +45,37 @@ test('shows real imagery, release-only downloads, and an operable rack view', as
   expect(errors).toEqual([])
 })
 
-test('selects platform-specific ZIPs and disables a missing client', async ({ page }) => {
-  await page.unroute(releaseEndpoint)
-  await page.route(releaseEndpoint, route => route.fulfill({ json: published }))
+test('selects platform-specific ZIPs and checksums under the runtime resource path', async ({ page }) => {
   await page.goto('/#downloads')
   await page.getByRole('tab', { name: 'Windows' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${base}/download/v0.1.0/${assets[0]}`)
-  await expect(page.getByRole('link', { name: 'SHA-256' })).toHaveAttribute('href', `${base}/download/v0.1.0/${assets[0]}.sha256`)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}`)
+  await expect(page.getByRole('link', { name: 'SHA-256' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}.sha256`)
   await page.getByRole('tab', { name: 'Linux' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Linux — Download ZIP' })).toHaveAttribute('href', `${base}/download/v0.1.0/${assets[1]}`)
-  await expect(page.getByRole('button', { name: 'game-ssh — Linux — Not available' })).toBeDisabled()
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Linux — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameLinux}`)
   await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', /trigger-linux$/)
 })
 
-test('recovers from API failure and enables release downloads after retry', async ({ page }) => {
-  await page.unroute(releaseEndpoint)
-  let attempts = 0
-  await page.route(releaseEndpoint, route => {
-    attempts += 1
-    return route.fulfill(attempts === 1 ? { status: 403, headers: { 'x-github-request-id': 'TEST:RATE' }, json: { message: 'API rate limit exceeded' } } : { json: published })
-  })
+test('uses the runtime download base without requesting a release API', async ({ page }) => {
+  const requests: string[] = []
+  await page.unroute('**/runtime-config.js')
+  await page.route('**/runtime-config.js', route => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'window.__APP_CONFIG__ = { downloadBaseUrl: "https://files.example.test/custom/path/" };',
+  }))
+  page.on('request', request => requests.push(request.url()))
   await page.goto('/#downloads')
-  await expect(page.getByText('Couldn’t check published releases.', { exact: false })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Cloud Provider Simulator.*Not available/ })).toBeDisabled()
-  await page.getByRole('button', { name: /Try again/ }).click()
-  await expect(page.getByRole('link', { name: /Cloud Provider Simulator.*Download ZIP/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Try again/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `https://files.example.test/custom/path/resources/${gameWindows}`)
+  expect(requests.some(url => url.includes('api.github.com/repos/'))).toBe(false)
+})
+
+test('disables downloads when the runtime base path is not configured', async ({ page }) => {
+  await page.unroute('**/runtime-config.js')
+  await page.route('**/runtime-config.js', route => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'window.__APP_CONFIG__ = {};',
+  }))
+  await page.goto('/#downloads')
+  await expect(page.getByRole('button', { name: 'Cloud Provider Simulator — Linux — Not available' })).toBeDisabled()
 })
 
 test('persists Russian copy and keeps OS controls keyboard accessible', async ({ page }) => {
@@ -177,17 +185,6 @@ test('searches guides, follows local document links and renders documentation im
   await expect(page).toHaveURL(/\/en\/docs\/server-hardware$/)
 })
 
-test('shows release notes on site instead of opening the release page', async ({ page }) => {
-  await page.unroute(releaseEndpoint)
-  await page.route(releaseEndpoint, route => route.fulfill({ json: [{ ...published[0], body: '## Improvements\nNew optical cables. [Guide](docs/OPTICAL_NETWORKING.md)' }] }))
-  await page.goto('/en#downloads')
-  await page.getByRole('button', { name: 'Release notes' }).first().click()
-  await expect(page.locator('#downloads')).toContainText('New optical cables.')
-  await expect(page.getByRole('link', { name: 'Guide', exact: true })).toHaveAttribute('href', '/en/docs/optical-networking')
-  await expect(page.locator('a[href*="/tag/"]')).toHaveCount(0)
-})
-
-
 test('keeps heading deep links across languages and mobile guides within the viewport', async ({ page }) => {
   await page.goto('/en/docs/game-ssh#connect')
   await expect(page.locator('#connect')).toContainText('Connect')
@@ -204,15 +201,4 @@ test('keeps heading deep links across languages and mobile guides within the vie
   }
   await page.goto('/ru/docs/unknown-guide')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Руководство не найдено')
-})
-
-test('sanitizes untrusted release notes before displaying them', async ({ page }) => {
-  await page.unroute(releaseEndpoint)
-  const body = '<img src=x onerror="window.siteInjected=true">\n\n<script>window.siteInjected=true</script>\n\n[Unsafe](javascript:alert(1))\n\n<a href="https://github.com/nrf24l01/sys-admin-sym/actions">Builds</a>'
-  await page.route(releaseEndpoint, route => route.fulfill({ json: [{ ...published[0], body }] }))
-  await page.goto('/en#downloads')
-  await page.getByRole('button', { name: 'Release notes' }).first().click()
-  await expect(page.locator('#downloads .doc-prose script, #downloads .doc-prose [onerror]')).toHaveCount(0)
-  expect(await page.evaluate(() => 'siteInjected' in window)).toBe(false)
-  await expect(page.getByRole('link', { name: 'Builds', exact: true })).toHaveAttribute('href', '/en#downloads')
 })
