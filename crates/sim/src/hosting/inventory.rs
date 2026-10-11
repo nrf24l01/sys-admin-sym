@@ -121,7 +121,8 @@ impl NetworkSim {
             .is_some_and(|n| n.prepared_at_ms.is_some())
             && self.hosting_management_connected(host)
     }
-    pub fn hosting_capacity(&self, host: DeviceId, storage: HostingStorage) -> NodeCapacity {
+    /// Installed hardware capacity shared by every guest, regardless of its I/O preset.
+    pub fn hosting_capacity(&self, host: DeviceId) -> NodeCapacity {
         let Some(Device {
             kind: DeviceKind::Server(s),
             powered: true,
@@ -161,13 +162,6 @@ impl NetworkSim {
                 .iter()
                 .flatten()
                 .filter_map(|id| drive_catalog().drives.iter().find(|d| &d.id == id))
-                .filter(|d| {
-                    matches!(
-                        (storage, d.kind),
-                        (HostingStorage::Hdd, DriveKind::Hdd)
-                            | (HostingStorage::Ssd, DriveKind::Ssd)
-                    )
-                })
             {
                 c.disk_gb += f64::from(drive.capacity_gb);
                 c.iops += f64::from(drive.read_iops.min(drive.write_iops));
@@ -229,6 +223,12 @@ impl NetworkSim {
         }) {
             return Err("Placement must contain physical servers".into());
         }
+        if p.eligible_groups
+            .iter()
+            .any(|id| !self.hosting.node_groups.contains_key(id))
+        {
+            return Err("Placement must contain existing node groups".into());
+        }
         if p.ipv4_ranges
             .iter()
             .any(|range| !self.provider.owns(*range) || range.length() > 30)
@@ -236,7 +236,8 @@ impl NetworkSim {
             return Err("Select usable owned IPv4 ranges (/30 or larger)".into());
         }
         if publishing
-            && (p.eligible_nodes.is_empty() || p.ipv4_count > 0 && p.ipv4_ranges.is_empty())
+            && (self.hosting_product_nodes(p).is_empty()
+                || p.ipv4_count > 0 && p.ipv4_ranges.is_empty())
         {
             return Err("Select eligible servers and IPv4 ranges before publishing".into());
         }

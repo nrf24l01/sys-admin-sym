@@ -18,9 +18,19 @@ pub enum HostingCategory {
     DedicatedServer,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Guest I/O presets, independent of the physical drives backing the VM.
 pub enum HostingStorage {
     Hdd,
     Ssd,
+}
+impl HostingStorage {
+    /// Sold service limits (IOPS, MB/s), not physical drive ratings.
+    pub const fn io_limits(self) -> (u32, u32) {
+        match self {
+            Self::Hdd => (150, 50),
+            Self::Ssd => (3000, 100),
+        }
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CpuPolicy {
@@ -37,6 +47,7 @@ pub struct HostingProduct {
     pub vcpu: u32,
     pub ram_mb: u64,
     pub disk_gb: u64,
+    /// Last selected I/O preset. The editable limits below are authoritative.
     pub storage: HostingStorage,
     pub port_mbps: u32,
     pub traffic_gb: Option<u64>,
@@ -50,6 +61,9 @@ pub struct HostingProduct {
     pub disk_mb_s: u32,
     pub thin: bool,
     pub eligible_nodes: BTreeSet<DeviceId>,
+    /// Live group membership is resolved when admitting new guests.
+    #[serde(default)]
+    pub eligible_groups: BTreeSet<u64>,
     pub ipv4_ranges: BTreeSet<Ipv4Prefix>,
     pub published: bool,
 }
@@ -76,6 +90,7 @@ impl Default for HostingProduct {
             disk_mb_s: 100,
             thin: true,
             eligible_nodes: BTreeSet::new(),
+            eligible_groups: BTreeSet::new(),
             ipv4_ranges: BTreeSet::new(),
             published: false,
         }
@@ -113,6 +128,39 @@ impl Default for HypervisorPolicy {
             thin_provisioning: true,
         }
     }
+}
+
+/// Shared configuration and canonical membership for virtualization nodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HostingNodeGroup {
+    pub id: u64,
+    pub name: String,
+    pub nodes: BTreeSet<DeviceId>,
+    pub policy: HypervisorPolicy,
+    pub ipv4_ranges: Option<BTreeSet<Ipv4Prefix>>,
+    pub networks: Option<Vec<HostingGroupNetwork>>,
+}
+
+impl Default for HostingNodeGroup {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            name: "New group".into(),
+            nodes: BTreeSet::new(),
+            policy: HypervisorPolicy::default(),
+            ipv4_ranges: None,
+            networks: None,
+        }
+    }
+}
+
+/// A reusable bridge mapping; interface names resolve on each member separately.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostingGroupNetwork {
+    pub interface: String,
+    pub subnet: Ipv4Prefix,
+    pub vlan: Option<VlanId>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostingProviderServer {
@@ -422,6 +470,8 @@ pub struct HostingState {
     pub site_traffic: HostingSiteTraffic,
     pub products: BTreeMap<u64, HostingProduct>,
     pub nodes: BTreeMap<DeviceId, HostingNode>,
+    #[serde(default)]
+    pub node_groups: BTreeMap<u64, HostingNodeGroup>,
     pub vms: BTreeMap<u64, VirtualMachine>,
     pub customers: BTreeMap<u64, HostingCustomer>,
     pub services: BTreeMap<u64, HostingService>,
@@ -456,6 +506,7 @@ impl Default for HostingState {
             site_traffic: HostingSiteTraffic::default(),
             products: BTreeMap::new(),
             nodes: BTreeMap::new(),
+            node_groups: BTreeMap::new(),
             vms: BTreeMap::new(),
             customers: BTreeMap::new(),
             services: BTreeMap::new(),
@@ -517,6 +568,12 @@ pub enum HostingCommand {
         published: bool,
     },
     DeleteProduct(u64),
+    SaveNodeGroup(HostingNodeGroup),
+    DeleteNodeGroup(u64),
+    SetNodeGroup {
+        node: DeviceId,
+        group: Option<u64>,
+    },
     SetNodePolicy {
         node: DeviceId,
         policy: HypervisorPolicy,

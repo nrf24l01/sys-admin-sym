@@ -100,7 +100,23 @@ existing automatic-addressing mode. Previously assigned host aliases still neede
 by live guests remain until those guests are removed; new explicit rules never
 consume additional host IPv4 addresses.
 
-Open **HOSTING**. Create a product, select its eligible servers and one or more
+In **HOSTING → Groups**, create a named node group and select its members.
+The group shares every overcommit ratio, host reserve, swap, ballooning and thin
+provisioning setting, optional IPv4 allocation restrictions, and optional guest
+subnet/interface/VLAN rules. Group rules use a physical interface **name**, such
+as `eth0`, which must exist on every member; each node keeps its own physical
+port IDs. Configure physical cables, host addresses and management preparation
+separately on each node. Save applies the settings to all members together.
+Invalid members, unavailable interface names or invalid network rules reject the
+whole edit without partially updating nodes.
+
+The **Hosting nodes** group selector joins, moves or removes a node. Members show
+their inherited configuration and a shortcut to edit their group; local overrides
+are disabled. Later members immediately receive the current shared settings.
+Leaving a group or deleting it retains the node's last applied configuration and
+existing guests. A node belongs to at most one group.
+
+Open **HOSTING**. Create a product, select its eligible servers or live groups and one or more
 owned IPv4 ranges, configure resources and limits, then save it. Select the saved
 product in the list and publish it. Publishing validates configuration but reserves
 nothing. Live orders check management, hardware, storage class, overcommit policy,
@@ -108,7 +124,11 @@ data connectivity and address inventory before any mutation. The first usable
 address in each owned pool is reserved for its gateway, alongside infrastructure
 addresses, DHCP leases and all existing VM addresses. Addresses are shared by
 products, but each order uses only the intersection of its product's and host
-node's permitted ranges. Changing node selections affects future provisioning;
+node's permitted ranges. Products use the union of direct servers and current group
+members, counting each node once. Group membership changes affect future orders
+immediately; the group rows show current member and ready counts. An empty group
+cannot supply orders, and deleting a group removes its product references without
+turning placement into an unrestricted server selection. Changing node selections affects future provisioning;
 existing guests keep their addresses and supporting interface configuration.
 Automatically assigned node addresses are released when no longer permitted and
 no guest still uses that interface. Node policies and automatic addresses persist
@@ -157,7 +177,7 @@ each affected node and every failing resource: dedicated/shared CPU, RAM, physic
 storage, virtual disk capacity, disk IOPS, disk throughput and NIC bandwidth.
 Each line shows the requested amount, remaining capacity, existing commitments,
 total after the order, policy limit and shortfall. Physical capacity, hypervisor
-reservations, storage class/provisioning mode and the relevant overcommit percentage
+reservations, provisioning mode and the relevant overcommit percentage
 explain the limit. These are admission commitments; live workload utilization is
 shown separately in node and VM metrics. The same checks apply to VM recreation.
 
@@ -174,8 +194,15 @@ shown separately in node and VM metrics. The same checks apply to VM recreation.
   allocation failures, recorded separately; its VM and NIC keep running and host
   OOM counters do not increase. Only actual exhaustion of host RAM and swap can
   stop a VM.
-* HDD and SSD are separate pools built from installed drive capacity, IOPS and
-  throughput ratings. Thick disks reserve their full size; thin disks start with
+* All installed HDD and SSD drives contribute capacity, IOPS and throughput to
+  one shared pool per host. The VM drive type is an editable performance preset:
+  HDD selects 150 IOPS / 50 MB/s, SSD selects 3000 IOPS / 100 MB/s. Either preset
+  can run on either physical drive kind. Changing the selection fills in the
+  limits; custom edits and saved plans retain their values. The configured IOPS
+  limit controls operation rate, and the MB/s limit controls data transfer rate;
+  actual delivery is also bounded by shared physical drive ratings. Admission
+  counts every VM's commitments together, and host/swap storage is reserved once.
+  Thick disks reserve their full size; thin disks start with
   1 GB of configured guest data and grow through completed writes. Capacity,
   IOPS, throughput, bounded operation queues and write failures affect workloads.
   A full guest disk rejects writes separately from physical pool exhaustion.
@@ -260,7 +287,7 @@ there is no new invoicing or expense system. Payment and refund history stays in
 remain safe across saves; reserved addresses also block the existing node and
 DHCP allocators. Existing saves capture the purchased VM contract on destruction.
 
-The existing SQLite/RON save contains products, node preparation and policies,
+The existing SQLite/RON save contains products, live node groups, node preparation and policies,
 VMs and purchased specifications, customer state, services, retained IPv4 leases, payment/refund history,
 clock, RNG, reservations and virtual interfaces. Older saves default to empty
 hosting state and receive both setup and preparation scripts. Existing hosting saves without

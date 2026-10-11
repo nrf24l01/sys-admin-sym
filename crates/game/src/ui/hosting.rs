@@ -5,7 +5,13 @@ use bevy_egui::egui;
 use cloud_provider_sim::*;
 mod addressing;
 mod assignments;
+#[cfg(test)]
+mod group_tests;
+mod groups;
 mod node_networks;
+mod policy;
+#[cfg(test)]
+mod resize_tests;
 mod status;
 
 fn command(actions: &mut MessageWriter<UiAction>, command: HostingCommand) {
@@ -76,6 +82,7 @@ pub(super) fn show(
                     tr("hosting.market"),
                     tr("hosting.provider-site"),
                     tr("hosting.assigned-ipv4"),
+                    tr("hosting.groups"),
                 ]
                 .iter()
                 .enumerate()
@@ -91,6 +98,7 @@ pub(super) fn show(
                 3 => customers(ui, sim),
                 4 => market(ui, sim, state, actions),
                 5 => provider_site(ui, sim, state, actions),
+                7 => groups::show(ui, sim, state, actions),
                 _ => assignments::show(ui, sim, state),
             }
         });
@@ -203,7 +211,8 @@ fn products(
             }
             egui::ScrollArea::vertical()
                 .id_salt("hosting-products")
-                .max_height(590.0)
+                .max_height(ui.available_height())
+                .auto_shrink([false, false])
                 .show(ui, |ui| {
                     for p in sim.hosting.products.values() {
                         if ui
@@ -248,7 +257,8 @@ fn products(
         ui.separator();
         egui::ScrollArea::vertical()
             .id_salt("hosting-product-editor")
-            .max_height(610.0)
+            .max_height(ui.available_height())
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     let p = &mut state.hosting.product;
@@ -291,9 +301,17 @@ fn products(
                         1.0..=1_000_000_000.0,
                     );
                     ui.horizontal(|ui| {
-                        ui.label(tr("hosting.storage"));
-                        ui.selectable_value(&mut p.storage, HostingStorage::Ssd, "SSD");
-                        ui.selectable_value(&mut p.storage, HostingStorage::Hdd, "HDD");
+                        ui.label(tr("hosting.storage"))
+                            .on_hover_text(tr("hosting.storage-help"));
+                        let ssd = ui
+                            .selectable_value(&mut p.storage, HostingStorage::Ssd, "SSD")
+                            .changed();
+                        let hdd = ui
+                            .selectable_value(&mut p.storage, HostingStorage::Hdd, "HDD")
+                            .changed();
+                        if ssd || hdd {
+                            (p.disk_iops, p.disk_mb_s) = p.storage.io_limits();
+                        }
                     });
                     ui.checkbox(&mut p.thin, tr("hosting.thin"));
                     number(
@@ -353,6 +371,7 @@ fn products(
                         1.0..=1000000.0,
                     );
                     ui.separator();
+                    groups::product_selection(ui, sim, p);
                     ui.strong(tr("hosting.eligible"));
                     let mut servers: Vec<_> = sim
                         .devices()
@@ -518,7 +537,7 @@ fn nodes(
         });
         ui.separator();
         if let Some(id) = state.hosting.selected_node {
-            if state.hosting.policy_loaded_for != Some(id) {
+            if state.hosting.policy_loaded_for != Some(id) || sim.hosting_node_group(id).is_some() {
                 state.hosting.policy = sim
                     .hosting
                     .nodes
@@ -540,71 +559,31 @@ fn nodes(
             }
             egui::ScrollArea::vertical()
                 .id_salt("hosting-node-policy")
-                .max_height(600.0)
+                .max_height(ui.available_height())
+                .auto_shrink([false, false])
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        addressing::show(ui, sim, id, state, actions);
-                        node_networks::show(ui, sim, id, state, actions);
+                        groups::node_membership(ui, sim, id, state, actions);
+                        ui.add_enabled_ui(sim.hosting_node_group(id).is_none(), |ui| {
+                            addressing::show(ui, sim, id, state, actions);
+                            node_networks::show(ui, sim, id, state, actions);
+                        });
                         ui.separator();
-                        let policy = &mut state.hosting.policy;
-                        for (label, value) in [
-                            (
-                                tr("hosting.cpu-overcommit"),
-                                &mut policy.cpu_overcommit_percent,
-                            ),
-                            (
-                                tr("hosting.ram-overcommit"),
-                                &mut policy.ram_overcommit_percent,
-                            ),
-                            (
-                                tr("hosting.disk-overcommit"),
-                                &mut policy.storage_overcommit_percent,
-                            ),
-                            (
-                                tr("hosting.io-overcommit"),
-                                &mut policy.io_overcommit_percent,
-                            ),
-                            (
-                                tr("hosting.network-overcommit"),
-                                &mut policy.network_overcommit_percent,
-                            ),
-                        ] {
-                            number(ui, label, value, 100.0..=10000.0);
-                        }
-                        number(
-                            ui,
-                            tr("hosting.reserve-cpu"),
-                            &mut policy.reserved_cpu_mhz,
-                            0.0..=100000000.0,
-                        );
-                        number(
-                            ui,
-                            tr("hosting.reserve-ram"),
-                            &mut policy.reserved_ram_mb,
-                            0.0..=100000000.0,
-                        );
-                        number(
-                            ui,
-                            tr("hosting.reserve-disk"),
-                            &mut policy.reserved_disk_gb,
-                            0.0..=1000000.0,
-                        );
-                        number(ui, tr("hosting.swap"), &mut policy.swap_mb, 0.0..=1000000.0);
-                        ui.checkbox(&mut policy.ballooning, tr("hosting.ballooning"));
-                        ui.checkbox(&mut policy.thin_provisioning, tr("hosting.allow-thin"));
-                        if ui.button(tr("hosting.apply-policy")).clicked() {
-                            command(
-                                actions,
-                                HostingCommand::SetNodePolicy {
-                                    node: id,
-                                    policy: policy.clone(),
-                                },
-                            );
-                        }
+                        ui.add_enabled_ui(sim.hosting_node_group(id).is_none(), |ui| {
+                            policy::show(ui, &mut state.hosting.policy);
+                            if ui.button(tr("hosting.apply-policy")).clicked() {
+                                command(
+                                    actions,
+                                    HostingCommand::SetNodePolicy {
+                                        node: id,
+                                        policy: state.hosting.policy.clone(),
+                                    },
+                                );
+                            }
+                        });
                         if let Some(n) = sim.hosting.nodes.get(&id) {
                             let u = &n.usage;
-                            let c = sim.hosting_capacity(id, HostingStorage::Ssd);
-                            let h = sim.hosting_capacity(id, HostingStorage::Hdd);
+                            let c = sim.hosting_capacity(id);
                             ui.separator();
                             ui.label(tr_args(
                                 "hosting.node-cpu",
@@ -634,11 +613,11 @@ fn nodes(
                                 "hosting.node-disk",
                                 &[
                                     format!("{:.2}", u.physical_disk_gb),
-                                    format!("{:.0}", c.disk_gb + h.disk_gb),
+                                    format!("{:.0}", c.disk_gb),
                                     (u.virtual_disk_gb).to_string(),
                                     format!(
                                         "{:.2}",
-                                        u.virtual_disk_gb as f64 / (c.disk_gb + h.disk_gb).max(1.0)
+                                        u.virtual_disk_gb as f64 / (c.disk_gb).max(1.0)
                                     ),
                                     format!("{:.0}", u.disk_iops),
                                     format!("{:.1}", u.disk_mb_s),
@@ -667,18 +646,18 @@ fn services(
     if state.hosting.selected_service.is_some() && ui.button(tr("hosting.all-services")).clicked() {
         state.hosting.selected_service = None;
     }
-    let services: Vec<_> = sim
+    let services = sim
         .hosting
         .services
         .values()
-        .filter(|s| state.hosting.selected_service.is_none_or(|id| s.id == id))
-        .collect();
+        .filter(|s| state.hosting.selected_service.is_none_or(|id| s.id == id));
     egui::ScrollArea::vertical()
         .id_salt("hosting-services")
-        .max_height(610.0)
-        .show_rows(ui, 250.0, services.len(), |ui, rows| {
-            for i in rows {
-                let s = services[i];
+        .max_height(ui.available_height())
+        .auto_shrink([false, false])
+        // VM status and lifecycle controls give each service a different height.
+        .show(ui, |ui| {
+            for s in services {
                 ui.push_id(s.id, |ui| {
                     ui.strong(tr_args(
                         "hosting.service-row",
@@ -799,7 +778,8 @@ fn customers(ui: &mut egui::Ui, sim: &NetworkSim) {
     let customers: Vec<_> = sim.hosting.customers.values().collect();
     egui::ScrollArea::vertical()
         .id_salt("hosting-customers")
-        .max_height(610.0)
+        .max_height(ui.available_height())
+        .auto_shrink([false, false])
         .show_rows(ui, 80.0, customers.len(), |ui, rows| {
             for i in rows {
                 let c = customers[i];
@@ -899,7 +879,8 @@ fn market(
     ui.strong(tr("hosting.payments"));
     egui::ScrollArea::vertical()
         .id_salt("hosting-payments")
-        .max_height(350.0)
+        .max_height(ui.available_height())
+        .auto_shrink([false, false])
         .show(ui, |ui| {
             for payment in sim.hosting.payments.iter().rev().take(100) {
                 ui.label(tr_args(
@@ -1213,6 +1194,34 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn drive_type_selection_applies_presets_and_preserves_custom_limits_until_changed() {
+        let sim = NetworkSim::new();
+        let ctx = egui::Context::default();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut writer = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut state = UiState::default();
+        state.hosting.product.disk_iops = 1234;
+        state.hosting.product.disk_mb_s = 42;
+        render(&ctx, &mut world, &mut writer, &sim, &mut state, vec![]);
+        assert_eq!(state.hosting.product.disk_iops, 1234);
+        assert_eq!(state.hosting.product.disk_mb_s, 42);
+        click(&ctx, &mut world, &mut writer, &sim, &mut state, "HDD");
+        assert_eq!(state.hosting.product.storage, HostingStorage::Hdd);
+        assert_eq!(state.hosting.product.disk_iops, 150);
+        assert_eq!(state.hosting.product.disk_mb_s, 50);
+        // Editing the limits remains possible, including on the selected preset.
+        state.hosting.product.disk_iops = 765;
+        state.hosting.product.disk_mb_s = 32;
+        click(&ctx, &mut world, &mut writer, &sim, &mut state, "HDD");
+        assert_eq!(state.hosting.product.disk_iops, 765);
+        assert_eq!(state.hosting.product.disk_mb_s, 32);
+        click(&ctx, &mut world, &mut writer, &sim, &mut state, "SSD");
+        assert_eq!(state.hosting.product.storage, HostingStorage::Ssd);
+        assert_eq!(state.hosting.product.disk_iops, 3000);
+        assert_eq!(state.hosting.product.disk_mb_s, 100);
     }
     #[test]
     fn node_editor_applies_a_custom_slice_of_an_owned_24() {

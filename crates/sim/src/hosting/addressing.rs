@@ -51,7 +51,7 @@ impl NetworkSim {
                     self.hosting
                         .products
                         .values()
-                        .filter(|p| p.published && p.eligible_nodes.contains(&node))
+                        .filter(|p| p.published && self.hosting_product_nodes(p).contains(&node))
                         .flat_map(|p| p.ipv4_ranges.iter().copied())
                         .collect()
                 });

@@ -37,7 +37,7 @@ test-tools:
 
 test-hosting:
 	$(CARGO) test -p cloud-provider-sim --test hosting --locked
-	$(CARGO) test -p cloud-provider-game --locked ui::hosting::tests
+	$(CARGO) test -p cloud-provider-game --locked ui::hosting
 
 build:
 	$(CARGO) build $(CARGO_SCOPE) --locked

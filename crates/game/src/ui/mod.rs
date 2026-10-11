@@ -20,6 +20,8 @@ mod settings;
 mod shop;
 mod speed;
 mod terminal_renderer;
+#[cfg(test)]
+mod test_windows;
 mod textures;
 mod upstream;
 use cables::{CableScene, CableView, PowerCableView};

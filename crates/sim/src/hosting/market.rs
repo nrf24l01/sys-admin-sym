@@ -96,10 +96,10 @@ impl NetworkSim {
                 services.iter().map(|s| s.availability).sum::<f64>() / services.len() as f64,
             )
         };
-        let actual_iops = p
-            .eligible_nodes
+        let actual_iops = self
+            .hosting_product_nodes(p)
             .iter()
-            .map(|n| self.hosting_capacity(*n, p.storage).iops)
+            .map(|n| self.hosting_capacity(*n).iops)
             .fold(0.0, f64::max)
             .min(f64::from(p.disk_iops));
         let cpu = f64::from(p.vcpu) * VCPU_MHZ * f64::from(p.cpu_limit_percent) / 100.0 * quality;

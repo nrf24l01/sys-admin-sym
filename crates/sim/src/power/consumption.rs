@@ -80,8 +80,7 @@ impl NetworkSim {
             .copied()
             .unwrap_or_default();
         if let Some(node) = self.hosting.nodes.get(&device) {
-            let ssd = self.hosting_capacity(device, hosting::HostingStorage::Ssd);
-            let hdd = self.hosting_capacity(device, hosting::HostingStorage::Hdd);
+            let capacity = self.hosting_capacity(device);
             let ratio = |used: f64, capacity: f64| {
                 if capacity > 0.0 {
                     (used / capacity * 1000.0).clamp(0.0, 1000.0) as u16
@@ -91,14 +90,14 @@ impl NetworkSim {
             };
             workload.cpu = workload
                 .cpu
-                .saturating_add(ratio(node.usage.cpu_used_mhz, ssd.cpu_mhz))
+                .saturating_add(ratio(node.usage.cpu_used_mhz, capacity.cpu_mhz))
                 .min(1000);
             workload.memory = workload
                 .memory
-                .saturating_add(ratio(node.usage.memory_used_mb, ssd.ram_mb))
+                .saturating_add(ratio(node.usage.memory_used_mb, capacity.ram_mb))
                 .min(1000);
-            let storage = ratio(node.usage.disk_iops, ssd.iops + hdd.iops)
-                .max(ratio(node.usage.disk_mb_s, ssd.disk_mb_s + hdd.disk_mb_s));
+            let storage = ratio(node.usage.disk_iops, capacity.iops)
+                .max(ratio(node.usage.disk_mb_s, capacity.disk_mb_s));
             workload.storage = workload.storage.saturating_add(storage).min(1000);
         }
         workload

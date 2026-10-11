@@ -1,6 +1,6 @@
 use cloud_provider_sim::{
-    DeviceId, HostingMarketConfig, HostingNodeNetwork, HostingProduct, HypervisorPolicy,
-    Ipv4Prefix, PortId,
+    DeviceId, HostingMarketConfig, HostingNodeGroup, HostingNodeNetwork, HostingProduct,
+    HypervisorPolicy, Ipv4Prefix, PortId,
 };
 use std::collections::BTreeSet;
 
@@ -25,4 +25,11 @@ pub struct HostingUiState {
     pub node_network_vlan: u16,
     pub market: HostingMarketConfig,
     pub market_loaded: bool,
+    pub group: HostingNodeGroup,
+    pub group_loaded: bool,
+    pub group_range_input: String,
+    pub group_network_interface: String,
+    pub group_network_subnet: String,
+    pub group_network_tagged: bool,
+    pub group_network_vlan: u16,
 }

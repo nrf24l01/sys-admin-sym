@@ -41,7 +41,7 @@ impl NetworkSim {
         let mut nodes: Vec<_> = if let Some((_, lease)) = retained {
             vec![lease.host]
         } else {
-            p.eligible_nodes.iter().copied().collect()
+            self.hosting_product_nodes(p).into_iter().collect()
         };
         nodes.sort_by_key(|id| {
             (
@@ -66,7 +66,7 @@ impl NetworkSim {
             }
             let node = &self.hosting.nodes[&host];
             let policy = &node.policy;
-            let cap = self.hosting_capacity(host, p.storage);
+            let cap = self.hosting_capacity(host);
             let existing: Vec<_> = self
                 .hosting
                 .vms
@@ -102,28 +102,18 @@ impl NetworkSim {
             let cpu = (cap.cpu_mhz - policy.reserved_cpu_mhz as f64).max(0.0);
             let memory = (cap.ram_mb - policy.reserved_ram_mb as f64).max(0.0);
             let sold_ram: u64 = existing.iter().map(|v| v.plan.ram_mb).sum();
-            let storage_vms: Vec<_> = existing
-                .iter()
-                .filter(|v| v.plan.storage == p.storage)
-                .collect();
             let disk =
                 (cap.disk_gb - policy.reserved_disk_gb as f64 - policy.swap_mb as f64 / 1024.0)
                     .max(0.0);
-            let virtual_disk: u64 = storage_vms.iter().map(|v| v.plan.disk_gb).sum();
-            let physical_disk: f64 = storage_vms.iter().map(|v| v.physical_disk_gb).sum();
+            let virtual_disk: u64 = existing.iter().map(|v| v.plan.disk_gb).sum();
+            let physical_disk: f64 = existing.iter().map(|v| v.physical_disk_gb).sum();
             let initial = if thin {
                 p.disk_gb.min(1) as f64
             } else {
                 p.disk_gb as f64
             };
-            let iops: u64 = storage_vms
-                .iter()
-                .map(|v| u64::from(v.plan.disk_iops))
-                .sum();
-            let throughput: u64 = storage_vms
-                .iter()
-                .map(|v| u64::from(v.plan.disk_mb_s))
-                .sum();
+            let iops: u64 = existing.iter().map(|v| u64::from(v.plan.disk_iops)).sum();
+            let throughput: u64 = existing.iter().map(|v| u64::from(v.plan.disk_mb_s)).sum();
             let bandwidth: u64 = existing.iter().map(|v| u64::from(v.plan.port_mbps)).sum();
             let dedicated_request = if p.cpu_policy == CpuPolicy::Dedicated {
                 f64::from(p.vcpu) * VCPU_MHZ
@@ -134,10 +124,6 @@ impl NetworkSim {
                 f64::from(p.vcpu) * VCPU_MHZ
             } else {
                 0.0
-            };
-            let storage = match p.storage {
-                HostingStorage::Hdd => "HDD",
-                HostingStorage::Ssd => "SSD",
             };
             let failures: Vec<_> = [
                 shortfall("Dedicated CPU", dedicated - dedicated_request, dedicated_request, cpu, "MHz", || {
@@ -152,19 +138,19 @@ impl NetworkSim {
                     format!("Physical RAM {:.2} MiB, hypervisor reservation {} MiB; RAM overcommit {}%.", cap.ram_mb, policy.reserved_ram_mb, policy.ram_overcommit_percent)
                 }),
                 shortfall("Physical storage", physical_disk, initial, disk, "GB", || {
-                    format!("{storage}: installed {:.2} GB, hypervisor reservation {} GB, swap reservation {:.2} GB; {} provisioning requires {:.2} GB initially.", cap.disk_gb, policy.reserved_disk_gb, policy.swap_mb as f64 / 1024.0, if thin { "thin" } else { "thick" }, initial)
+                    format!("Shared storage: installed {:.2} GB, hypervisor reservation {} GB, swap reservation {:.2} GB; {} provisioning requires {:.2} GB initially.", cap.disk_gb, policy.reserved_disk_gb, policy.swap_mb as f64 / 1024.0, if thin { "thin" } else { "thick" }, initial)
                 }),
                 shortfall("Virtual disk capacity", virtual_disk as f64, p.disk_gb as f64,
                     disk * f64::from(policy.storage_overcommit_percent) / 100.0, "GB", || {
-                    format!("{storage}: usable physical storage {:.2} GB; storage overcommit {}%; {} provisioning.", disk, policy.storage_overcommit_percent, if thin { "thin" } else { "thick" })
+                    format!("Shared storage: usable physical storage {:.2} GB; storage overcommit {}%; {} provisioning.", disk, policy.storage_overcommit_percent, if thin { "thin" } else { "thick" })
                 }),
                 shortfall("Disk IOPS", iops as f64, f64::from(p.disk_iops),
                     cap.iops * f64::from(policy.io_overcommit_percent) / 100.0, "IOPS", || {
-                    format!("{storage}: physical capacity {:.2} IOPS; storage performance overcommit {}%.", cap.iops, policy.io_overcommit_percent)
+                    format!("Shared storage: physical capacity {:.2} IOPS; storage performance overcommit {}%.", cap.iops, policy.io_overcommit_percent)
                 }),
                 shortfall("Disk throughput", throughput as f64, f64::from(p.disk_mb_s),
                     cap.disk_mb_s * f64::from(policy.io_overcommit_percent) / 100.0, "MB/s", || {
-                    format!("{storage}: physical throughput {:.2} MB/s; storage performance overcommit {}%.", cap.disk_mb_s, policy.io_overcommit_percent)
+                    format!("Shared storage: physical throughput {:.2} MB/s; storage performance overcommit {}%.", cap.disk_mb_s, policy.io_overcommit_percent)
                 }),
                 shortfall("Network bandwidth", bandwidth as f64, f64::from(p.port_mbps),
                     cap.network_mbps * f64::from(policy.network_overcommit_percent) / 100.0, "Mbps", || {

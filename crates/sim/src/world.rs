@@ -1634,6 +1634,9 @@ impl NetworkSim {
         }
         let device = self.devices.remove(&id).expect("checked");
         self.hosting.nodes.remove(&id);
+        for group in self.hosting.node_groups.values_mut() {
+            group.nodes.remove(&id);
+        }
         if let DeviceKind::Server(server) = &device.kind
             && let Some(hardware) = &server.hardware
         {

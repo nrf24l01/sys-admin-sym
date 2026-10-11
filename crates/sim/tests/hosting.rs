@@ -1,5 +1,7 @@
 use cloud_provider_sim::*;
 use std::net::Ipv4Addr;
+#[path = "hosting/node_groups.rs"]
+mod node_groups;
 fn ip(s: &str) -> Ipv4Addr {
     s.parse().unwrap()
 }
@@ -8,6 +10,21 @@ fn prefix(s: &str) -> Ipv4Prefix {
 }
 fn apply(sim: &mut NetworkSim, c: HostingCommand) {
     sim.execute(Command::Hosting(c)).unwrap();
+}
+
+#[test]
+fn node_group_commands_apply_shared_settings_to_their_members() {
+    let mut lab = Lab::new();
+    let command: HostingCommand = ron::from_str(&format!(
+        "SaveNodeGroup((name:\"Shared nodes\",nodes:[({})]))",
+        lab.host.0
+    ))
+    .expect("Named node groups must be supported by the hosting commands");
+    apply(&mut lab.sim, command);
+    assert_eq!(
+        lab.sim.hosting.nodes[&lab.host].policy,
+        HypervisorPolicy::default()
+    );
 }
 fn power(sim: &mut NetworkSim, id: DeviceId, unit: u8) {
     let rack = RackId(if unit > 4 { 2 } else { 1 });
@@ -1545,10 +1562,7 @@ fn disk_contention_and_thick_reservations_use_installed_drive_ratings() {
                 && v.metrics.disk_iops > 14999.0
                 && v.metrics.disk_queue_ops > 0.0)
     );
-    assert!(
-        l.sim.hosting.nodes[&l.host].usage.disk_iops
-            <= l.sim.hosting_capacity(l.host, HostingStorage::Ssd).iops
-    );
+    assert!(l.sim.hosting.nodes[&l.host].usage.disk_iops <= l.sim.hosting_capacity(l.host).iops);
     apply(
         &mut l.sim,
         HostingCommand::SetVmPower {
@@ -1559,6 +1573,231 @@ fn disk_contention_and_thick_reservations_use_installed_drive_ratings() {
     l.tick();
     assert_eq!(l.sim.hosting.vms[&a].metrics.disk_iops, 0.0);
     assert_eq!(l.sim.hosting.vms[&b].metrics.disk_iops, 30000.0);
+}
+
+#[test]
+fn hdd_guest_on_ssd_storage_obeys_custom_io_limits_after_save_and_recreation() {
+    let mut l = Lab::new();
+    l.prepare();
+    let mut p = l.sim.hosting.products[&l.plan].clone();
+    p.storage = HostingStorage::Hdd;
+    p.disk_iops = 1000;
+    p.disk_mb_s = 25;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p));
+    let service = l.buy(1);
+    let saved = ron::to_string(&l.sim).unwrap();
+    l.sim = ron::from_str(&saved).unwrap();
+    l.sim.rebuild_indexes();
+    apply(&mut l.sim, HostingCommand::DestroyServiceVm(service));
+    apply(&mut l.sim, HostingCommand::RecreateServiceVm(service));
+    let vm = l.vm(service);
+    assert_eq!(l.sim.hosting.vms[&vm].plan.storage, HostingStorage::Hdd);
+    l.demand(
+        vm,
+        WorkloadDemand {
+            read_iops: 10000.0,
+            disk_mb_s: 250.0,
+            disk_growth_gb_s: 1.0,
+            ..Default::default()
+        },
+    );
+    l.tick();
+    let guest = &l.sim.hosting.vms[&vm];
+    assert_eq!(guest.metrics.disk_iops, 1000.0);
+    assert_eq!(guest.metrics.disk_mb_s, 25.0);
+    assert_eq!(guest.metrics.disk_ready, 0.0);
+    assert_eq!(guest.metrics.write_failed_gb, 0.0);
+    assert!(guest.disk_used_gb > 1.0);
+    assert_eq!(guest.metrics.quality, 1.0);
+}
+
+#[test]
+fn ssd_guest_on_hdd_storage_is_limited_by_physical_io() {
+    let mut l = Lab::new();
+    l.sim
+        .execute(Command::RemoveDrive {
+            device: l.host,
+            bay: 0,
+        })
+        .unwrap();
+    l.sim
+        .execute(Command::BuyDrive {
+            drive_id: "enterprise_hdd_2tb".into(),
+        })
+        .unwrap();
+    l.sim
+        .execute(Command::InstallDrive {
+            device: l.host,
+            drive_id: "enterprise_hdd_2tb".into(),
+            bay: Some(0),
+        })
+        .unwrap();
+    l.prepare();
+    // The default SSD plan is within the host's I/O overcommit policy.
+    l.policy(|p| p.io_overcommit_percent = 2000);
+    let service = l.buy(1);
+    let vm = l.vm(service);
+    l.demand(
+        vm,
+        WorkloadDemand {
+            read_iops: 3000.0,
+            disk_mb_s: 50.0,
+            ..Default::default()
+        },
+    );
+    l.tick();
+    let metrics = &l.sim.hosting.vms[&vm].metrics;
+    assert_eq!(metrics.disk_iops, 170.0);
+    assert!(metrics.disk_ready > 0.9);
+    assert!(metrics.disk_queue_ops > 0.0);
+}
+
+#[test]
+fn mixed_physical_drives_supply_one_guest_storage_pool() {
+    let mut l = Lab::new();
+    l.sim
+        .execute(Command::BuyDrive {
+            drive_id: "enterprise_hdd_2tb".into(),
+        })
+        .unwrap();
+    l.sim
+        .execute(Command::InstallDrive {
+            device: l.host,
+            drive_id: "enterprise_hdd_2tb".into(),
+            bay: Some(1),
+        })
+        .unwrap();
+    l.prepare();
+    let mut p = l.sim.hosting.products[&l.plan].clone();
+    p.disk_gb = 2200;
+    p.thin = false;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p));
+    l.buy(1);
+    assert_eq!(l.sim.hosting.nodes[&l.host].usage.physical_disk_gb, 2200.0);
+}
+
+#[test]
+fn different_guest_drive_types_share_admission_commitments() {
+    let mut l = Lab::new();
+    l.prepare();
+    let mut p = l.sim.hosting.products[&l.plan].clone();
+    p.thin = false;
+    p.disk_gb = 600;
+    p.disk_iops = 20000;
+    p.disk_mb_s = 400;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p.clone()));
+    let service = l.buy(1);
+    // Stopped guests retain their capacity and performance commitments.
+    let vm = l.vm(service);
+    apply(
+        &mut l.sim,
+        HostingCommand::SetVmPower {
+            vm,
+            power: VmPower::Stopped,
+        },
+    );
+    l.policy(|policy| {
+        policy.storage_overcommit_percent = 100;
+        policy.io_overcommit_percent = 100;
+    });
+    p.storage = HostingStorage::Hdd;
+    p.disk_gb = 400;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p));
+    let before = ron::to_string(&l.sim).unwrap();
+    let error = l
+        .sim
+        .purchase_hosting(2, l.plan, CustomerCategory::Website)
+        .unwrap_err();
+    for message in [
+        "Physical storage: requested 400.00 GB, available 354.00 GB",
+        "Virtual disk capacity: requested 400.00 GB, available 354.00 GB",
+        "Disk IOPS: requested 20000.00 IOPS, available 10000.00 IOPS",
+        "Disk throughput: requested 400.00 MB/s, available 120.00 MB/s",
+    ] {
+        assert!(error.contains(message), "Missing {message}: {error}");
+    }
+    assert_eq!(ron::to_string(&l.sim).unwrap(), before);
+}
+
+#[test]
+fn different_guest_drive_types_compete_for_the_same_physical_io() {
+    let mut l = Lab::new();
+    l.prepare();
+    let mut p = l.sim.hosting.products[&l.plan].clone();
+    p.disk_iops = 100000;
+    p.disk_mb_s = 1000;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p.clone()));
+    let a = l.buy(1);
+    let a = l.vm(a);
+    p.storage = HostingStorage::Hdd;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p));
+    let b = l.buy(2);
+    let b = l.vm(b);
+    for id in [a, b] {
+        l.demand(
+            id,
+            WorkloadDemand {
+                read_iops: 60000.0,
+                disk_mb_s: 1000.0,
+                ..Default::default()
+            },
+        );
+    }
+    l.tick();
+    assert!(l.sim.hosting.nodes[&l.host].usage.disk_iops <= 30000.0);
+    assert!(l.sim.hosting.nodes[&l.host].usage.disk_mb_s <= 520.0);
+    for id in [a, b] {
+        let metrics = &l.sim.hosting.vms[&id].metrics;
+        assert!(metrics.disk_iops > 0.0 && metrics.disk_iops < 15000.0);
+        assert!(metrics.disk_mb_s > 0.0 && metrics.disk_mb_s < 260.0);
+        assert!(metrics.disk_ready > 0.0);
+    }
+    apply(
+        &mut l.sim,
+        HostingCommand::SetVmPower {
+            vm: a,
+            power: VmPower::Stopped,
+        },
+    );
+    l.tick();
+    assert_eq!(l.sim.hosting.vms[&a].metrics.disk_iops, 0.0);
+    assert!(l.sim.hosting.vms[&b].metrics.disk_iops > 15000.0);
+}
+
+#[test]
+fn different_guest_drive_types_share_thin_disk_exhaustion() {
+    let mut l = Lab::new();
+    l.prepare();
+    let mut p = l.sim.hosting.products[&l.plan].clone();
+    p.disk_gb = 1300;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p.clone()));
+    let a = l.buy(1);
+    let a = l.vm(a);
+    p.storage = HostingStorage::Hdd;
+    apply(&mut l.sim, HostingCommand::SaveProduct(p));
+    let b = l.buy(2);
+    let b = l.vm(b);
+    for id in [a, b] {
+        l.demand(
+            id,
+            WorkloadDemand {
+                read_iops: 3000.0,
+                disk_mb_s: 100.0,
+                disk_growth_gb_s: 1.0,
+                ..Default::default()
+            },
+        );
+    }
+    for _ in 0..20 {
+        l.tick();
+    }
+    assert_eq!(l.sim.hosting.nodes[&l.host].usage.physical_disk_gb, 954.0);
+    for id in [a, b] {
+        let vm = &l.sim.hosting.vms[&id];
+        assert_eq!(vm.physical_disk_gb, 477.0);
+        assert!(vm.metrics.write_failed_gb > 0.0);
+        assert_eq!(vm.metrics.guest_disk_full_gb, 0.0);
+    }
 }
 #[test]
 fn stopped_rebooted_and_exclusive_servers_obey_their_lifecycle() {
@@ -1597,7 +1836,7 @@ fn capacity_diagnostics_identify_each_resource_and_failed_orders_are_atomic() {
     let mut l = Lab::new();
     l.prepare();
     l.buy(1);
-    let cap = l.sim.hosting_capacity(l.host, HostingStorage::Ssd);
+    let cap = l.sim.hosting_capacity(l.host);
     let policy = &l.sim.hosting.nodes[&l.host].policy;
     let cpu = cap.cpu_mhz - policy.reserved_cpu_mhz as f64;
     let disk = cap.disk_gb - policy.reserved_disk_gb as f64 - policy.swap_mb as f64 / 1024.0;
@@ -1704,7 +1943,7 @@ fn ram_diagnostics_account_for_bookings_reservations_and_policy_changes() {
     let mut l = Lab::new();
     l.prepare();
     l.buy(1);
-    let cap = l.sim.hosting_capacity(l.host, HostingStorage::Ssd);
+    let cap = l.sim.hosting_capacity(l.host);
     l.policy(|p| {
         p.reserved_ram_mb = cap.ram_mb as u64 - 3584;
         p.ram_overcommit_percent = 100;
@@ -1769,7 +2008,7 @@ fn capacity_diagnostics_report_all_failed_resources_on_all_candidate_nodes() {
     product.eligible_nodes.insert(second);
     apply(&mut l.sim, HostingCommand::SaveProduct(product));
     for node in [l.host, second] {
-        let cap = l.sim.hosting_capacity(node, HostingStorage::Ssd);
+        let cap = l.sim.hosting_capacity(node);
         let mut policy = l.sim.hosting.nodes[&node].policy.clone();
         policy.reserved_cpu_mhz = cap.cpu_mhz as u64 + 1;
         policy.reserved_ram_mb = cap.ram_mb as u64 + 1;
@@ -3696,10 +3935,5 @@ fn guest_bandwidth_counts_public_subnets_inside_owned_ranges_and_excludes_privat
             ),
         })
         .unwrap();
-    assert_eq!(
-        l.sim
-            .hosting_capacity(l.host, HostingStorage::Ssd)
-            .network_mbps,
-        1000.0
-    );
+    assert_eq!(l.sim.hosting_capacity(l.host).network_mbps, 1000.0);
 }

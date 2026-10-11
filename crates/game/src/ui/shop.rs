@@ -66,7 +66,9 @@ pub(super) fn show(
                     .show(ui, |ui| {
                         egui::ScrollArea::vertical()
                             .id_salt("shop-compact-filters")
-                            .max_height(220.0)
+                            // Share the remaining height with the product controls and list.
+                            .max_height((ui.available_height() * 0.35).min(220.0))
+                            .min_scrolled_height(0.0)
                             .show(ui, |ui| filters::sidebar(ui, state, sim));
                     });
                 products(ui, sim, state, selected, textures, actions);
@@ -77,6 +79,8 @@ pub(super) fn show(
                         egui::ScrollArea::vertical()
                             .id_salt("shop-sidebar")
                             .max_height(ui.available_height())
+                            .auto_shrink([false, false])
+                            .min_scrolled_height(0.0)
                             .show(ui, |ui| filters::sidebar(ui, state, sim));
                     });
                     ui.separator();
@@ -102,6 +106,8 @@ pub(super) fn show(
                             egui::ScrollArea::vertical()
                                 .id_salt("shop-inline-details")
                                 .max_height(ui.available_height())
+                                .auto_shrink([false, false])
+                                .min_scrolled_height(0.0)
                                 .show(ui, |ui| {
                                     details::contents(
                                         ui,
@@ -177,7 +183,8 @@ fn products(
             "shop-products",
             (!state.all_categories).then_some((state.category, state.section)),
         ))
-        .max_height(ui.available_height().max(80.0))
+        .max_height(ui.available_height())
+        .min_scrolled_height(0.0)
         .auto_shrink([false, false]);
     if groups.is_empty() {
         scroll.show(ui, |ui| {

@@ -2,6 +2,7 @@
 //! and ordinary IPv4 ports attached to a host bridge in the Ethernet engine.
 mod addressing;
 mod admission;
+mod groups;
 mod inventory;
 mod lifecycle;
 mod market;
@@ -47,27 +48,24 @@ impl NetworkSim {
             HostingCommand::DeleteProduct(id) => {
                 self.hosting.products.remove(&id).ok_or("Unknown product")?;
             }
+            HostingCommand::SaveNodeGroup(group) => self.save_hosting_node_group(group)?,
+            HostingCommand::DeleteNodeGroup(id) => self.delete_hosting_node_group(id)?,
+            HostingCommand::SetNodeGroup { node, group } => {
+                self.set_hosting_node_group(node, group)?;
+            }
             HostingCommand::SetNodePolicy { node, policy } => {
+                self.check_hosting_group_override(node)?;
                 if !matches!(
                     self.device(node).map(|d| &d.kind),
                     Some(DeviceKind::Server(_))
                 ) {
                     return Err("Select a physical server".into());
                 }
-                for ratio in [
-                    policy.cpu_overcommit_percent,
-                    policy.ram_overcommit_percent,
-                    policy.storage_overcommit_percent,
-                    policy.io_overcommit_percent,
-                    policy.network_overcommit_percent,
-                ] {
-                    if !(100..=10000).contains(&ratio) {
-                        return Err("Overcommit must be between 100% and 10000%".into());
-                    }
-                }
+                groups::validate_policy(&policy)?;
                 self.hosting.nodes.entry(node).or_default().policy = policy;
             }
             HostingCommand::SetNodeIpv4Ranges { node, ranges } => {
+                self.check_hosting_group_override(node)?;
                 if !matches!(
                     self.device(node).map(|d| &d.kind),
                     Some(DeviceKind::Server(_))
@@ -85,6 +83,7 @@ impl NetworkSim {
                 self.hosting.nodes.entry(node).or_default().ipv4_ranges = ranges;
             }
             HostingCommand::SetNodeNetworks { node, networks } => {
+                self.check_hosting_group_override(node)?;
                 self.validate_hosting_node_networks(node, networks.as_deref())?;
                 self.hosting.nodes.entry(node).or_default().networks = networks;
             }

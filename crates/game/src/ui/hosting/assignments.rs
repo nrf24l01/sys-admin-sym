@@ -54,7 +54,8 @@ pub(super) fn show(ui: &mut egui::Ui, sim: &NetworkSim, state: &mut UiState) {
         .collect();
     egui::ScrollArea::vertical()
         .id_salt("hosting-assigned-ips")
-        .max_height(480.0)
+        .max_height(ui.available_height())
+        .auto_shrink([false, false])
         .show_rows(ui, 65.0, rows.len(), |ui, indices| {
             for i in indices {
                 let row = &rows[i];

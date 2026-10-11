@@ -515,6 +515,128 @@ fn cached_search_follows_language_switches_and_same_language_catalog_reload() {
 }
 
 #[test]
+fn shop_scroll_viewport_tracks_window_growth_and_shrinkage() {
+    use crate::ui::test_windows;
+    for list in [false, true] {
+        let ctx = egui::Context::default();
+        let sim = NetworkSim::new();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut state = ShopState {
+            open: true,
+            all_categories: true,
+            list_view: list,
+            ..Default::default()
+        };
+        let screen = egui::vec2(2000.0, 1500.0);
+        let mut render = |events| {
+            frame(
+                &ctx,
+                &mut state,
+                &sim,
+                &mut world,
+                &mut system,
+                events,
+                screen,
+            )
+        };
+        for _ in 0..3 {
+            render(vec![]);
+        }
+        for size in [
+            egui::vec2(1300.0, 900.0),
+            egui::vec2(800.0, 450.0),
+            egui::vec2(1200.0, 800.0),
+        ] {
+            let output = test_windows::resize(&ctx, "equipment-shop-window", size, &mut render);
+            let window = test_windows::rect(&ctx, "equipment-shop-window");
+            let clip = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Mesh(mesh)
+                        if matches!(mesh.texture_id, egui::TextureId::User(_)) =>
+                    {
+                        Some(shape.clip_rect)
+                    }
+                    _ => None,
+                })
+                .expect("Visible product artwork");
+            test_windows::fills_window_bottom(window, clip);
+            assert!(
+                clip.right() <= window.right(),
+                "Product list overflows window"
+            );
+        }
+        let output = test_windows::resize(
+            &ctx,
+            "equipment-shop-window",
+            egui::vec2(600.0, 650.0),
+            &mut render,
+        );
+        test_windows::click_text(&output, &tr("shop.categories-filters"), &mut render);
+        // Finish the expanding filter animation before shrinking the window.
+        for _ in 0..20 {
+            render(vec![]);
+        }
+        test_windows::resize(
+            &ctx,
+            "equipment-shop-window",
+            egui::vec2(600.0, 450.0),
+            &mut render,
+        );
+    }
+}
+
+#[test]
+fn shop_details_and_comparison_scroll_areas_follow_window_resizing() {
+    use crate::ui::test_windows;
+    for comparison in [false, true] {
+        let ctx = egui::Context::default();
+        let sim = NetworkSim::new();
+        let mut world = World::new();
+        world.init_resource::<Messages<UiAction>>();
+        let mut system = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+        let mut state = ShopState {
+            open: true,
+            selected_offer: Some("enterprise_ssd_960gb".into()),
+            details_open: !comparison,
+            comparison_open: comparison,
+            compared: ["enterprise_ssd_960gb".into(), "enterprise_hdd_2tb".into()].into(),
+            ..Default::default()
+        };
+        let id = if comparison {
+            "shop-comparison"
+        } else {
+            "shop-product-details"
+        };
+        let mut render = |events| {
+            frame(
+                &ctx,
+                &mut state,
+                &sim,
+                &mut world,
+                &mut system,
+                events,
+                egui::vec2(2200.0, 1600.0),
+            )
+        };
+        for _ in 0..3 {
+            render(vec![]);
+        }
+        for height in [900.0, 400.0, 800.0] {
+            test_windows::resize(
+                &ctx,
+                id,
+                egui::vec2(if comparison { 1000.0 } else { 500.0 }, height),
+                &mut render,
+            );
+        }
+    }
+}
+
+#[test]
 fn virtual_product_rows_skip_offscreen_cards_and_keep_scrolling_interactive() {
     for list in [false, true] {
         let ctx = egui::Context::default();

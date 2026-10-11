@@ -127,7 +127,7 @@ impl NetworkSim {
                 continue;
             }
             let policy = self.hosting.nodes[&host].policy.clone();
-            let cap = self.hosting_capacity(host, HostingStorage::Ssd);
+            let cap = self.hosting_capacity(host);
             let cpu_capacity = (cap.cpu_mhz - policy.reserved_cpu_mhz as f64).max(0.0);
             let memory_capacity = (cap.ram_mb - policy.reserved_ram_mb as f64).max(0.0);
             let weights: Vec<_> = ids
@@ -179,10 +179,8 @@ impl NetworkSim {
             }
             // Reclaim cache, then swap cold pages. Exhausting both kills the
             // largest working set; virtual allocations alone never trigger OOM.
-            let total_disk = self.hosting_capacity(host, HostingStorage::Hdd).disk_gb
-                + self.hosting_capacity(host, HostingStorage::Ssd).disk_gb;
             let usable_swap = (policy.swap_mb as f64)
-                .min((total_disk - policy.reserved_disk_gb as f64).max(0.0) * 1024.0);
+                .min((cap.disk_gb - policy.reserved_disk_gb as f64).max(0.0) * 1024.0);
             while memory_demand.iter().sum::<f64>() > memory_capacity + usable_swap {
                 let Some((victim, _)) = memory_demand
                     .iter()
@@ -253,135 +251,128 @@ impl NetworkSim {
                 }
                 vm.metrics.completed_cpu_mhz_seconds += vm.metrics.cpu_used_mhz * seconds;
             }
-            for storage in [HostingStorage::Hdd, HostingStorage::Ssd] {
-                let cap = self.hosting_capacity(host, storage);
-                let disk_capacity =
-                    (cap.disk_gb - policy.reserved_disk_gb as f64 - policy.swap_mb as f64 / 1024.0)
-                        .max(0.0);
-                let disk_ids: Vec<_> = ids
-                    .iter()
-                    .copied()
-                    .filter(|id| self.hosting.vms[id].plan.storage == storage)
-                    .collect();
-                let disk_weights: Vec<_> = disk_ids
-                    .iter()
-                    .map(|id| f64::from(self.hosting.vms[id].plan.cpu_weight))
-                    .collect();
-                let iops: Vec<_> = disk_ids
-                    .iter()
-                    .map(|id| {
-                        let v = &self.hosting.vms[id];
-                        if v.power != VmPower::Running {
-                            return 0.0;
-                        }
-                        (v.demand.read_iops
-                            + v.demand.write_iops
-                            + v.metrics.swapped_mb * 1024.0 / 4.0 / seconds
-                            + v.metrics.disk_queue_ops / seconds)
-                            .min(f64::from(v.plan.disk_iops))
-                    })
-                    .collect();
-                let throughput: Vec<_> = disk_ids
-                    .iter()
-                    .map(|id| {
-                        self.hosting.vms[id]
-                            .demand
-                            .disk_mb_s
-                            .min(f64::from(self.hosting.vms[id].plan.disk_mb_s))
-                    })
-                    .collect();
-                let io_allocation = fair_schedule(&iops, &disk_weights, cap.iops);
-                let mb_allocation = fair_schedule(&throughput, &disk_weights, cap.disk_mb_s);
-                let mut free = (disk_capacity
-                    - disk_ids
-                        .iter()
-                        .map(|id| self.hosting.vms[id].physical_disk_gb)
-                        .sum::<f64>())
-                .max(0.0);
-                let requested_writes: Vec<_> = disk_ids
-                    .iter()
-                    .enumerate()
-                    .map(|(i, id)| {
-                        let v = &self.hosting.vms[id];
-                        let io_fraction = if iops[i] > 0.0 {
-                            (io_allocation[i] / iops[i]).min(1.0)
-                        } else {
-                            1.0
-                        };
-                        (v.demand.disk_growth_gb_s * seconds * io_fraction)
-                            .min(mb_allocation[i] * io_fraction * seconds / 1000.0)
-                    })
-                    .collect();
-                let growth: Vec<_> = disk_ids
-                    .iter()
-                    .zip(&requested_writes)
-                    .map(|(id, requested)| {
-                        requested.min(
-                            (self.hosting.vms[id].plan.disk_gb as f64
-                                - self.hosting.vms[id].disk_used_gb)
-                                .max(0.0),
-                        )
-                    })
-                    .collect();
-                let requested_growth: Vec<_> = disk_ids
-                    .iter()
-                    .zip(&growth)
-                    .map(|(id, growth)| {
-                        if self.hosting.vms[id].plan.thin {
-                            *growth
-                        } else {
-                            0.0
-                        }
-                    })
-                    .collect();
-                let growth_allocation = fair_schedule(&requested_growth, &disk_weights, free);
-                for (i, id) in disk_ids.iter().enumerate() {
-                    let vm = self.hosting.vms.get_mut(id).unwrap();
-                    if vm.power != VmPower::Running {
-                        continue;
+            let disk_capacity =
+                (cap.disk_gb - policy.reserved_disk_gb as f64 - policy.swap_mb as f64 / 1024.0)
+                    .max(0.0);
+            let disk_ids = &ids;
+            let disk_weights: Vec<_> = disk_ids
+                .iter()
+                .map(|id| f64::from(self.hosting.vms[id].plan.cpu_weight))
+                .collect();
+            let iops: Vec<_> = disk_ids
+                .iter()
+                .map(|id| {
+                    let v = &self.hosting.vms[id];
+                    if v.power != VmPower::Running {
+                        return 0.0;
                     }
+                    (v.demand.read_iops
+                        + v.demand.write_iops
+                        + v.metrics.swapped_mb * 1024.0 / 4.0 / seconds
+                        + v.metrics.disk_queue_ops / seconds)
+                        .min(f64::from(v.plan.disk_iops))
+                })
+                .collect();
+            let throughput: Vec<_> = disk_ids
+                .iter()
+                .map(|id| {
+                    self.hosting.vms[id]
+                        .demand
+                        .disk_mb_s
+                        .min(f64::from(self.hosting.vms[id].plan.disk_mb_s))
+                })
+                .collect();
+            let io_allocation = fair_schedule(&iops, &disk_weights, cap.iops);
+            let mb_allocation = fair_schedule(&throughput, &disk_weights, cap.disk_mb_s);
+            let mut free = (disk_capacity
+                - disk_ids
+                    .iter()
+                    .map(|id| self.hosting.vms[id].physical_disk_gb)
+                    .sum::<f64>())
+            .max(0.0);
+            let requested_writes: Vec<_> = disk_ids
+                .iter()
+                .enumerate()
+                .map(|(i, id)| {
+                    let v = &self.hosting.vms[id];
                     let io_fraction = if iops[i] > 0.0 {
                         (io_allocation[i] / iops[i]).min(1.0)
                     } else {
                         1.0
                     };
-                    let mb_fraction = if throughput[i] > 0.0 {
-                        (mb_allocation[i] / throughput[i]).min(1.0)
+                    (v.demand.disk_growth_gb_s * seconds * io_fraction)
+                        .min(mb_allocation[i] * io_fraction * seconds / 1000.0)
+                })
+                .collect();
+            let growth: Vec<_> = disk_ids
+                .iter()
+                .zip(&requested_writes)
+                .map(|(id, requested)| {
+                    requested.min(
+                        (self.hosting.vms[id].plan.disk_gb as f64
+                            - self.hosting.vms[id].disk_used_gb)
+                            .max(0.0),
+                    )
+                })
+                .collect();
+            let requested_growth: Vec<_> = disk_ids
+                .iter()
+                .zip(&growth)
+                .map(|(id, growth)| {
+                    if self.hosting.vms[id].plan.thin {
+                        *growth
                     } else {
-                        1.0
-                    };
-                    vm.metrics.disk_iops = io_allocation[i] * mb_fraction;
-                    vm.metrics.disk_mb_s = mb_allocation[i] * io_fraction;
-                    let delivery = entitled.get_mut(id).unwrap();
-                    delivery.read_iops = iops[i];
-                    delivery.disk_mb_s = throughput[i];
-                    vm.metrics.disk_ready = 1.0 - io_fraction.min(mb_fraction);
-                    let incoming_ops = (vm.demand.read_iops + vm.demand.write_iops) * seconds
-                        + vm.metrics.swapped_mb * 256.0;
-                    let queue = (vm.metrics.disk_queue_ops + incoming_ops
-                        - vm.metrics.disk_iops * seconds)
-                        .max(0.0);
-                    // A bounded guest queue rejects excess operations instead of
-                    // unboundedly accumulating simulation objects.
-                    vm.metrics.disk_queue_ops = queue.min(f64::from(vm.plan.disk_iops) * 30.0);
-                    vm.metrics.disk_latency_ms = if vm.metrics.disk_iops > 0.0 {
-                        1000.0 / vm.metrics.disk_iops
-                            + vm.metrics.disk_queue_ops / vm.metrics.disk_iops * 1000.0
-                    } else {
-                        30000.0
-                    };
-                    let accepted = if vm.plan.thin {
-                        growth_allocation[i].min(free)
-                    } else {
-                        growth[i]
-                    };
-                    vm.metrics.guest_disk_full_gb = (requested_writes[i] - growth[i]).max(0.0);
-                    vm.metrics.write_failed_gb = (growth[i] - accepted).max(0.0);
-                    vm.disk_used_gb += accepted;
-                    if vm.plan.thin {
-                        vm.physical_disk_gb += accepted;
-                        free -= accepted;
+                        0.0
                     }
+                })
+                .collect();
+            let growth_allocation = fair_schedule(&requested_growth, &disk_weights, free);
+            for (i, id) in disk_ids.iter().enumerate() {
+                let vm = self.hosting.vms.get_mut(id).unwrap();
+                if vm.power != VmPower::Running {
+                    continue;
+                }
+                let io_fraction = if iops[i] > 0.0 {
+                    (io_allocation[i] / iops[i]).min(1.0)
+                } else {
+                    1.0
+                };
+                let mb_fraction = if throughput[i] > 0.0 {
+                    (mb_allocation[i] / throughput[i]).min(1.0)
+                } else {
+                    1.0
+                };
+                vm.metrics.disk_iops = io_allocation[i] * mb_fraction;
+                vm.metrics.disk_mb_s = mb_allocation[i] * io_fraction;
+                let delivery = entitled.get_mut(id).unwrap();
+                delivery.read_iops = iops[i];
+                delivery.disk_mb_s = throughput[i];
+                vm.metrics.disk_ready = 1.0 - io_fraction.min(mb_fraction);
+                let incoming_ops = (vm.demand.read_iops + vm.demand.write_iops) * seconds
+                    + vm.metrics.swapped_mb * 256.0;
+                let queue = (vm.metrics.disk_queue_ops + incoming_ops
+                    - vm.metrics.disk_iops * seconds)
+                    .max(0.0);
+                // A bounded guest queue rejects excess operations instead of
+                // unboundedly accumulating simulation objects.
+                vm.metrics.disk_queue_ops = queue.min(f64::from(vm.plan.disk_iops) * 30.0);
+                vm.metrics.disk_latency_ms = if vm.metrics.disk_iops > 0.0 {
+                    1000.0 / vm.metrics.disk_iops
+                        + vm.metrics.disk_queue_ops / vm.metrics.disk_iops * 1000.0
+                } else {
+                    30000.0
+                };
+                let accepted = if vm.plan.thin {
+                    growth_allocation[i].min(free)
+                } else {
+                    growth[i]
+                };
+                vm.metrics.guest_disk_full_gb = (requested_writes[i] - growth[i]).max(0.0);
+                vm.metrics.write_failed_gb = (growth[i] - accepted).max(0.0);
+                vm.disk_used_gb += accepted;
+                if vm.plan.thin {
+                    vm.physical_disk_gb += accepted;
+                    free -= accepted;
                 }
             }
         }

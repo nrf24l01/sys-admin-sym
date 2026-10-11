@@ -88,6 +88,8 @@ pub(super) fn windows(
             .show(viewport, |ui| {
                 super::style(ui);
                 egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .min_scrolled_height(0.0)
                     .show(ui, |ui| contents(ui, offer, state, sim, textures, actions));
             });
         state.details_open = open;
@@ -112,64 +114,72 @@ pub(super) fn windows(
                     state.compared.clear();
                     state.comparison_open = false;
                 }
-                egui::ScrollArea::both().show(ui, |ui| {
-                    let keys: BTreeSet<_> = offers
-                        .iter()
-                        .flat_map(|offer| offer.attributes.iter().map(|a| a.key))
-                        .collect();
-                    egui::Grid::new("shop-comparison-grid")
-                        .num_columns(offers.len() + 1)
-                        .spacing(egui::vec2(16.0, 8.0))
-                        .striped(true)
-                        .show(ui, |ui| {
-                            ui.label("");
-                            for offer in &offers {
-                                ui.vertical(|ui| {
-                                    ui.set_width(210.0);
-                                    artwork::image(ui, offer, textures, egui::vec2(210.0, 110.0));
-                                    ui.strong(offer.name());
-                                });
-                            }
-                            ui.end_row();
-                            ui.weak(tr("shop.price"));
-                            for offer in &offers {
-                                ui.strong(format!("${}", offer.price()));
-                            }
-                            ui.end_row();
-                            for key in keys {
-                                ui.weak(tr(&format!("shop.spec.{key}")));
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .min_scrolled_height(0.0)
+                    .show(ui, |ui| {
+                        let keys: BTreeSet<_> = offers
+                            .iter()
+                            .flat_map(|offer| offer.attributes.iter().map(|a| a.key))
+                            .collect();
+                        egui::Grid::new("shop-comparison-grid")
+                            .num_columns(offers.len() + 1)
+                            .spacing(egui::vec2(16.0, 8.0))
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("");
                                 for offer in &offers {
-                                    let values: BTreeSet<_> = offer
-                                        .attributes
-                                        .iter()
-                                        .filter(|a| a.key == key)
-                                        .map(|a| a.display())
-                                        .collect();
-                                    ui.label(if values.is_empty() {
-                                        "—".into()
-                                    } else {
-                                        values.into_iter().collect::<Vec<_>>().join(" / ")
+                                    ui.vertical(|ui| {
+                                        ui.set_width(210.0);
+                                        artwork::image(
+                                            ui,
+                                            offer,
+                                            textures,
+                                            egui::vec2(210.0, 110.0),
+                                        );
+                                        ui.strong(offer.name());
                                     });
                                 }
                                 ui.end_row();
-                            }
-                            ui.label("");
-                            for offer in &offers {
-                                if ui.button(tr("shop.details")).clicked() {
-                                    state.selected_offer = Some(offer.id.clone());
-                                    state.details_open = true;
+                                ui.weak(tr("shop.price"));
+                                for offer in &offers {
+                                    ui.strong(format!("${}", offer.price()));
                                 }
-                            }
-                            ui.end_row();
-                            ui.weak(tr("shop.remove"));
-                            for offer in &offers {
-                                if ui.small_button("×").clicked() {
-                                    state.compared.retain(|id| id != &offer.id);
+                                ui.end_row();
+                                for key in keys {
+                                    ui.weak(tr(&format!("shop.spec.{key}")));
+                                    for offer in &offers {
+                                        let values: BTreeSet<_> = offer
+                                            .attributes
+                                            .iter()
+                                            .filter(|a| a.key == key)
+                                            .map(|a| a.display())
+                                            .collect();
+                                        ui.label(if values.is_empty() {
+                                            "—".into()
+                                        } else {
+                                            values.into_iter().collect::<Vec<_>>().join(" / ")
+                                        });
+                                    }
+                                    ui.end_row();
                                 }
-                            }
-                            ui.end_row();
-                        });
-                });
+                                ui.label("");
+                                for offer in &offers {
+                                    if ui.button(tr("shop.details")).clicked() {
+                                        state.selected_offer = Some(offer.id.clone());
+                                        state.details_open = true;
+                                    }
+                                }
+                                ui.end_row();
+                                ui.weak(tr("shop.remove"));
+                                for offer in &offers {
+                                    if ui.small_button("×").clicked() {
+                                        state.compared.retain(|id| id != &offer.id);
+                                    }
+                                }
+                                ui.end_row();
+                            });
+                    });
             });
         state.comparison_open = state.comparison_open && open;
     }
