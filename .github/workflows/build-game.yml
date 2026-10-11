@@ -163,10 +163,49 @@ jobs:
           --assets assets
           --readme README.md
           --output dist/cloud-provider-sim-${{ matrix.target }}.zip
+      - name: Create SHA-256 checksum
+        run: >-
+          python -c "from pathlib import Path; import hashlib, sys; f=Path(sys.argv[1]); f.with_name(f.name+'.sha256').write_text(f'{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}\\n', encoding='ascii')"
+          dist/cloud-provider-sim-${{ matrix.target }}.zip
       - name: Upload shareable ZIP
         uses: actions/upload-artifact@v7
         with:
           name: game-${{ matrix.target }}
-          path: dist/cloud-provider-sim-${{ matrix.target }}.zip
+          path: |
+            dist/cloud-provider-sim-${{ matrix.target }}.zip
+            dist/cloud-provider-sim-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
           retention-days: 30
+      - name: Set up AWS CLI
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install AWS CLI
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python -m pip install --disable-pip-version-check awscli
+      - name: Upload game package to S3
+        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_RW_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_RW_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+          AWS_EC2_METADATA_DISABLED: 'true'
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" || -z "$AWS_DEFAULT_REGION" || -z "$S3_BUCKET" || -z "$S3_ENDPOINT_URL" ]]; then
+            echo 'Required S3 GitHub Actions secrets are missing.' >&2
+            exit 1
+          fi
+          case "$S3_ENDPOINT_URL" in https://*) ;; *) echo 'S3_ENDPOINT_URL must use HTTPS.' >&2; exit 1 ;; esac
+          package="cloud-provider-sim-${TARGET}.zip"
+          for file in "$package" "$package.sha256"; do
+            aws s3 cp "dist/$file" "s3://${S3_BUCKET}/downloads/versions/${GITHUB_SHA}/${file}" \
+              --endpoint-url "$S3_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION" \
+              --cache-control 'public,max-age=31536000,immutable' --only-show-errors --no-progress
+            aws s3 cp "dist/$file" "s3://${S3_BUCKET}/resources/${file}" \
+              --endpoint-url "$S3_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION" \
+              --cache-control 'public,max-age=0,must-revalidate' --only-show-errors --no-progress
+          done

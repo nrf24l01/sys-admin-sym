@@ -1,0 +1,77 @@
+name: Build and publish website image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - .github/workflows/build-website.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - website/**
+      - .github/workflows/build-website.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check website
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install website dependencies
+        working-directory: website
+        run: bun install --frozen-lockfile
+      - name: Install Chromium for browser checks
+        working-directory: website
+        run: bunx playwright install --with-deps chromium
+      - name: Run website checks
+        working-directory: website
+        run: bun run check
+
+  publish:
+    name: Publish website image to GHCR
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Set lowercase image name
+        id: image
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          owner="${repository%%/*}"
+          name="${repository#*/}"
+          echo "name=ghcr.io/${owner}/${name}-website" >> "$GITHUB_OUTPUT"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push website image
+        uses: docker/build-push-action@v7
+        with:
+          context: website
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=website
+          cache-to: type=gha,mode=max,scope=website

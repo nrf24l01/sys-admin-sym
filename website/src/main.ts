@@ -1,0 +1,15 @@
+import { createApp } from 'vue'
+import '@fontsource-variable/oswald'
+import '@fontsource/ibm-plex-sans/latin-400.css'
+import '@fontsource/ibm-plex-sans/latin-500.css'
+import '@fontsource/ibm-plex-sans/latin-600.css'
+import '@fontsource/ibm-plex-sans/cyrillic-400.css'
+import '@fontsource/ibm-plex-sans/cyrillic-500.css'
+import '@fontsource/ibm-plex-sans/cyrillic-600.css'
+import '@fontsource/ibm-plex-mono/latin-400.css'
+import '@fontsource/ibm-plex-mono/cyrillic-400.css'
+import '@/app/style.css'
+import App from '@/app/App.vue'
+import { router } from '@/app/router'
+
+createApp(App).use(router).mount('#app')
