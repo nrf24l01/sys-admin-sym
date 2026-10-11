@@ -7,7 +7,9 @@ RUN bun install --frozen-lockfile
 
 COPY . .
 
-RUN bun run build
+# The GH Actions check job runs vue-tsc before publishing. Keep the Alpine
+# image stage focused on producing the already-validated static bundle.
+RUN bun run vite build
 
 FROM nginxinc/nginx-unprivileged:alpine
 
