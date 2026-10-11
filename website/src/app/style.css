@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-paper: #eceae3;
+  --color-ink: #191c1b;
+  --color-muted-ink: #62665f;
+  --color-rule: #c9cbc0;
+  --color-teal: #287568;
+  --color-equipment: #101518;
+  --color-amber: #b77a2c;
+  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-display: 'Oswald Variable', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --color-background: #eceae3;
+  --color-foreground: #191c1b;
+  --color-primary: #287568;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e2e2d9;
+  --color-secondary-foreground: #191c1b;
+  --color-muted: #e2e2d9;
+  --color-muted-foreground: #62665f;
+  --color-accent: #e2e2d9;
+  --color-accent-foreground: #191c1b;
+  --color-destructive: #a34232;
+  --color-border: #c9cbc0;
+  --color-input: #c9cbc0;
+  --color-ring: #287568;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+  body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+  ::selection { background: #287568; color: white; }
+  a, button { -webkit-tap-highlight-color: transparent; }
+  a:focus-visible, button:focus-visible { outline: 2px solid #287568; outline-offset: 5px; }
+  button:not(:disabled), [role='tab'] { cursor: pointer; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+@layer components {
+  .doc-prose { font-size: .9rem; line-height: 1.85; overflow-wrap: anywhere; }
+  .doc-prose > :first-child { margin-top: 0; }
+  .doc-prose h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.5vw, 3.3rem); line-height: 1.2; font-weight: 500; margin-bottom: 1.5rem; text-transform: uppercase; }
+  .doc-prose h2 { font-family: var(--font-display); font-size: 1.7rem; line-height: 1.35; font-weight: 500; margin: 2.5rem 0 1rem; border-top: 1px solid var(--color-rule); padding-top: 1.4rem; }
+  .doc-prose h3 { font-size: 1.1rem; line-height: 1.5; font-weight: 600; margin: 1.6rem 0 .65rem; }
+  .doc-prose h4 { font-weight: 600; margin: 1.5rem 0 .6rem; }
+  .doc-prose p { margin: 1rem 0; }
+  .doc-prose a { color: var(--color-teal); text-decoration: underline; text-underline-offset: 3px; }
+  .doc-prose ul, .doc-prose ol { margin: 1rem 0; padding-left: 1.5rem; }
+  .doc-prose ul { list-style: disc; }
+  .doc-prose ol { list-style: decimal; }
+  .doc-prose li { margin: .4rem 0; }
+  .doc-prose pre { margin: 1.25rem 0; padding: 1.1rem; overflow-x: auto; background: var(--color-equipment); color: var(--color-paper); font-size: .75rem; line-height: 1.9; }
+  .doc-prose code { font-family: var(--font-mono); font-size: .85em; background: #dde0d5; padding: .1em .3em; }
+  .doc-prose pre code { font-size: inherit; background: transparent; padding: 0; overflow-wrap: normal; }
+  .doc-prose table { display: block; max-width: 100%; width: max-content; overflow-x: auto; border-collapse: collapse; margin: 1.5rem 0; font-size: .78rem; }
+  .doc-prose th, .doc-prose td { padding: .6rem .8rem; border: 1px solid var(--color-rule); text-align: left; min-width: 90px; }
+  .doc-prose th { background: #e2e2d9; font-weight: 600; }
+  .doc-prose blockquote { border-left: 2px solid var(--color-teal); margin: 1.5rem 0; padding-left: 1rem; color: var(--color-muted-ink); }
+  .doc-prose img { display: block; max-width: 100%; height: auto; margin: 1rem 0; border: 1px solid var(--color-rule); }
+  .doc-prose .doc-screenshot { display: block; margin: .7rem 0 1.5rem; font-size: .75rem; }
+  .doc-prose .doc-screenshot img { margin-bottom: .5rem; max-height: 550px; object-fit: contain; object-position: left; background: var(--color-equipment); }
+  .doc-prose-compact { max-width: 750px; font-size: .8rem; }
+  .doc-prose-compact h1, .doc-prose-compact h2 { font-family: var(--font-sans); font-size: 1rem; text-transform: none; margin: 1rem 0 .5rem; padding: 0; border: 0; }
+}
