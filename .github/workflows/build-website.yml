@@ -38,6 +38,8 @@ jobs:
       - name: Run website checks
         working-directory: website
         run: bun run check
+      - name: Build production container image
+        run: docker build --tag sys-admin-sym-website:ci website
 
   publish:
     name: Publish website image to GHCR
