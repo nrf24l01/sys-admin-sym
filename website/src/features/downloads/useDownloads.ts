@@ -30,3 +30,5 @@ export function useDownloads() {
     client: computed(() => target('client')),
   }
 }
+
+export type DownloadsState = ReturnType<typeof useDownloads>
