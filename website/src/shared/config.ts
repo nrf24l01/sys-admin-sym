@@ -17,9 +17,16 @@ const filenames: Record<DownloadKey, string> = {
 
 function normalizedDownloadBaseUrl(value: string | undefined): string | undefined {
   if (!value?.trim()) return undefined
+  const base = value.trim()
   try {
-    const url = new URL(value.trim())
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return undefined
+    const isRelativePath = base.startsWith('/') && !base.startsWith('//')
+    const url = isRelativePath ? new URL(base, window.location.origin) : new URL(base)
+    if (url.username || url.password || url.search || url.hash) return undefined
+    if (isRelativePath) {
+      if (url.origin !== window.location.origin) return undefined
+      return url.pathname.replace(/\/+$/, '') || '/'
+    }
+    if (url.protocol !== 'https:') return undefined
     return url.href.replace(/\/+$/, '')
   } catch {
     return undefined
@@ -32,5 +39,6 @@ const downloadBaseUrl = normalizedDownloadBaseUrl(
 
 export function downloadUrl(key: DownloadKey, checksum = false): string | undefined {
   if (!downloadBaseUrl) return undefined
-  return `${downloadBaseUrl}/resources/${filenames[key]}${checksum ? '.sha256' : ''}`
+  const base = downloadBaseUrl === '/' ? '' : downloadBaseUrl
+  return `${base}/${filenames[key]}${checksum ? '.sha256' : ''}`
 }

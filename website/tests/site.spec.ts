@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 
-const downloadBase = 'https://cdn.example.test/sys-admin-sym'
+const downloadBase = '/resources/'
 const gameWindows = 'cloud-provider-sim-x86_64-pc-windows-msvc.zip'
 const gameLinux = 'cloud-provider-sim-x86_64-unknown-linux-gnu.zip'
 const clientWindows = 'game-ssh-x86_64-pc-windows-msvc.zip'
@@ -35,8 +35,8 @@ test('shows real imagery, direct package downloads, and an operable rack view', 
   await expect(page.getByRole('link', { name: /Cloud Provider Simulator.*Download ZIP/ })).toBeVisible()
   await expect(page.locator('#downloads a[href*="/actions/"]')).toHaveCount(0)
   await page.getByRole('tab', { name: 'Windows' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}`)
-  await expect(page.getByRole('link', { name: 'game-ssh — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${clientWindows}`)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}${gameWindows}`)
+  await expect(page.getByRole('link', { name: 'game-ssh — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}${clientWindows}`)
   await page.getByRole('button', { name: 'Linux installation' }).click()
   await expect(page.getByText('chmod +x cloud-provider-sim', { exact: false })).toBeVisible()
   await expect(page.locator('main img')).toHaveCount(8)
@@ -48,10 +48,10 @@ test('shows real imagery, direct package downloads, and an operable rack view', 
 test('selects platform-specific ZIPs and checksums under the runtime resource path', async ({ page }) => {
   await page.goto('/#downloads')
   await page.getByRole('tab', { name: 'Windows' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}`)
-  await expect(page.locator('#downloads li').first().getByRole('link', { name: 'SHA-256' })).toHaveAttribute('href', `${downloadBase}/resources/${gameWindows}.sha256`)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `${downloadBase}${gameWindows}`)
+  await expect(page.locator('#downloads li').first().getByRole('link', { name: 'SHA-256' })).toHaveAttribute('href', `${downloadBase}${gameWindows}.sha256`)
   await page.getByRole('tab', { name: 'Linux' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Linux — Download ZIP' })).toHaveAttribute('href', `${downloadBase}/resources/${gameLinux}`)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Linux — Download ZIP' })).toHaveAttribute('href', `${downloadBase}${gameLinux}`)
   await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', /trigger-linux$/)
 })
 
@@ -65,7 +65,7 @@ test('uses the runtime download base without requesting a release API', async ({
   page.on('request', request => requests.push(request.url()))
   await page.goto('/#downloads')
   await page.getByRole('tab', { name: 'Windows' }).click()
-  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `https://files.example.test/custom/path/resources/${gameWindows}`)
+  await expect(page.getByRole('link', { name: 'Cloud Provider Simulator — Windows — Download ZIP' })).toHaveAttribute('href', `https://files.example.test/custom/path/${gameWindows}`)
   expect(requests.some(url => url.includes('api.github.com/repos/'))).toBe(false)
 })
 
