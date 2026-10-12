@@ -183,6 +183,7 @@ fn failover_overload_trips_a_source_already_visited_in_the_same_update() {
     power.devices.get_mut(&device).unwrap().psus = Some(DevicePsus {
         count: 2,
         profile,
+        power_factor_percent: 90,
         dc_demand_mw: 0,
     });
     let b = SourceId::Ups(power.add_ups(UpsSpec {

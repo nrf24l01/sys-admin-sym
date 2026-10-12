@@ -1,6 +1,7 @@
 use super::*;
 
-fn server_attributes(offer: &mut Offer, chassis: &ServerChassis) {
+fn server_attributes(offer: &mut Offer, model: &ServerModel) {
+    let chassis = &model.chassis;
     offer.attributes.extend([
         Attribute::text("socket", chassis.cpu_socket.clone()),
         Attribute::text("memory-type", chassis.memory_type.clone()),
@@ -10,7 +11,7 @@ fn server_attributes(offer: &mut Offer, chassis: &ServerChassis) {
         Attribute::number("memory-channels", chassis.memory.channels_per_cpu as u64),
         Attribute::number("drive-bays", chassis.drive_bays.len() as u64),
         Attribute::number("pcie-slots", chassis.pcie_slots.len() as u64),
-        Attribute::number("psu-watts", server_power_profile().psu.capacity_watts),
+        Attribute::number("psu-watts", model.power.psu.capacity_watts),
     ]);
     let interfaces: std::collections::BTreeSet<_> = chassis
         .drive_bays
@@ -60,7 +61,7 @@ fn rack_attributes(offer: &mut Offer, command: Command) {
     let device = preview.device(device).unwrap();
     offer
         .attributes
-        .push(Attribute::number("rack", device.template().rack_units()));
+        .push(Attribute::number("rack", device.rack_units()));
     let ports: Vec<_> = device
         .ports()
         .iter()
@@ -206,43 +207,56 @@ pub(super) fn offers() -> Vec<Offer> {
         }
         offers.push(offer);
     }
-    for full in [false, true] {
-        let item = if full {
-            PurchaseItem::ServerFullPack
-        } else {
-            PurchaseItem::ServerChassis
-        };
-        let mut offer = Offer::new(
-            if full {
-                "dell_r360_full_pack"
+    for model in &server_catalog().models {
+        for full in [false, true] {
+            let configuration = if full {
+                ServerConfiguration::FullPack
             } else {
-                "dell_r360"
-            },
-            ShopSection::Servers,
-            item,
-        );
-        offer.attributes.push(Attribute::text("type", "server"));
-        offer.display_id = "dell_r360".into();
-        offer.family = "dell_r360".into();
-        rack_attributes(
-            &mut offer,
-            if full {
-                Command::BuyServerFullPack
+                ServerConfiguration::Chassis
+            };
+            let id = if full {
+                format!("{}_full_pack", model.id)
             } else {
-                Command::BuyServerChassis
-            },
-        );
-        offer.attributes.push(Attribute::text(
-            "configuration",
-            if full { "full-pack" } else { "chassis" },
-        ));
-        server_attributes(&mut offer, &server_catalog().chassis);
-        offer.guidance.push(if full {
-            "shop.guide.full-pack"
-        } else {
-            "shop.guide.chassis"
-        });
-        offers.push(offer);
+                model.id.clone()
+            };
+            let mut offer = Offer::new(
+                &id,
+                ShopSection::Servers,
+                PurchaseItem::ServerModel {
+                    model_id: model.id.clone(),
+                    configuration,
+                },
+            );
+            offer.display_id = model.id.clone();
+            offer.family = model.id.clone();
+            offer.attributes.push(Attribute::text("type", "server"));
+            offer
+                .attributes
+                .push(Attribute::text("manufacturer", model.manufacturer.clone()));
+            rack_attributes(
+                &mut offer,
+                Command::BuyServer {
+                    model_id: model.id.clone(),
+                    configuration,
+                },
+            );
+            offer.attributes.push(Attribute::text(
+                "configuration",
+                if full { "full-pack" } else { "chassis" },
+            ));
+            server_attributes(&mut offer, model);
+            for memory_type in &model.chassis.additional_memory_types {
+                offer
+                    .attributes
+                    .push(Attribute::text("memory-type", memory_type.clone()));
+            }
+            offer.guidance.push(if full {
+                "shop.guide.full-pack"
+            } else {
+                "shop.guide.chassis"
+            });
+            offers.push(offer);
+        }
     }
     for (id, supply, kind) in [
         (

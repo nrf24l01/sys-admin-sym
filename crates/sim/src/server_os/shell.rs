@@ -209,7 +209,7 @@ impl LinuxShell {
         Ok(errors)
     }
 
-    fn expand(sim: &mut NetworkSim, device: DeviceId, word: &str) -> String {
+    pub(super) fn expand(sim: &mut NetworkSim, device: DeviceId, word: &str) -> String {
         let mut chars = word.chars().peekable();
         let mut result = String::new();
         while let Some(c) = chars.next() {

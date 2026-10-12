@@ -10,13 +10,114 @@ fn server_state() -> ShopState {
 }
 
 #[test]
+fn shop_artwork_shows_only_the_drives_in_the_selected_configuration() {
+    for id in ["dell_r360", "dell_r760", "hpe_dl380_gen11"] {
+        for (suffix, expected) in [("", 0), ("_full_pack", 1)] {
+            let offer = catalog::catalog()
+                .iter()
+                .find(|o| o.id == format!("{id}{suffix}"))
+                .unwrap();
+            let context = egui::Context::default();
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                artwork::image(
+                    ui,
+                    offer,
+                    &artwork::test_textures(),
+                    egui::vec2(1000.0, 250.0),
+                );
+            });
+            let count = output
+                .shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.fill == egui::Color32::from_rgb(43,48,52)
+                    )
+                })
+                .count();
+            output.textures_delta.clear();
+            assert_eq!(count, expected, "{}", offer.id);
+        }
+    }
+}
+
+#[test]
+fn server_artwork_bindings_follow_filters_and_open_details() {
+    let sim = NetworkSim::new();
+    let mut state = server_state();
+    assert_eq!(
+        server_artwork_models(&state, &sim).len(),
+        server_catalog().models.len()
+    );
+    state.select(ShopCategory::Compute, Some(ShopSection::Cpu));
+    assert!(server_artwork_models(&state, &sim).is_empty());
+    state.selected_offer = Some("dell_r760_full_pack".into());
+    state.details_open = true;
+    state.compared = vec!["dell_r740".into()];
+    state.comparison_open = true;
+    assert_eq!(
+        server_artwork_models(&state, &sim),
+        std::collections::BTreeMap::from([("dell_r740".into(), true), ("dell_r760".into(), true),])
+    );
+}
+
+#[test]
+fn models_have_own_names_recipes_inventory_and_component_artwork() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let model = "dell_r760";
+    let events = sim
+        .execute(cloud_provider_sim::Command::BuyServer {
+            model_id: model.into(),
+            configuration: cloud_provider_sim::ServerConfiguration::FullPack,
+        })
+        .unwrap();
+    let offers = catalog::catalog();
+    let owned = offers.iter().find(|o| o.id == model).unwrap();
+    let other = offers.iter().find(|o| o.id == "dell_r740").unwrap();
+    assert_eq!(owned.ownership(&sim), (1, 0));
+    assert_eq!(other.ownership(&sim), (0, 0));
+    let full = offers
+        .iter()
+        .find(|o| o.id == "dell_r760_full_pack")
+        .unwrap();
+    assert!(full.name().contains("R760"));
+    assert!(full.description().contains("32"));
+    assert_eq!(full.ownership(&sim), (1, 0));
+    let cloud_provider_sim::SimEvent::DeviceAdded(device) = events[0] else {
+        panic!()
+    };
+    sim.execute(cloud_provider_sim::Command::RemoveServerPart {
+        device,
+        part_id: "intel_i350_t4".into(),
+        slot: Some(0),
+    })
+    .unwrap();
+    assert_eq!(
+        full.ownership(&sim),
+        (0, 0),
+        "bootable hardware without its pack NIC is not a complete pack"
+    );
+    for part in &server_catalog().parts {
+        let offer = offers.iter().find(|o| o.id == part.id).unwrap();
+        assert!(
+            artwork::artwork(offer, &artwork::test_textures()).is_some(),
+            "{}",
+            part.id
+        );
+    }
+}
+
+#[test]
 fn server_filters_describe_physical_capacity_for_bare_and_populated_configurations() {
     let sim = NetworkSim::new();
     let chassis = &server_catalog().chassis;
     let mut state = server_state();
     let offers = query::filtered(&state, &sim);
-    assert_eq!(offers.len(), 2);
+    assert_eq!(offers.len(), server_catalog().models.len() * 2);
     for offer in offers {
+        let model = server_catalog().model(&offer.display_id).unwrap();
+        let chassis = &model.chassis;
         for (key, expected) in [
             ("ram-slots", chassis.dimm_slots),
             ("cpu-sockets", chassis.cpu_sockets),
@@ -24,9 +125,6 @@ fn server_filters_describe_physical_capacity_for_bare_and_populated_configuratio
             ("pcie-slots", chassis.pcie_slots.len()),
         ] {
             assert_eq!(offer.numeric(key), expected as u64, "{}: {key}", offer.id);
-            state
-                .facets
-                .insert(key.into(), BTreeSet::from([expected.to_string()]));
         }
         assert_eq!(
             offer.values("socket").next(),
@@ -38,11 +136,7 @@ fn server_filters_describe_physical_capacity_for_bare_and_populated_configuratio
         );
         assert_eq!(
             offer.numeric("psu-watts"),
-            u64::from(
-                cloud_provider_sim::server_power_profile()
-                    .psu
-                    .capacity_watts
-            )
+            u64::from(model.power.psu.capacity_watts)
         );
         assert!(
             chassis

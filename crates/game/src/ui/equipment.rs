@@ -53,6 +53,11 @@ pub(super) fn equipment_port_position(
     side: RackSide,
     index: usize,
 ) -> Option<(f32, f32)> {
+    if let DeviceKind::Server(server) = kind {
+        return (side == RackSide::Rear && connector == PortConnector::Rj45)
+            .then(|| server.model().port_position(index))
+            .flatten();
+    }
     let type_name = match kind {
         DeviceKind::Switch(_) => "switch",
         DeviceKind::Ups(_) => "ups",
@@ -128,6 +133,11 @@ pub(super) fn equipment_power_port_position(
     connector: &str,
     index: usize,
 ) -> Option<(f32, f32)> {
+    if let DeviceKind::Server(server) = kind {
+        return (connector == "c14")
+            .then(|| server.model().power_inlet_position(index))
+            .flatten();
+    }
     let type_name = match kind {
         DeviceKind::Ups(_) => "ups",
         DeviceKind::Pdu(_) => "pdu",
@@ -155,6 +165,22 @@ pub(super) fn equipment_power_port_rect(
     index: usize,
     panel: bevy_egui::egui::Rect,
 ) -> Option<bevy_egui::egui::Rect> {
+    if let DeviceKind::Server(server) = kind {
+        if connector != "c14" {
+            return None;
+        }
+        let [l, t, r, b] = server.model().power_inlets.get(index)?.rect;
+        return Some(bevy_egui::egui::Rect::from_min_max(
+            bevy_egui::egui::pos2(
+                panel.left() + panel.width() * l,
+                panel.top() + panel.height() * t,
+            ),
+            bevy_egui::egui::pos2(
+                panel.left() + panel.width() * r,
+                panel.top() + panel.height() * b,
+            ),
+        ));
+    }
     let type_name = match kind {
         DeviceKind::Ups(_) => "ups",
         DeviceKind::Pdu(_) => "pdu",

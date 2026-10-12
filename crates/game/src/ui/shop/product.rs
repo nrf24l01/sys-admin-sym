@@ -13,7 +13,7 @@ pub(super) fn card(
     variants: &[&Offer],
     state: &mut ShopState,
     sim: &NetworkSim,
-    textures: ShopTextures,
+    textures: &ShopTextures,
     actions: &mut MessageWriter<UiAction>,
     layout: super::layout::ProductLayout,
 ) {

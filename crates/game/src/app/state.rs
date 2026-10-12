@@ -83,6 +83,8 @@ pub struct UiState {
 
 #[derive(Default)]
 pub struct ConsoleState {
+    pub focus_input: bool,
+    pub editor: Option<super::TerminalEditor>,
     pub script_mode: bool,
     pub input: String,
     pub lines: Vec<String>,

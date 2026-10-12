@@ -1,5 +1,5 @@
 //! Estimated device demand, separate from PSU/output capacity ratings.
-use super::profiles::{router_power_profile, server_power_profile};
+use super::profiles::router_power_profile;
 use crate::*;
 use serde::{Deserialize, Serialize};
 
@@ -66,7 +66,7 @@ impl DeviceConsumption {
 impl NetworkSim {
     pub(crate) fn device_power_factor(&self, device: DeviceId) -> u16 {
         match self.device(device).map(|d| &d.kind) {
-            Some(DeviceKind::Server(_)) => server_power_profile().power_factor_percent,
+            Some(DeviceKind::Server(server)) => server.model().power.power_factor_percent,
             Some(DeviceKind::Switch(switch)) => switch.model.spec().power.power_factor_percent,
             Some(DeviceKind::Router(_)) => router_power_profile().load.power_factor_percent,
             _ => 100,
@@ -200,7 +200,7 @@ impl NetworkSim {
                     .saturating_add((services.min(10) * 2) as u16)
                     .min(1000);
                 if let Some(hardware) = &server.hardware {
-                    if !hardware.ready() {
+                    if !hardware.ready_for_model(server.model()) {
                         return Some(result);
                     }
                     let throughput: u64 = hardware
@@ -222,9 +222,14 @@ impl NetworkSim {
                             (bytes.saturating_mul(1000) / throughput.max(1)).min(1000) as u16
                         )
                         .min(1000);
-                    result = self.server_consumption(hardware, utilization, modules);
+                    result = self.server_consumption(
+                        hardware,
+                        &server.model().power,
+                        utilization,
+                        modules,
+                    );
                 } else {
-                    let curve = &server_power_profile().legacy;
+                    let curve = &server.model().power.legacy;
                     result.component(
                         PowerComponentKind::Board,
                         curve.draw_mw(utilization.cpu.max(utilization.storage)),
@@ -338,13 +343,17 @@ impl NetworkSim {
         let mut changed = false;
         for (id, consumption) in loads {
             let watts = consumption.demand_mw.div_ceil(1000);
-            let psus =
-                matches!(self.devices[&id].kind, DeviceKind::Server(_)).then(|| DevicePsus {
-                    count: u8::try_from(server_catalog().chassis.psu_bays)
+            let psus = if let DeviceKind::Server(server) = &self.devices[&id].kind {
+                Some(DevicePsus {
+                    count: u8::try_from(server.model().chassis.psu_bays)
                         .expect("PSU count fits u8"),
-                    profile: server_power_profile().psu.clone(),
+                    profile: server.model().power.psu.clone(),
                     dc_demand_mw: consumption.demand_mw,
-                });
+                    power_factor_percent: server.model().power.power_factor_percent,
+                })
+            } else {
+                None
+            };
             self.runtime.consumption.insert(id, consumption);
             let load = ElectricalLoad::from_watts_pf(watts, self.device_power_factor(id));
             let power = self.power.devices.get_mut(&id).unwrap();

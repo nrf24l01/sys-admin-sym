@@ -26,7 +26,7 @@ has only one value, such as a single CPU socket or RAM type. Sorting by capacity
 speed or length is offered only for applicable product types. Changing types resets an
 inapplicable sort while retaining general price/name sorting.
 
-Servers expose RAM type, CPU socket, RAM slot count, configuration, CPU socket
+Servers expose manufacturer, RAM type, CPU socket, RAM slot count, configuration, CPU socket
 count, PCIe slot count/generation/width, drive bay count/interface, rack size,
 included RJ45 ports and integrated PSU power. Physical capacity comes directly
 from the simulation's chassis catalog and is the same for bare/full-pack offers.
@@ -146,3 +146,12 @@ the current integration turns delayed blink requests into immediate redraws.
 - [Selected server RAM type, socket and RAM slot filters](images/shop-server-filters.png)
 - [Server specification sorting](images/shop-server-sort.png)
 - [Russian server specifications and filters](images/shop-server-filters-ru.png)
+
+## Server model additions
+
+The server section iterates `servers.json`, offering bare and assembled versions
+of every model. Full-pack descriptions report their actual installed RAM, and
+prices sum the chassis and recipe parts. Inventory counts match the owning
+model. CPU/RAM compatibility previews use the selected server's platform,
+including CPU-dependent DIMM and PCIe slots. Model images and shared component
+thumbnails require no per-model artwork branch. See [server hardware](SERVER_HARDWARE.md).

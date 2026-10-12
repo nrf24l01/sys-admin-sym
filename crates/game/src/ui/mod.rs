@@ -1,3 +1,6 @@
+mod server_drive_faces;
+mod server_hardware;
+mod server_models;
 use crate::app::*;
 use crate::localization::tr;
 use bevy::prelude::*;
@@ -19,6 +22,7 @@ mod routing;
 mod settings;
 mod shop;
 mod speed;
+mod terminal_editor;
 mod terminal_renderer;
 #[cfg(test)]
 mod test_windows;
@@ -144,7 +148,10 @@ fn device_power_endpoint(device: &Device) -> Option<PowerEndpoint> {
 
 fn device_power_endpoints(device: &Device) -> Vec<PowerEndpoint> {
     if matches!(device.kind, DeviceKind::Server(_)) {
-        (0..cloud_provider_sim::server_catalog().chassis.psu_bays)
+        (0..match &device.kind {
+            DeviceKind::Server(server) => server.model().chassis.psu_bays,
+            _ => 1,
+        })
             .map(|inlet| {
                 PowerEndpoint::device_inlet(
                     device.id,
@@ -159,6 +166,7 @@ fn device_power_endpoints(device: &Device) -> Vec<PowerEndpoint> {
 
 #[derive(Resource, Default)]
 pub struct EquipmentImages {
+    servers: server_models::ServerImages,
     server_front: Handle<Image>,
     server_rear: Handle<Image>,
     switch_front: Handle<Image>,
@@ -179,8 +187,9 @@ pub struct EquipmentImages {
     textures: textures::ImageTextures,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct EquipmentTextures {
+    servers: std::sync::Arc<std::collections::BTreeMap<String, server_models::ServerFaceIds>>,
     server_front: egui::TextureId,
     server_rear: egui::TextureId,
     switch_front: egui::TextureId,
@@ -198,6 +207,7 @@ struct EquipmentTextures {
 }
 
 pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<AssetServer>) {
+    images.servers.load(&assets);
     images.server_front = textures::load(&assets, "equipment/server_front.png");
     images.server_rear = textures::load(&assets, "equipment/server_rear_clean.png");
     images.switch_front = textures::load(&assets, "equipment/switch_front_clean.png");
@@ -243,9 +253,13 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
         images.optical_connectors.id(),
         images.shop_connectors.id(),
     ];
-    images
-        .textures
-        .track(sources.map(|id| (id, thumbnails.contains(&id))));
+    let server_sources: Vec<_> = images.servers.sources().collect();
+    images.textures.track(
+        sources
+            .map(|id| (id, thumbnails.contains(&id)))
+            .into_iter()
+            .chain(server_sources),
+    );
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -291,6 +305,7 @@ impl EquipmentImages {
         &mut self,
         contexts: &mut EguiContexts,
         details_open: bool,
+        active_models: &std::collections::BTreeMap<String, bool>,
     ) -> shop::ShopTextures {
         let sources = [
             &self.server_front,
@@ -310,6 +325,10 @@ impl EquipmentImages {
             ids
         };
         shop::ShopTextures {
+            servers: self
+                .servers
+                .shop_ids(&mut self.textures, contexts, active_models),
+            use_full: false,
             server: ids[0],
             router: ids[1],
             switch: ids[2],
@@ -325,8 +344,22 @@ impl EquipmentImages {
             },
         }
     }
-    fn texture_ids(&mut self, contexts: &mut EguiContexts) -> EquipmentTextures {
+    fn texture_ids(&mut self, contexts: &mut EguiContexts, sim: &NetworkSim) -> EquipmentTextures {
+        // Inventory models also need textures for their rack placement preview.
+        let active_models = sim
+            .devices()
+            .filter_map(|d| {
+                if let DeviceKind::Server(server) = &d.kind {
+                    Some(server.model.as_str().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
         EquipmentTextures {
+            servers: self
+                .servers
+                .rack_ids(&mut self.textures, contexts, &active_models),
             server_front: self.textures.texture(&self.server_front, contexts),
             server_rear: self.textures.texture(&self.server_rear, contexts),
             switch_front: self.textures.texture(&self.switch_front, contexts),
@@ -372,7 +405,8 @@ pub fn main_ui(
             .max_rect(ctx.viewport_rect()),
     );
     top_bar(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
-    let textures = (state.workspace == Workspace::Rack).then(|| images.texture_ids(&mut contexts));
+    let textures = (state.workspace == Workspace::Rack)
+        .then(|| images.texture_ids(&mut contexts, &snapshot.0));
     if let Some(error) = state.error_dialog.clone() {
         let mut open = true;
         egui::Window::new(tr("error.title"))
@@ -424,13 +458,14 @@ pub fn main_ui(
         let shop_textures = images.shop_texture_ids(
             &mut contexts,
             state.shop.details_open || state.shop.comparison_open,
+            &shop::server_artwork_models(&state.shop, &snapshot.0),
         );
         shop::show(
             &mut viewport_ui,
             &snapshot.0,
             &mut state.shop,
             shop_selection,
-            shop_textures,
+            &shop_textures,
             &mut actions,
         );
     }
@@ -744,7 +779,7 @@ fn device_inspector(
     if let DeviceKind::Server(server) = &device.kind
         && let Some(hardware) = &server.hardware
     {
-        server_hardware_inspector(ui, sim, id, hardware, actions);
+        server_hardware::server_hardware_inspector(ui, sim, id, hardware, actions);
     }
     let actual_powered = device.powered
         || match device.kind {
@@ -864,311 +899,6 @@ fn device_inspector(
         if ui.button(tr("ui.create-vlan")).clicked() {
             actions.write(UiAction::CreateVlan(id));
         }
-    }
-}
-
-fn server_hardware_inspector(
-    ui: &mut egui::Ui,
-    sim: &NetworkSim,
-    device: DeviceId,
-    hardware: &cloud_provider_sim::ServerHardware,
-    actions: &mut MessageWriter<UiAction>,
-) {
-    use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
-    let catalog = server_catalog();
-    let chassis = &catalog.chassis;
-    let parts_editable = !sim.device(device).unwrap().powered || chassis.parts_hot_swappable;
-    ui.separator();
-    ui.strong(tr("ui.server-hardware"));
-    ui.label(crate::localization::tr_args(
-        "ui.cpu-ram-integrated-psu-w",
-        &[
-            (hardware.cpus.len()).to_string(),
-            (chassis.cpu_sockets).to_string(),
-            (hardware.ram.len()).to_string(),
-            (chassis.dimm_slots).to_string(),
-            (server_power_profile().psu.capacity_watts).to_string(),
-            chassis.psu_bays.to_string(),
-        ],
-    ));
-    match hardware.memory_status() {
-        Ok(memory) => {
-            ui.label(crate::localization::tr_args(
-                "hardware.memory-capacity",
-                &[
-                    memory.capacity_gb.to_string(),
-                    memory.max_capacity_gb.to_string(),
-                ],
-            ));
-            ui.label(crate::localization::tr_args(
-                "hardware.memory-channels-speed",
-                &[
-                    memory.populated_channels.to_string(),
-                    memory.available_channels.to_string(),
-                    memory.speed_mt_s.to_string(),
-                ],
-            ));
-            if !hardware.ram.is_empty() && !memory.balanced {
-                ui.weak(tr("hardware.memory-unbalanced"));
-            }
-        }
-        Err(reason) => {
-            ui.colored_label(
-                egui::Color32::YELLOW,
-                format!("{}: {reason}", tr("hardware.invalid-memory")),
-            );
-        }
-    }
-    let dimm_indices = hardware.dimm_slot_indices(catalog);
-    egui::CollapsingHeader::new(tr("hardware.dimm-slots")).show(ui, |ui| {
-        for (index, slot) in chassis.memory.slots.iter().enumerate() {
-            let installed = dimm_indices
-                .iter()
-                .position(|i| *i == index)
-                .and_then(|i| hardware.ram.get(i));
-            ui.horizontal_wrapped(|ui| {
-                ui.label(crate::localization::tr_args(
-                    "hardware.dimm-slot",
-                    &[
-                        slot.name.clone(),
-                        (slot.cpu_socket + 1).to_string(),
-                        (slot.channel + 1).to_string(),
-                    ],
-                ));
-                if let Some(id) = installed {
-                    ui.label(crate::localization::item_name(id, id));
-                    if ui
-                        .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                        .clicked()
-                    {
-                        actions.write(UiAction::RemoveServerPart {
-                            device,
-                            part_id: id.clone(),
-                            slot: Some(index),
-                        });
-                    }
-                } else {
-                    ui.weak(tr("ui.empty"));
-                }
-            });
-        }
-    });
-    let cpu_lanes: u16 = hardware
-        .cpus
-        .iter()
-        .filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
-        .filter_map(|part| match part.kind {
-            ServerPartKind::Cpu { pcie_lanes, .. } => Some(u16::from(pcie_lanes)),
-            _ => None,
-        })
-        .sum();
-    let used_lanes: u16 = hardware
-        .pcie
-        .iter()
-        .flatten()
-        .filter_map(|id| catalog.parts.iter().find(|p| &p.id == id))
-        .filter_map(|part| match &part.kind {
-            ServerPartKind::PciCard {
-                card: PciCard::Ethernet { lanes, .. },
-            } => Some(u16::from(*lanes)),
-            _ => None,
-        })
-        .sum();
-    ui.label(crate::localization::tr_args(
-        "ui.pcie-lanes",
-        &[(used_lanes).to_string(), (cpu_lanes).to_string()],
-    ));
-    let active = sim.server_resources(device);
-    ui.label(crate::localization::tr_args(
-        "ui.compute-core-mhz-memory-weighted-gb-live",
-        &[
-            (hardware.compute_mhz()).to_string(),
-            (hardware.memory_score_gb()).to_string(),
-            (active.network_mbps).to_string(),
-        ],
-    ));
-    if hardware.ready() {
-        ui.colored_label(egui::Color32::GREEN, tr("ui.required-hardware-installed"));
-    } else {
-        ui.weak(tr("ui.install-a-cpu-and-ram-to-complete"));
-    }
-    for (index, slot) in chassis.pcie_slots.iter().enumerate() {
-        let installed = hardware.pcie.get(index).and_then(Option::as_deref);
-        ui.horizontal(|ui| {
-            ui.label(crate::localization::tr_args(
-                "ui.x-gen",
-                &[
-                    (slot.name).to_string(),
-                    (slot.lanes).to_string(),
-                    (slot.generation).to_string(),
-                ],
-            ));
-            if let Some(id) = installed {
-                let name = catalog
-                    .parts
-                    .iter()
-                    .find(|part| part.id == id)
-                    .map_or(id, |part| part.name.as_str());
-                ui.label(crate::localization::item_name(id, name));
-                if let Some(generation) = hardware.pcie_link_generation(index) {
-                    ui.weak(crate::localization::tr_args(
-                        "hardware.pcie-negotiated",
-                        &[generation.to_string()],
-                    ));
-                }
-                if ui
-                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                    .clicked()
-                {
-                    actions.write(UiAction::RemoveServerPart {
-                        device,
-                        part_id: id.into(),
-                        slot: Some(index),
-                    });
-                }
-            } else {
-                ui.weak(tr("ui.empty"));
-                for part in &catalog.parts {
-                    let ServerPartKind::PciCard { .. } = &part.kind else {
-                        continue;
-                    };
-                    if sim.server_parts.get(&part.id).copied().unwrap_or(0) > 0
-                        && sim
-                            .server_part_installation_slot(device, &part.id, Some(index))
-                            .is_ok()
-                        && ui
-                            .add_enabled(
-                                parts_editable,
-                                egui::Button::new(crate::localization::tr_args(
-                                    "hardware.install-item",
-                                    &[crate::localization::item_name(&part.id, &part.name)],
-                                )),
-                            )
-                            .clicked()
-                    {
-                        actions.write(UiAction::InstallServerPart {
-                            device,
-                            part_id: part.id.clone(),
-                            slot: Some(index),
-                        });
-                    }
-                }
-            }
-        });
-    }
-    for part in &catalog.parts {
-        let owned = sim.server_parts.get(&part.id).copied().unwrap_or(0);
-        let installed = match &part.kind {
-            ServerPartKind::Cpu { .. } => hardware.cpus.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::Ram { .. } => hardware.ram.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::PowerSupply { .. } => hardware
-                .power_supplies
-                .iter()
-                .filter(|id| *id == &part.id)
-                .count(),
-            ServerPartKind::PciCard { .. } => hardware
-                .pcie
-                .iter()
-                .filter(|id| id.as_deref() == Some(part.id.as_str()))
-                .count(),
-        };
-        ui.horizontal(|ui| {
-            ui.label(crate::localization::tr_args(
-                "ui.inventory-installed",
-                &[
-                    crate::localization::item_name(&part.id, &part.name),
-                    (owned).to_string(),
-                    (installed).to_string(),
-                ],
-            ));
-            let compatibility = sim.server_part_installation_slot(device, &part.id, None);
-            if ui
-                .add_enabled(
-                    owned > 0 && parts_editable && compatibility.is_ok(),
-                    egui::Button::new(tr("ui.install")),
-                )
-                .on_disabled_hover_text(if !parts_editable {
-                    tr("hardware.power-off-parts")
-                } else {
-                    compatibility
-                        .err()
-                        .map(|error| error.to_string())
-                        .unwrap_or_else(|| tr("ui.empty"))
-                })
-                .clicked()
-            {
-                actions.write(UiAction::InstallServerPart {
-                    device,
-                    part_id: part.id.clone(),
-                    slot: None,
-                });
-            }
-            if installed > 0
-                && !matches!(part.kind, ServerPartKind::PciCard { .. })
-                && ui
-                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                    .clicked()
-            {
-                actions.write(UiAction::RemoveServerPart {
-                    device,
-                    part_id: part.id.clone(),
-                    slot: None,
-                });
-            }
-        });
-    }
-    ui.separator();
-    ui.strong(tr("ui.drive-bays"));
-    ui.weak(tr("ui.buy-drives-in-compute-storage-drives-then"));
-    for (bay, slot) in chassis.drive_bays.iter().enumerate() {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(crate::localization::tr_args(
-                "hardware.slot",
-                &[(slot.name).to_string(), (slot.interface).to_string()],
-            ));
-            if let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) {
-                if let Some(drive) = cloud_provider_sim::drive_catalog()
-                    .drives
-                    .iter()
-                    .find(|d| d.id == id)
-                {
-                    ui.label(crate::localization::tr_args(
-                        "ui.read-mb-s-iops-write-mb-s",
-                        &[
-                            crate::localization::item_name(&drive.id, &drive.name),
-                            (drive.read_mb_s).to_string(),
-                            (drive.read_iops).to_string(),
-                            (drive.write_mb_s).to_string(),
-                            (drive.write_iops).to_string(),
-                        ],
-                    ));
-                } else {
-                    ui.label(id);
-                }
-                if ui.button(tr("ui.remove-drive")).clicked() {
-                    actions.write(UiAction::RemoveDrive { device, bay });
-                }
-            } else {
-                ui.weak(tr("ui.empty"));
-                for drive in &cloud_provider_sim::drive_catalog().drives {
-                    if drive.interface == slot.interface
-                        && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
-                        && ui
-                            .button(crate::localization::tr_args(
-                                "hardware.install-item",
-                                &[crate::localization::item_name(&drive.id, &drive.name)],
-                            ))
-                            .clicked()
-                    {
-                        actions.write(UiAction::InstallDrive {
-                            device,
-                            drive_id: drive.id.clone(),
-                            bay: Some(bay),
-                        });
-                    }
-                }
-            }
-        });
     }
 }
 
@@ -2293,9 +2023,9 @@ fn rack_view(
                                                 DeviceKind::Server(_)
                                                     if state.rack_side == RackSide::Front =>
                                                 {
-                                                    textures.server_front
+                                                    equipment_texture(textures,&device.kind,state.rack_side).unwrap()
                                                 }
-                                                DeviceKind::Server(_) => textures.server_rear,
+                                                DeviceKind::Server(_) => equipment_texture(textures,&device.kind,state.rack_side).unwrap(),
                                                 DeviceKind::Switch(_)
                                                     if state.rack_side == RackSide::Front =>
                                                 {
@@ -2783,7 +2513,7 @@ fn rack_view(
                                     if hovered && let Some(id) = selected_inventory {
                                         let device =
                                             sim.device(id).expect("inventory device exists");
-                                        let height = device.template().rack_units();
+                                        let height = device.rack_units();
                                         let valid = unit as u16 + height as u16 - 1
                                             <= rack.units as u16
                                             && (unit..unit.saturating_add(height))
@@ -2854,6 +2584,9 @@ fn rack_view(
                             equipment_uv(&device.kind, state.rack_side),
                             egui::Color32::WHITE.gamma_multiply(0.65),
                         );
+                        if state.rack_side == RackSide::Front {
+                            paint_server_drives(ui.painter(), rect, &device.kind);
+                        }
                     } else {
                         ui.painter()
                             .rect_filled(rect, 1.0, egui::Color32::from_black_alpha(200));
@@ -3484,7 +3217,15 @@ fn rack_view(
 fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
     // Crop the generated photographs to their front panels at render time.
     let (left, top, right, bottom) = match kind {
-        DeviceKind::Server(_) if side == RackSide::Front => (0.009, 0.48, 0.995, 0.84),
+        DeviceKind::Server(server) => {
+            let face = if side == RackSide::Front {
+                &server.model().artwork.front
+            } else {
+                &server.model().artwork.rear
+            };
+            let [l, t, r, b] = face.uv;
+            (l, t, r, b)
+        }
         DeviceKind::Switch(_) if side == RackSide::Rear => (0.002, 0.45, 0.997, 0.755),
         DeviceKind::Switch(sw)
             if side == RackSide::Front && sw.model == SwitchModel::Catalyst24T4X =>
@@ -3594,8 +3335,14 @@ fn equipment_texture(
     side: RackSide,
 ) -> Option<egui::TextureId> {
     Some(match kind {
-        DeviceKind::Server(_) if side == RackSide::Front => textures.server_front,
-        DeviceKind::Server(_) => textures.server_rear,
+        DeviceKind::Server(server) if side == RackSide::Front => textures
+            .servers
+            .get(server.model.as_str())
+            .map_or(textures.server_front, |t| t.front),
+        DeviceKind::Server(server) => textures
+            .servers
+            .get(server.model.as_str())
+            .map_or(textures.server_rear, |t| t.rear),
         DeviceKind::Switch(sw) if side == RackSide::Front => {
             if sw.model == SwitchModel::Catalyst24T4X {
                 textures.switch_4x_front
@@ -3755,7 +3502,7 @@ fn paint_server_backplane(
         return;
     };
     let catalog = server_catalog();
-    for (slot_index, slot) in catalog.chassis.pcie_slots.iter().enumerate() {
+    for (slot_index, slot) in server.model().chassis.pcie_slots.iter().enumerate() {
         let Some(part_id) = hardware.pcie.get(slot_index).and_then(Option::as_deref) else {
             continue;
         };
@@ -3816,59 +3563,11 @@ fn paint_server_drives(painter: &egui::Painter, panel: egui::Rect, kind: &Device
     let DeviceKind::Server(server) = kind else {
         return;
     };
-    let Some(hardware) = &server.hardware else {
-        return;
-    };
-    for (bay, slot) in cloud_provider_sim::server_catalog()
-        .chassis
-        .drive_bays
-        .iter()
-        .enumerate()
-    {
-        let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) else {
-            continue;
-        };
-        let [left, top, right, bottom] = slot.face_rect;
-        let tray = egui::Rect::from_min_max(
-            egui::pos2(
-                panel.left() + panel.width() * left,
-                panel.top() + panel.height() * top,
-            ),
-            egui::pos2(
-                panel.left() + panel.width() * right,
-                panel.top() + panel.height() * bottom,
-            ),
-        );
-        painter.rect_stroke(
-            tray,
-            2.0,
-            egui::Stroke::new(1.5, egui::Color32::from_gray(190)),
-            egui::StrokeKind::Inside,
-        );
-        let model = cloud_provider_sim::drive_catalog()
-            .drives
-            .iter()
-            .find(|drive| drive.id == id);
-        let label = model.map_or("ui.drive", |drive| {
-            if drive.kind == cloud_provider_sim::DriveKind::Ssd {
-                "ui.ssd"
-            } else {
-                "ui.hdd"
-            }
-        });
-        let badge = egui::Rect::from_min_size(
-            tray.left_bottom() - egui::vec2(0.0, 11.0),
-            egui::vec2(tray.width(), 11.0),
-        );
-        painter.rect_filled(badge, 1.0, egui::Color32::from_black_alpha(210));
-        painter.text(
-            badge.center(),
-            egui::Align2::CENTER_CENTER,
-            tr(label),
-            egui::FontId::monospace(8.0),
-            egui::Color32::from_rgb(175, 214, 216),
-        );
-    }
+    let drives = server
+        .hardware
+        .as_ref()
+        .map_or(&[][..], |h| h.drives.as_slice());
+    server_drive_faces::paint(painter, panel, server.model(), drives, false);
 }
 
 fn connector_label(connector: PortConnector) -> &'static str {
@@ -4260,6 +3959,18 @@ mod tests {
             panic!()
         };
         let empty = sim.device(id).unwrap().kind.clone();
+        let empty_context = egui::Context::default();
+        let empty_panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
+        let mut output = empty_context.run_ui(egui::RawInput::default(), |ui| {
+            paint_server_drives(ui.painter(), empty_panel, &empty);
+        });
+        output.textures_delta.clear();
+        assert!(
+            output.shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Rect(rect) if rect.fill == egui::Color32::from_rgb(9, 12, 14)
+            )),
+            "empty bays must cover drive carriers baked into source photography"
+        );
         sim.execute(Command::BuyDrive {
             drive_id: "enterprise_ssd_960gb".into(),
         })

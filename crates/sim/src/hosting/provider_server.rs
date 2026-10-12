@@ -6,7 +6,7 @@ const CONTROL_SERVICE: &str = "hosting-provider";
 impl NetworkSim {
     pub(crate) fn hosting_server_operational(&self, server: DeviceId) -> bool {
         self.device(server).is_some_and(|d| {
-            d.powered && matches!(&d.kind, DeviceKind::Server(s) if s.hardware.as_ref().is_none_or(|h| h.ready()))
+            d.powered && matches!(&d.kind, DeviceKind::Server(s) if s.hardware.as_ref().is_none_or(|h| h.ready_for_model(s.model())))
         })
     }
 

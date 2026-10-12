@@ -11,7 +11,7 @@ pub(super) struct Item {
 }
 #[derive(Deserialize)]
 struct ItemFile {
-    #[serde(default, alias = "drives", alias = "parts")]
+    #[serde(default, alias = "drives", alias = "parts", alias = "models")]
     items: Vec<Item>,
     #[serde(default)]
     modules: Vec<Item>,
@@ -34,6 +34,10 @@ pub(super) fn load(directory: Option<&Path>) -> BTreeMap<String, Item> {
         (
             "drives.json",
             include_str!("../../../../assets/equipment/drives.json"),
+        ),
+        (
+            "servers.json",
+            include_str!("../../../../assets/equipment/servers.json"),
         ),
         (
             "server_parts.json",
@@ -83,10 +87,6 @@ pub(super) fn load(directory: Option<&Path>) -> BTreeMap<String, Item> {
         (
             "switch_config.json",
             include_str!("../../../../assets/equipment/switch_config.json"),
-        ),
-        (
-            "server_config.json",
-            include_str!("../../../../assets/equipment/server_config.json"),
         ),
         (
             "ups_config.json",

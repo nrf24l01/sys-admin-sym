@@ -450,3 +450,171 @@ fn an_unpatched_room_socket_does_not_supply_a_dhcp_lease() {
     assert!(!lab.sim.execute_console(lab.guests[0], "ifup eth1").success);
     assert!(!lab.run(0, "ip -br addr show dev eth1")[0].contains("10.0.0.10/16"));
 }
+
+#[test]
+fn console_editors_preserve_multiline_files_and_resolve_quoted_relative_paths() {
+    let mut lab = GuestLab::new(1);
+    lab.run(0, "mkdir -p /root/config; cd /root/config");
+    let device = lab.guests[0];
+    let file = lab
+        .sim
+        .open_console_editor(device, "sudo nano 'my config'")
+        .unwrap()
+        .unwrap();
+    assert_eq!(file.kind, ConsoleEditorKind::Nano);
+    assert_eq!(file.path, "/root/config/my config");
+    assert!(file.contents.is_empty());
+    assert!(
+        !lab.sim
+            .server_os(device)
+            .unwrap()
+            .filesystem
+            .entries
+            .contains_key(&file.path)
+    );
+    let text = "first\n\nλ second\n";
+    lab.sim
+        .save_console_editor_file(file.device, &file.path, text)
+        .unwrap();
+    let loaded = lab
+        .sim
+        .open_console_editor(device, "vim 'my config'")
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded.kind, ConsoleEditorKind::Vim);
+    assert_eq!(loaded.contents, text);
+    assert!(
+        lab.sim
+            .open_console_editor(device, "nano /missing/config")
+            .unwrap()
+            .is_err()
+    );
+    assert!(
+        lab.sim
+            .open_console_editor(device, "nano /etc")
+            .unwrap()
+            .is_err()
+    );
+    assert!(
+        lab.sim
+            .open_console_editor(device, "nano")
+            .unwrap()
+            .is_err()
+    );
+    assert!(lab.sim.open_console_editor(device, "echo nano").is_none());
+}
+
+#[test]
+fn editor_paths_follow_shell_quoting_and_environment_expansion() {
+    let mut lab = GuestLab::new(1);
+    let device = lab.guests[0];
+    lab.run(0, "export CONFIG=/etc/network/interfaces");
+    let file = lab
+        .sim
+        .open_console_editor(device, "nano \"$CONFIG\"")
+        .unwrap()
+        .unwrap();
+    assert_eq!(file.path, "/etc/network/interfaces");
+    let file = lab
+        .sim
+        .open_console_editor(device, "vim '$literal'")
+        .unwrap()
+        .unwrap();
+    assert_eq!(file.path, "/root/$literal");
+    assert!(lab.sim.open_console_editor(device, "sudo echo '").is_none());
+}
+
+#[test]
+fn editor_saved_network_configuration_applies_on_restart() {
+    let mut lab = GuestLab::new(1);
+    let device = lab.guests[0];
+    let file = lab
+        .sim
+        .open_console_editor(device, "vim /etc/network/interfaces")
+        .unwrap()
+        .unwrap();
+    lab.sim.save_console_editor_file(file.device, &file.path,
+        "auto lo eth0\niface lo inet loopback\niface eth0 inet static\n address 192.0.2.10/24\n gateway 192.0.2.1\n").unwrap();
+    lab.run(0, "systemctl restart networking");
+    assert!(lab.run(0, "ip -br a show dev eth0")[0].contains("192.0.2.10/24"));
+    assert!(lab.run(0, "ip route get 8.8.8.8")[0].contains("via 192.0.2.1"));
+    let original = lab
+        .sim
+        .server_os(device)
+        .unwrap()
+        .filesystem
+        .read(&file.path)
+        .unwrap();
+    assert!(
+        lab.sim
+            .save_console_editor_file(device, "/etc", "bad")
+            .is_err()
+    );
+    assert_eq!(
+        lab.sim
+            .server_os(device)
+            .unwrap()
+            .filesystem
+            .read(&file.path)
+            .unwrap(),
+        original
+    );
+    lab.sim
+        .execute(Command::SetPower {
+            device,
+            powered: false,
+        })
+        .unwrap();
+    assert!(
+        lab.sim
+            .save_console_editor_file(device, &file.path, "bad")
+            .is_err()
+    );
+    assert!(
+        lab.sim
+            .open_console_editor(device, "nano /etc/network/interfaces")
+            .unwrap()
+            .is_err()
+    );
+}
+
+#[test]
+fn editors_pin_the_guest_selected_by_ssh_when_opened() {
+    let mut lab = GuestLab::new(2);
+    lab.connect(lab.port(0, "eth1"), lab.port(1, "eth1"));
+    lab.run(0, "ip addr add 192.0.2.1/24 dev eth1");
+    lab.run(1, "ip addr add 192.0.2.2/24 dev eth1; cd /etc/network");
+    lab.run(0, "ssh root@192.0.2.2");
+    let file = lab
+        .sim
+        .open_console_editor(lab.guests[0], "nano interfaces")
+        .unwrap()
+        .unwrap();
+    assert_eq!(file.device, lab.guests[1]);
+    assert_eq!(file.path, "/etc/network/interfaces");
+    lab.run(0, "exit");
+    lab.sim
+        .save_console_editor_file(file.device, &file.path, "# remote\n")
+        .unwrap();
+    assert_eq!(lab.run(1, "cat /etc/network/interfaces"), ["# remote"]);
+    assert_ne!(lab.run(0, "cat /etc/network/interfaces"), ["# remote"]);
+}
+
+#[test]
+fn editor_commands_are_discoverable_and_explain_noninteractive_use() {
+    let mut lab = GuestLab::new(1);
+    assert_eq!(lab.run(0, "which nano"), ["/usr/bin/nano"]);
+    assert_eq!(lab.run(0, "which vim"), ["/usr/bin/vim"]);
+    let device = lab.guests[0];
+    assert!(
+        lab.sim
+            .console_completions(device, "nano /etc/net")
+            .candidates
+            .contains(&"/etc/network/".into())
+    );
+    let result = lab
+        .sim
+        .execute_console(device, "nano /etc/network/interfaces");
+    assert!(!result.success);
+    assert!(result.lines.join(" ").contains("in-game console"));
+}

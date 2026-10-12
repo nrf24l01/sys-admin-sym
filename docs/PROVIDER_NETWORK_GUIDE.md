@@ -42,6 +42,47 @@ configured connected and static routes, including GUI routes.
 Configuration persists with ordinary saves. Diagnostics use simulated Ethernet,
 ARP and IPv4 forwarding; they never send traffic to the host computer's network.
 
+## Edit a server's persistent network configuration
+
+Use the in-game server console (the bottom panel or its **Detach** window):
+
+```text
+nano /etc/network/interfaces
+```
+
+Edit the existing file or enter, for example:
+
+```text
+auto lo eth0
+iface lo inet loopback
+iface eth0 inet static
+    address 203.0.113.2/29
+    gateway 203.0.113.1
+```
+
+Replace the address, prefix and gateway with your network's values. In nano,
+press **Ctrl+O**, then **Enter** to write the file; **Ctrl+X** exits. Unsaved
+changes prompt you to save, discard or cancel. `sudo nano ...` also works.
+
+For Vim, run `vim /etc/network/interfaces` (or `vi`). Press **i** to insert
+text, **Esc** to return to normal mode, then **:wq** and **Enter** to save and
+quit. **:w** saves, **:q** quits, and **:q!** discards changes. Arrow keys or
+**h/j/k/l** move the cursor in normal mode. These simulated editors provide
+basic editing, saving and quitting; advanced Vim commands are unavailable.
+
+Apply and inspect the saved configuration:
+
+```text
+systemctl restart networking
+ip -br addr
+ip route
+```
+
+Invalid configuration is reported without partially replacing the active
+network settings. The file persists across saves and reboots. Editors access
+only the simulated guest filesystem. Interactive editors are available in the
+in-game console; the standalone `game-ssh` client remains a command console.
+
 ## Advanced scenario command reference
 
 The examples below document `ProviderConsole::run` for scenario tooling. It is

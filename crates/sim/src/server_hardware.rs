@@ -1,13 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+mod catalog_validation;
 mod limits;
+mod models;
+mod purchase;
 pub use limits::*;
+pub use models::*;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerCatalog {
+    /// Default R360 profile retained for standalone legacy hardware APIs.
     pub chassis: ServerChassis,
     pub parts: Vec<ServerPart>,
+    #[serde(default)]
+    pub models: Vec<ServerModel>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -17,6 +24,8 @@ pub struct ServerChassis {
     pub cpu_sockets: usize,
     pub dimm_slots: usize,
     pub memory_type: String,
+    #[serde(default)]
+    pub additional_memory_types: Vec<String>,
     pub supported_cpu_ids: Vec<String>,
     pub max_cpu_tdp_w: u16,
     pub identical_cpus: bool,
@@ -150,13 +159,24 @@ pub enum PciCard {
 pub fn server_catalog() -> &'static ServerCatalog {
     static CATALOG: OnceLock<ServerCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        let catalog: ServerCatalog = crate::equipment_config::equipment_catalog(
+        let mut catalog: ServerCatalog = crate::equipment_config::equipment_catalog(
             "server_parts.json",
             include_str!("../../../assets/equipment/server_parts.json"),
         );
-        catalog.validate().unwrap_or_else(|error| {
-            panic!("invalid equipment config assets/equipment/server_parts.json: {error}")
-        });
+        catalog.models = crate::equipment_config::equipment_catalog::<ServerModels>(
+            "servers.json",
+            include_str!("../../../assets/equipment/servers.json"),
+        )
+        .models;
+        catalog.chassis = catalog.model(DEFAULT_SERVER_MODEL).unwrap_or_else(|| {
+            panic!("invalid assets/equipment/servers.json: missing default model {DEFAULT_SERVER_MODEL}")
+        }).chassis.clone();
+        catalog
+            .validate()
+            .and_then(|()| catalog.validate_models())
+            .unwrap_or_else(|error| {
+                panic!("invalid server catalogs assets/equipment/servers.json / server_parts.json: {error}")
+            });
         catalog
     })
 }
@@ -171,26 +191,10 @@ impl ServerFullPack {
     pub const DRIVE: &'static str = "enterprise_ssd_960gb";
 
     pub fn price() -> i64 {
-        let parts = server_catalog();
-        let drive = crate::drive_catalog();
-        crate::DeviceTemplate::Server.price()
-            + [Self::CPU, Self::RAM, Self::NIC]
-                .iter()
-                .map(|id| {
-                    parts
-                        .parts
-                        .iter()
-                        .find(|part| part.id == *id)
-                        .expect("full pack part exists")
-                        .price
-                })
-                .sum::<i64>()
-            + drive
-                .drives
-                .iter()
-                .find(|model| model.id == Self::DRIVE)
-                .expect("full pack drive exists")
-                .price
+        server_catalog()
+            .default_model()
+            .full_pack_price(server_catalog())
+            .expect("validated default full pack")
     }
 }
 
@@ -215,8 +219,12 @@ pub struct ServerHardware {
 
 impl ServerHardware {
     pub fn pcie_link_generation(&self, index: usize) -> Option<u8> {
+        self.pcie_link_generation_for_model(server_catalog().default_model(), index)
+    }
+
+    pub fn pcie_link_generation_for_model(&self, model: &ServerModel, index: usize) -> Option<u8> {
         let catalog = server_catalog();
-        let slot = catalog.chassis.pcie_slots.get(index)?;
+        let slot = model.chassis.pcie_slots.get(index)?;
         let cpu = catalog
             .parts
             .iter()
@@ -273,11 +281,14 @@ impl ServerHardware {
     }
 
     pub fn ready(&self) -> bool {
-        if self.cpus.is_empty() || self.ram.is_empty() {
-            return false;
-        }
-        self.validate_limits(server_catalog()).is_ok()
-            && crate::server_power_profile().psu.capacity_watts >= self.load_watts()
+        self.ready_for_model(server_catalog().default_model())
+    }
+
+    pub fn ready_for_model(&self, model: &ServerModel) -> bool {
+        !self.cpus.is_empty()
+            && !self.ram.is_empty()
+            && self.validate_for_model(model, server_catalog()).is_ok()
+            && model.power.psu.capacity_watts >= self.peak_load_watts_for_model(model)
     }
 }
 

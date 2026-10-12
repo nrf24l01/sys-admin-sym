@@ -1,0 +1,303 @@
+{
+  "id": "example_1u",
+  "manufacturer": "Example",
+  "display_name": {
+    "en": "Example 1U server",
+    "ru": "Example 1U server"
+  },
+  "desc": {
+    "en": "1U R360 chassis · two 600 W redundant PSUs · full pack available with CPU, RAM, NIC and SSD",
+    "ru": "Корпус R360 1U · два резервных БП по 600 Вт · доступен комплект с CPU, RAM, NIC и SSD"
+  },
+  "price": 1000,
+  "rack_units": 1,
+  "chassis": {
+    "model": "Example 1U server",
+    "cpu_socket": "LGA1700",
+    "cpu_sockets": 1,
+    "dimm_slots": 4,
+    "memory_type": "DDR5 ECC UDIMM",
+    "psu_bays": 2,
+    "drive_bays": [
+      {
+        "name": "Bay 1",
+        "interface": "SATA",
+        "face_rect": [
+          0.13,
+          0.22,
+          0.28,
+          0.86
+        ]
+      },
+      {
+        "name": "Bay 2",
+        "interface": "SATA",
+        "face_rect": [
+          0.34,
+          0.22,
+          0.49,
+          0.86
+        ]
+      },
+      {
+        "name": "Bay 3",
+        "interface": "SATA",
+        "face_rect": [
+          0.55,
+          0.22,
+          0.7,
+          0.86
+        ]
+      },
+      {
+        "name": "Bay 4",
+        "interface": "SATA",
+        "face_rect": [
+          0.76,
+          0.22,
+          0.91,
+          0.86
+        ]
+      }
+    ],
+    "pcie_slots": [
+      {
+        "name": "PCIe 1",
+        "lanes": 8,
+        "generation": 4,
+        "width": 8,
+        "face_rect": [
+          0.3,
+          0.1,
+          0.62,
+          0.43
+        ],
+        "cpu_socket": 0
+      },
+      {
+        "name": "PCIe 2",
+        "lanes": 8,
+        "generation": 4,
+        "width": 16,
+        "face_rect": [
+          0.3,
+          0.57,
+          0.62,
+          0.9
+        ],
+        "cpu_socket": 0
+      }
+    ],
+    "supported_cpu_ids": [
+      "xeon_e_2434"
+    ],
+    "max_cpu_tdp_w": 95,
+    "memory": {
+      "max_capacity_gb": 128,
+      "channels_per_cpu": 2,
+      "dimms_per_channel": 2,
+      "identical_dimms": true,
+      "supported_dimm_counts": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "population_order": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "slots": [
+        {
+          "name": "A1",
+          "cpu_socket": 0,
+          "channel": 0,
+          "position": 0
+        },
+        {
+          "name": "A2",
+          "cpu_socket": 0,
+          "channel": 1,
+          "position": 0
+        },
+        {
+          "name": "A3",
+          "cpu_socket": 0,
+          "channel": 0,
+          "position": 1
+        },
+        {
+          "name": "A4",
+          "cpu_socket": 0,
+          "channel": 1,
+          "position": 1
+        }
+      ],
+      "supported_modules": [
+        {
+          "capacity_gb": 16,
+          "ranks": 1,
+          "voltage_mv": 1100,
+          "rated_speeds_mt_s": [
+            4800,
+            5600
+          ],
+          "operating_speeds_mt_s": [
+            4400,
+            4000
+          ]
+        },
+        {
+          "capacity_gb": 32,
+          "ranks": 2,
+          "voltage_mv": 1100,
+          "rated_speeds_mt_s": [
+            4800,
+            5600
+          ],
+          "operating_speeds_mt_s": [
+            4400,
+            3600
+          ]
+        }
+      ]
+    },
+    "identical_cpus": true,
+    "parts_hot_swappable": false
+  },
+  "power": {
+    "board": {
+      "idle_mw": 22000,
+      "peak_mw": 30000
+    },
+    "fans": {
+      "idle_mw": 3000,
+      "peak_mw": 10000
+    },
+    "psu": {
+      "capacity_watts": 600,
+      "efficiency_permille": [
+        [
+          0,
+          800
+        ],
+        [
+          100,
+          860
+        ],
+        [
+          200,
+          900
+        ],
+        [
+          500,
+          940
+        ],
+        [
+          1000,
+          920
+        ]
+      ]
+    },
+    "legacy": {
+      "idle_mw": 45000,
+      "peak_mw": 180000
+    },
+    "power_factor_percent": 90
+  },
+  "onboard_ports": [
+    {
+      "name": "eth0",
+      "speed_mbps": 1000,
+      "socket": {
+        "rect": [
+          0.137,
+          0.345,
+          0.173,
+          0.595
+        ]
+      }
+    },
+    {
+      "name": "eth1",
+      "speed_mbps": 1000,
+      "socket": {
+        "rect": [
+          0.19,
+          0.345,
+          0.226,
+          0.595
+        ]
+      }
+    }
+  ],
+  "power_inlets": [
+    {
+      "rect": [
+        0.9095675,
+        0.14410779,
+        0.9742785,
+        0.87608224
+      ]
+    },
+    {
+      "rect": [
+        0.7645118,
+        0.13765042,
+        0.8225842,
+        0.90566385
+      ]
+    }
+  ],
+  "artwork": {
+    "front": {
+      "path": "equipment/server_front.png",
+      "uv": [
+        0.009,
+        0.48,
+        0.995,
+        0.84
+      ],
+      "source_size": [
+        2048,
+        512
+      ]
+    },
+    "rear": {
+      "path": "equipment/server_rear_clean.png",
+      "uv": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "source_size": [
+        2048,
+        512
+      ]
+    }
+  },
+  "full_pack": {
+    "parts": [
+      {
+        "part_id": "xeon_e_2434"
+      },
+      {
+        "part_id": "ddr5_ecc_16gb",
+        "slot": 0
+      },
+      {
+        "part_id": "intel_i350_t4",
+        "slot": 0
+      }
+    ],
+    "drives": [
+      {
+        "drive_id": "enterprise_ssd_960gb",
+        "bay": 0
+      }
+    ]
+  }
+}

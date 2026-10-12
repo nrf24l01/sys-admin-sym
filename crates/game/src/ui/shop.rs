@@ -21,12 +21,39 @@ use bevy::prelude::MessageWriter;
 use bevy_egui::egui;
 use cloud_provider_sim::NetworkSim;
 
+/// Bind thumbnails for the filtered catalog and full images only for open
+/// details/comparisons. Hidden model families stay in the image cache.
+pub(super) fn server_artwork_models(
+    state: &ShopState,
+    sim: &NetworkSim,
+) -> std::collections::BTreeMap<String, bool> {
+    use cloud_provider_sim::PurchaseItem;
+    let mut models = std::collections::BTreeMap::new();
+    for offer in query::filtered(state, sim) {
+        if let PurchaseItem::ServerModel { model_id, .. } = &offer.item {
+            models.insert(model_id.clone(), false);
+        }
+    }
+    let details = state.selected_offer.as_ref().filter(|_| state.details_open);
+    for id in details
+        .into_iter()
+        .chain(state.compared.iter().filter(|_| state.comparison_open))
+    {
+        if let Some(offer) = catalog::catalog().iter().find(|o| &o.id == id)
+            && let PurchaseItem::ServerModel { model_id, .. } = &offer.item
+        {
+            models.insert(model_id.clone(), true);
+        }
+    }
+    models
+}
+
 pub(super) fn show(
     viewport: &mut egui::Ui,
     sim: &NetworkSim,
     state: &mut ShopState,
     selected: Selection,
-    textures: ShopTextures,
+    textures: &ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     if !state.open {
@@ -114,7 +141,7 @@ pub(super) fn show(
                                         selected_offer.unwrap(),
                                         state,
                                         sim,
-                                        textures.full_resolution(),
+                                        &textures.full_resolution(),
                                         actions,
                                     )
                                 });
@@ -129,7 +156,7 @@ pub(super) fn show(
             viewport,
             state,
             sim,
-            textures.full_resolution(),
+            &textures.full_resolution(),
             actions,
             inline_details,
         );
@@ -155,7 +182,7 @@ fn products(
     sim: &NetworkSim,
     state: &mut ShopState,
     selected: Selection,
-    textures: ShopTextures,
+    textures: &ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     navigation::shortcuts(ui, state, sim);

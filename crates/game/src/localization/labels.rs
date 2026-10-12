@@ -4,7 +4,12 @@ use cloud_provider_sim::{Device, DeviceTemplate, Rack};
 
 pub fn device_name(device: &Device) -> String {
     let (id, original) = match device.template() {
-        DeviceTemplate::Server => ("dell_r360", "Dell PowerEdge R360"),
+        DeviceTemplate::Server => {
+            let cloud_provider_sim::DeviceKind::Server(server) = &device.kind else {
+                unreachable!()
+            };
+            (server.model.as_str(), server.model().chassis.model.as_str())
+        }
         DeviceTemplate::Switch => ("cisco_catalyst_c1000", "Cisco Catalyst C1000-24T-4G-L"),
         DeviceTemplate::Router => ("cisco_isr_c1111", "Cisco ISR C1111-8P"),
         DeviceTemplate::PatchPanel => ("patch_panel", "24-port Patch Panel"),

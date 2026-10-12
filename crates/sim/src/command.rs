@@ -45,6 +45,10 @@ pub enum Command {
     },
     BuyServerChassis,
     BuyServerFullPack,
+    BuyServer {
+        model_id: String,
+        configuration: crate::ServerConfiguration,
+    },
     BuyPublicIpv4Pool,
     BuyPublicIpv4Subnet {
         prefix: u8,

@@ -45,18 +45,21 @@ impl TerminalRenderer {
             return;
         }
         let console = state.terminals.entry(device).or_default();
+        let mut detach = false;
         egui::Panel::bottom("terminal")
         .resizable(true)
         .default_size(240.0)
         .show(viewport, |ui| {
             ui.horizontal(|ui| {
                 ui.strong(format!("{} — Console", dev.name));
-                if ui.small_button("Open terminal window").clicked() {
+                if ui.small_button("Detach").clicked() { detach = true; }
+                if ui.small_button("External terminal").clicked() {
                     actions.write(UiAction::LaunchExternalTerminal(device));
                 }
                 if ui.small_button("Clear output").clicked() { console.lines.clear(); }
                 ui.checkbox(&mut console.script_mode, "Paste commands");
             });
+            if Self::editor(ui, console, device, actions) { return; }
             if !server { ui.weak("? help · Up/Down history · Tab completion · Ctrl-Z end · Scripts stop at the first error"); }
             if !dev.powered { ui.colored_label(egui::Color32::YELLOW, "Power on this device in the Inspector to use its console."); }
             Self::output_scroll(ui, if console.script_mode { 120.0 } else { 70.0 })
@@ -75,6 +78,7 @@ impl TerminalRenderer {
             ui.horizontal(|ui| {
                 ui.monospace(sim.terminal_prompt(device));
                 let input_id = egui::Id::new(("console-input", device.0));
+                if console.focus_input && ui.is_visible() && !ui.is_sizing_pass() { ui.memory_mut(|m| m.request_focus(input_id)); console.focus_input = false; }
                 if Self::keyboard(ui, sim, device, console, input_id) && !server {
                     actions.write(UiAction::RunTerminal(device, "end".into()));
                 }
@@ -98,6 +102,36 @@ impl TerminalRenderer {
                 }
             });
         });
+        if detach {
+            state.terminal_windows.insert(device);
+        }
+    }
+
+    fn editor(
+        ui: &mut egui::Ui,
+        console: &mut ConsoleState,
+        device: DeviceId,
+        actions: &mut MessageWriter<UiAction>,
+    ) -> bool {
+        let Some(editor) = console.editor.as_mut() else {
+            return false;
+        };
+        match super::terminal_editor::show(ui, editor, device) {
+            Some(EditorIntent::Save { path, contents }) => {
+                actions.write(UiAction::SaveTerminalEditor {
+                    console: device,
+                    target: editor.device,
+                    path,
+                    contents,
+                });
+            }
+            Some(EditorIntent::Close) => {
+                console.editor = None;
+                console.focus_input = true;
+            }
+            None => {}
+        }
+        true
     }
 
     fn keyboard(
@@ -192,6 +226,9 @@ impl TerminalRenderer {
                         "IOS CONSOLE • LIVE"
                     },
                 );
+                if Self::editor(ui, console, device, actions) {
+                    return;
+                }
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut console.script_mode, "Paste commands");
                     if ui.small_button("Clear output").clicked() {
@@ -224,6 +261,13 @@ impl TerminalRenderer {
                 ui.horizontal(|ui| {
                     ui.monospace(sim.terminal_prompt(device));
                     let input_id = egui::Id::new(("console-window-input", device.0));
+                    if (console.focus_input || state.terminal_window_focus.contains(&device))
+                        && ui.is_visible()
+                        && !ui.is_sizing_pass()
+                    {
+                        ui.memory_mut(|m| m.request_focus(input_id));
+                        console.focus_input = false;
+                    }
                     if Self::keyboard(ui, sim, device, console, input_id) && !server {
                         actions.write(UiAction::RunTerminal(device, "end".into()));
                     }
@@ -239,9 +283,6 @@ impl TerminalRenderer {
                             .font(egui::TextStyle::Monospace)
                             .desired_width(ui.available_width() - 55.0),
                     );
-                    if state.terminal_window_focus.contains(&device) {
-                        response.request_focus();
-                    }
                     if (ui.button("Run").clicked()
                         || (!console.script_mode
                             && response.lost_focus()
@@ -265,6 +306,106 @@ impl TerminalRenderer {
         state.terminal_window_focus.remove(&device);
         if !open {
             state.terminal_windows.remove(&device);
+        }
+    }
+}
+
+#[cfg(test)]
+mod editor_integration_tests {
+    use super::*;
+    use bevy::ecs::system::SystemState;
+    use bevy::prelude::{Messages, World};
+    use cloud_provider_sim::*;
+
+    #[test]
+    fn quitting_editor_returns_keyboard_input_to_docked_and_floating_shells() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(device) = sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Server,
+            })
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        sim.execute(Command::PlaceDevice {
+            device,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: OutletId {
+                source: SourceId::Rack(RackId(1)),
+                index: 0,
+            },
+            endpoint: PowerEndpoint::Device(device),
+        })
+        .unwrap();
+        sim.execute(Command::SetPower {
+            device,
+            powered: true,
+        })
+        .unwrap();
+        for floating in [false, true] {
+            let ctx = egui::Context::default();
+            let mut state = UiState {
+                selected: Selection::Device(device),
+                ..Default::default()
+            };
+            if floating {
+                state.terminal_windows.insert(device);
+            }
+            state.terminals.entry(device).or_default().editor =
+                Some(TerminalEditor::new(ConsoleEditorFile {
+                    device,
+                    kind: ConsoleEditorKind::Nano,
+                    path: "/root/test".into(),
+                    contents: String::new(),
+                }));
+            let mut world = World::new();
+            world.init_resource::<Messages<UiAction>>();
+            let mut writer = SystemState::<MessageWriter<UiAction>>::new(&mut world);
+            let mut frame = |events| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1200.0, 800.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        TerminalRenderer::panel(
+                            ui,
+                            &sim,
+                            &mut state,
+                            &mut writer.get_mut(&mut world).unwrap(),
+                        );
+                    },
+                );
+                output.textures_delta.clear();
+            };
+            frame(vec![]);
+            frame(vec![]);
+            frame(vec![egui::Event::Key {
+                key: egui::Key::X,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL,
+            }]);
+            frame(vec![egui::Event::Text("ip -br addr".into())]);
+            assert!(
+                state.terminals[&device].editor.is_none(),
+                "floating={floating}, focus={:?}",
+                ctx.memory(|m| m.focused())
+            );
+            assert_eq!(
+                state.terminals[&device].input, "ip -br addr",
+                "floating={floating}"
+            );
         }
     }
 }

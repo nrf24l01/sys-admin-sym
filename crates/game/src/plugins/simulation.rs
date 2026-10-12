@@ -140,6 +140,15 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
                     .chain(if input.is_empty() { Some("") } else { None })
                 {
                     let prompt = sim.terminal_prompt(device);
+                    if let Some(result) = sim.open_console_editor(device, line) {
+                        let _ = responses.send(WorkerResponse::EditorOpened {
+                            device,
+                            input: line.into(),
+                            prompt,
+                            result,
+                        });
+                        break;
+                    }
                     let output = sim.execute_console(device, line);
                     let success = output.success;
                     let _ = responses.send(WorkerResponse::Terminal {
@@ -152,6 +161,16 @@ fn worker_loop(requests: Receiver<WorkerRequest>, responses: Sender<WorkerRespon
                         break;
                     }
                 }
+                let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
+            }
+            WorkerRequest::SaveEditor {
+                console,
+                target,
+                path,
+                contents,
+            } => {
+                let result = sim.save_console_editor_file(target, &path, &contents);
+                let _ = responses.send(WorkerResponse::EditorSaved { console, result });
                 let _ = responses.send(WorkerResponse::Snapshot(Box::new(sim.clone())));
             }
             WorkerRequest::Replace(mut replacement) => {
@@ -578,6 +597,20 @@ fn translate_ui_actions(
                 None
             }
             UiAction::NetworkCommand(command) => Some(command.clone()),
+            UiAction::SaveTerminalEditor {
+                console,
+                target,
+                path,
+                contents,
+            } => {
+                let _ = worker.tx.send(WorkerRequest::SaveEditor {
+                    console: *console,
+                    target: *target,
+                    path: path.clone(),
+                    contents: contents.clone(),
+                });
+                None
+            }
             UiAction::RunTerminal(device, input) => {
                 let _ = worker.tx.send(WorkerRequest::Terminal {
                     device: *device,
@@ -912,6 +945,28 @@ fn poll_worker(
                     console.lines.drain(..console.lines.len() - 1000);
                 }
             }
+            WorkerResponse::EditorOpened {
+                device,
+                input,
+                prompt,
+                result,
+            } => {
+                let console = state.terminals.entry(device).or_default();
+                console.lines.push(format!("{prompt} {input}"));
+                match result {
+                    Ok(file) => console.editor = Some(TerminalEditor::new(file)),
+                    Err(error) => console.lines.push(error),
+                }
+            }
+            WorkerResponse::EditorSaved { console, result } => {
+                if let Some(console) = state.terminals.get_mut(&console)
+                    && let Some(editor) = console.editor.as_mut()
+                    && editor.finish_save(result)
+                {
+                    console.editor = None;
+                    console.focus_input = true;
+                }
+            }
             WorkerResponse::ConsolesReset => {
                 state.shop.pending = None;
                 state.shop.feedback = None;
@@ -1220,6 +1275,87 @@ mod tests {
             devices.push(device);
         }
         (sim, devices)
+    }
+
+    #[test]
+    fn console_worker_opens_editor_stops_scripts_and_saves_guest_buffer() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(device) = sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Server,
+            })
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        sim.execute(Command::PlaceDevice {
+            device,
+            rack: RackId(1),
+            unit: 1,
+        })
+        .unwrap();
+        sim.execute(Command::ConnectPower {
+            outlet: outlet(),
+            endpoint: PowerEndpoint::Device(device),
+        })
+        .unwrap();
+        sim.execute(Command::SetPower {
+            device,
+            powered: true,
+        })
+        .unwrap();
+        let (tx, rx) = unbounded();
+        let (responses_tx, responses_rx) = unbounded();
+        tx.send(WorkerRequest::Replace(Box::new(sim))).unwrap();
+        tx.send(WorkerRequest::Terminal {
+            device,
+            input: "nano /root/test\necho should-not-run > /root/other".into(),
+        })
+        .unwrap();
+        tx.send(WorkerRequest::SaveEditor {
+            console: device,
+            target: device,
+            path: "/root/test".into(),
+            contents: "saved\n".into(),
+        })
+        .unwrap();
+        tx.send(WorkerRequest::Stop).unwrap();
+        worker_loop(rx, responses_tx);
+        let mut opened = false;
+        let mut saved = false;
+        let mut snapshot = None;
+        for response in responses_rx.try_iter() {
+            match response {
+                WorkerResponse::EditorOpened { result, .. } => {
+                    let file = result.unwrap();
+                    assert_eq!(file.device, device);
+                    opened = true;
+                }
+                WorkerResponse::EditorSaved { result, .. } => {
+                    assert_eq!(result.unwrap(), "/root/test");
+                    saved = true;
+                }
+                WorkerResponse::Snapshot(sim) => snapshot = Some(sim),
+                _ => {}
+            }
+        }
+        assert!(opened && saved);
+        let sim = snapshot.unwrap();
+        assert_eq!(
+            sim.server_os(device)
+                .unwrap()
+                .filesystem
+                .read("/root/test")
+                .unwrap(),
+            "saved\n"
+        );
+        assert!(
+            !sim.server_os(device)
+                .unwrap()
+                .filesystem
+                .entries
+                .contains_key("/root/other")
+        );
     }
 
     #[test]

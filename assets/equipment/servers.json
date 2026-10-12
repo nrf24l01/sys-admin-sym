@@ -1,0 +1,7986 @@
+{
+  "models": [
+    {
+      "id": "dell_r360",
+      "manufacturer": "Dell",
+      "display_name": {
+        "en": "Dell PowerEdge R360",
+        "ru": "Dell PowerEdge R360"
+      },
+      "desc": {
+        "en": "1U R360 chassis · two 600 W redundant PSUs · full pack available with CPU, RAM, NIC and SSD",
+        "ru": "Корпус R360 1U · два резервных БП по 600 Вт · доступен комплект с CPU, RAM, NIC и SSD"
+      },
+      "price": 1000,
+      "rack_units": 1,
+      "chassis": {
+        "model": "Dell PowerEdge R360",
+        "cpu_socket": "LGA1700",
+        "cpu_sockets": 1,
+        "dimm_slots": 4,
+        "memory_type": "DDR5 ECC UDIMM",
+        "psu_bays": 2,
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.13,
+              0.22,
+              0.28,
+              0.86
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.34,
+              0.22,
+              0.49,
+              0.86
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.55,
+              0.22,
+              0.7,
+              0.86
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.76,
+              0.22,
+              0.91,
+              0.86
+            ]
+          }
+        ],
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "lanes": 8,
+            "generation": 4,
+            "width": 8,
+            "face_rect": [
+              0.3,
+              0.1,
+              0.62,
+              0.43
+            ],
+            "cpu_socket": 0
+          },
+          {
+            "name": "PCIe 2",
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.3,
+              0.57,
+              0.62,
+              0.9
+            ],
+            "cpu_socket": 0
+          }
+        ],
+        "supported_cpu_ids": [
+          "xeon_e_2434"
+        ],
+        "max_cpu_tdp_w": 95,
+        "memory": {
+          "max_capacity_gb": 128,
+          "channels_per_cpu": 2,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                4400,
+                4000
+              ]
+            },
+            {
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                4400,
+                3600
+              ]
+            }
+          ]
+        },
+        "identical_cpus": true,
+        "parts_hot_swappable": false
+      },
+      "power": {
+        "board": {
+          "idle_mw": 22000,
+          "peak_mw": 30000
+        },
+        "fans": {
+          "idle_mw": 3000,
+          "peak_mw": 10000
+        },
+        "psu": {
+          "capacity_watts": 600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 45000,
+          "peak_mw": 180000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.137,
+              0.345,
+              0.173,
+              0.595
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.19,
+              0.345,
+              0.226,
+              0.595
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.9095675,
+            0.14410779,
+            0.9742785,
+            0.87608224
+          ]
+        },
+        {
+          "rect": [
+            0.7645118,
+            0.13765042,
+            0.8225842,
+            0.90566385
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/server_front.png",
+          "uv": [
+            0.009,
+            0.48,
+            0.995,
+            0.84
+          ],
+          "source_size": [
+            2048,
+            512
+          ]
+        },
+        "rear": {
+          "path": "equipment/server_rear_clean.png",
+          "uv": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "source_size": [
+            2048,
+            512
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_e_2434"
+          },
+          {
+            "part_id": "ddr5_ecc_16gb",
+            "slot": 0
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "dell_r740",
+      "manufacturer": "Dell",
+      "display_name": {
+        "en": "Dell PowerEdge R740",
+        "ru": "Dell PowerEdge R740"
+      },
+      "desc": {
+        "en": "2U · 16 × 2.5-inch SATA · 24 DIMMs · 2 × 1100 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 16 × SATA 2,5″ · 24 DIMM · 2 БП по 1100 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 1500,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Dell PowerEdge R740",
+        "cpu_socket": "LGA3647",
+        "cpu_sockets": 2,
+        "dimm_slots": 24,
+        "memory_type": "DDR4 ECC RDIMM",
+        "additional_memory_types": [
+          "DDR4 ECC LRDIMM"
+        ],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4110",
+          "xeon_gold_6130",
+          "xeon_gold_6152",
+          "xeon_silver_4210r",
+          "xeon_gold_6230r",
+          "xeon_gold_6248r",
+          "xeon_platinum_8280l"
+        ],
+        "max_cpu_tdp_w": 205,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 3072,
+          "channels_per_cpu": 6,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 8,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 8,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 64,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 128,
+              "ranks": 8,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.045,
+              0.276,
+              0.2
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.25,
+              0.276,
+              0.39
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.45,
+              0.276,
+              0.6
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.36,
+              0.04,
+              0.59,
+              0.2
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.36,
+              0.26,
+              0.59,
+              0.39
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.37,
+              0.58,
+              0.56,
+              0.72
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.735,
+              0.04,
+              0.935,
+              0.2
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.735,
+              0.26,
+              0.935,
+              0.4
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.063,
+              0.08,
+              0.09708,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.09888,
+              0.08,
+              0.13296,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.13475,
+              0.08,
+              0.16883,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.17063,
+              0.08,
+              0.20471,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.2065,
+              0.08,
+              0.24058,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.24238,
+              0.08,
+              0.27646,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.27825,
+              0.08,
+              0.31233,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.31413,
+              0.08,
+              0.34821,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.35,
+              0.08,
+              0.38408,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.38588,
+              0.08,
+              0.41996,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.42175,
+              0.08,
+              0.45583,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.45763,
+              0.08,
+              0.49171,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.4935,
+              0.08,
+              0.52758,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.52938,
+              0.08,
+              0.56346,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.56525,
+              0.08,
+              0.59933,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.60113,
+              0.08,
+              0.63521,
+              0.95
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1100,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.33,
+              0.8,
+              0.37,
+              0.94
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.382,
+              0.8,
+              0.422,
+              0.94
+            ]
+          }
+        },
+        {
+          "name": "eth2",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.434,
+              0.8,
+              0.474,
+              0.94
+            ]
+          }
+        },
+        {
+          "name": "eth3",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.486,
+              0.8,
+              0.526,
+              0.94
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.59,
+            0.62,
+            0.635,
+            0.92
+          ]
+        },
+        {
+          "rect": [
+            0.79,
+            0.62,
+            0.835,
+            0.92
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/dell_r740_front.png",
+          "uv": [
+            0.0088235,
+            0.0656934,
+            0.9911765,
+            0.9416058
+          ],
+          "source_size": [
+            680,
+            137
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/dell_r740_rear.png",
+          "uv": [
+            0.0053369,
+            0.0321543,
+            0.9959973,
+            0.9710611
+          ],
+          "source_size": [
+            1499,
+            311
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4210r"
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_2933",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_2933",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "dell_r750",
+      "manufacturer": "Dell",
+      "display_name": {
+        "en": "Dell PowerEdge R750",
+        "ru": "Dell PowerEdge R750"
+      },
+      "desc": {
+        "en": "2U · 16 × 2.5-inch SATA · 32 DIMMs · 2 × 1400 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 16 × SATA 2,5″ · 32 DIMM · 2 БП по 1400 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 2500,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Dell PowerEdge R750",
+        "cpu_socket": "LGA4189",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR4 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4310",
+          "xeon_gold_6330",
+          "xeon_platinum_8352y",
+          "xeon_platinum_8380"
+        ],
+        "max_cpu_tdp_w": 270,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.03,
+              0.264,
+              0.19
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.27,
+              0.264,
+              0.42
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.276,
+              0.55,
+              0.461,
+              0.71
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.4,
+              0.03,
+              0.604,
+              0.2
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.4,
+              0.27,
+              0.604,
+              0.42
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.473,
+              0.55,
+              0.624,
+              0.71
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.72,
+              0.04,
+              0.93,
+              0.21
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.72,
+              0.28,
+              0.93,
+              0.44
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.055,
+              0.05,
+              0.08997,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.09181,
+              0.05,
+              0.12678,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.12862,
+              0.05,
+              0.1636,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.16544,
+              0.05,
+              0.20041,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.20225,
+              0.05,
+              0.23722,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.23906,
+              0.05,
+              0.27403,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.27587,
+              0.05,
+              0.31085,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.31269,
+              0.05,
+              0.34766,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.3495,
+              0.05,
+              0.38447,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.38631,
+              0.05,
+              0.42128,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.42312,
+              0.05,
+              0.4581,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.45994,
+              0.05,
+              0.49491,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.49675,
+              0.05,
+              0.53172,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.53356,
+              0.05,
+              0.56853,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.57037,
+              0.05,
+              0.60535,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.60719,
+              0.05,
+              0.64216,
+              0.96
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1400,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.271,
+              0.8,
+              0.309,
+              0.96
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.323,
+              0.8,
+              0.361,
+              0.96
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.137,
+            0.62,
+            0.202,
+            0.94
+          ]
+        },
+        {
+          "rect": [
+            0.903,
+            0.62,
+            0.965,
+            0.94
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/dell_r750_front.png",
+          "uv": [
+            0.0058708,
+            0.0477707,
+            0.9902153,
+            0.9363057
+          ],
+          "source_size": [
+            1533,
+            314
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/dell_r750_rear.png",
+          "uv": [
+            0.0146654,
+            0.059761,
+            0.9908341,
+            0.9003984
+          ],
+          "source_size": [
+            1091,
+            251
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4310"
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "dell_r760",
+      "manufacturer": "Dell",
+      "display_name": {
+        "en": "Dell PowerEdge R760",
+        "ru": "Dell PowerEdge R760"
+      },
+      "desc": {
+        "en": "2U · 24 × 2.5-inch SATA · 32 DIMMs · 2 × 1400 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 24 × SATA 2,5″ · 32 DIMM · 2 БП по 1400 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 3500,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Dell PowerEdge R760",
+        "cpu_socket": "LGA4677",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR5 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4410y",
+          "xeon_gold_5418y",
+          "xeon_platinum_8462y_plus",
+          "xeon_silver_4510",
+          "xeon_gold_6548y_plus",
+          "xeon_platinum_8592_plus"
+        ],
+        "max_cpu_tdp_w": 350,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.03,
+              0.264,
+              0.19
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.27,
+              0.264,
+              0.42
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.276,
+              0.55,
+              0.461,
+              0.71
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.4,
+              0.03,
+              0.604,
+              0.2
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.4,
+              0.27,
+              0.604,
+              0.42
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.473,
+              0.55,
+              0.624,
+              0.71
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.72,
+              0.04,
+              0.93,
+              0.21
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.72,
+              0.28,
+              0.93,
+              0.44
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.045,
+              0.02,
+              0.08023,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.08208,
+              0.02,
+              0.11731,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.11917,
+              0.02,
+              0.1544,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.15625,
+              0.02,
+              0.19148,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.19333,
+              0.02,
+              0.22856,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.23042,
+              0.02,
+              0.26565,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.2675,
+              0.02,
+              0.30273,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.30458,
+              0.02,
+              0.33981,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.34167,
+              0.02,
+              0.3769,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.37875,
+              0.02,
+              0.41398,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.41583,
+              0.02,
+              0.45106,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.45292,
+              0.02,
+              0.48815,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.49,
+              0.02,
+              0.52523,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.52708,
+              0.02,
+              0.56231,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.56417,
+              0.02,
+              0.5994,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.60125,
+              0.02,
+              0.63648,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 17",
+            "interface": "SATA",
+            "face_rect": [
+              0.63833,
+              0.02,
+              0.67356,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 18",
+            "interface": "SATA",
+            "face_rect": [
+              0.67542,
+              0.02,
+              0.71065,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 19",
+            "interface": "SATA",
+            "face_rect": [
+              0.7125,
+              0.02,
+              0.74773,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 20",
+            "interface": "SATA",
+            "face_rect": [
+              0.74958,
+              0.02,
+              0.78481,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 21",
+            "interface": "SATA",
+            "face_rect": [
+              0.78667,
+              0.02,
+              0.8219,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 22",
+            "interface": "SATA",
+            "face_rect": [
+              0.82375,
+              0.02,
+              0.85898,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 23",
+            "interface": "SATA",
+            "face_rect": [
+              0.86083,
+              0.02,
+              0.89606,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 24",
+            "interface": "SATA",
+            "face_rect": [
+              0.89792,
+              0.02,
+              0.93315,
+              0.94
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1400,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.271,
+              0.8,
+              0.309,
+              0.96
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.323,
+              0.8,
+              0.361,
+              0.96
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.137,
+            0.62,
+            0.202,
+            0.94
+          ]
+        },
+        {
+          "rect": [
+            0.903,
+            0.62,
+            0.965,
+            0.94
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/dell_r760_faces_clean.png",
+          "uv": [
+            0.0321308,
+            0.1206313,
+            0.970124,
+            0.4408117
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/dell_r760_faces_clean.png",
+          "uv": [
+            0.0383315,
+            0.5636979,
+            0.9599775,
+            0.9143179
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4410y"
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "hpe_dl380_gen10",
+      "manufacturer": "HPE",
+      "display_name": {
+        "en": "HPE ProLiant DL380 Gen10",
+        "ru": "HPE ProLiant DL380 Gen10"
+      },
+      "desc": {
+        "en": "2U · 16 × 2.5-inch SATA · 24 DIMMs · 2 × 1600 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 16 × SATA 2,5″ · 24 DIMM · 2 БП по 1600 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 1400,
+      "rack_units": 2,
+      "chassis": {
+        "model": "HPE ProLiant DL380 Gen10",
+        "cpu_socket": "LGA3647",
+        "cpu_sockets": 2,
+        "dimm_slots": 24,
+        "memory_type": "DDR4 ECC RDIMM",
+        "additional_memory_types": [
+          "DDR4 ECC LRDIMM"
+        ],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4110",
+          "xeon_gold_6130",
+          "xeon_gold_6152",
+          "xeon_silver_4210r",
+          "xeon_gold_6230r",
+          "xeon_gold_6248r",
+          "xeon_platinum_8280l"
+        ],
+        "max_cpu_tdp_w": 205,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 3072,
+          "channels_per_cpu": 6,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 8,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 8,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 64,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 128,
+              "ranks": 8,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2666
+              ],
+              "operating_speeds_mt_s": [
+                2666,
+                2666
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 64,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC LRDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                2933
+              ],
+              "operating_speeds_mt_s": [
+                2933,
+                2933
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.05,
+              0.25,
+              0.22
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.275,
+              0.25,
+              0.445
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.505,
+              0.25,
+              0.675
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.05,
+              0.585,
+              0.22
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.275,
+              0.585,
+              0.445
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 3,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.505,
+              0.585,
+              0.675
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.34,
+              0.045,
+              0.37301,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.37475,
+              0.045,
+              0.40776,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.4095,
+              0.045,
+              0.44251,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.44425,
+              0.045,
+              0.47726,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.479,
+              0.045,
+              0.51201,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.51375,
+              0.045,
+              0.54676,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.5485,
+              0.045,
+              0.58151,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.58325,
+              0.045,
+              0.61626,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.618,
+              0.045,
+              0.65101,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.65275,
+              0.045,
+              0.68576,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.6875,
+              0.045,
+              0.72051,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.72225,
+              0.045,
+              0.75526,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.757,
+              0.045,
+              0.79001,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.79175,
+              0.045,
+              0.82476,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.8265,
+              0.045,
+              0.85951,
+              0.965
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.86125,
+              0.045,
+              0.89426,
+              0.965
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 48000,
+          "peak_mw": 68000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.071,
+              0.8,
+              0.1,
+              0.96
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.104,
+              0.8,
+              0.133,
+              0.96
+            ]
+          }
+        },
+        {
+          "name": "eth2",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.137,
+              0.8,
+              0.166,
+              0.96
+            ]
+          }
+        },
+        {
+          "name": "eth3",
+          "speed_mbps": 1000,
+          "socket": {
+            "rect": [
+              0.16999999999999998,
+              0.8,
+              0.199,
+              0.96
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.785,
+            0.6,
+            0.824,
+            0.95
+          ]
+        },
+        {
+          "rect": [
+            0.945,
+            0.6,
+            0.984,
+            0.95
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/hpe_dl380_gen10_faces_clean.png",
+          "uv": [
+            0.0191657,
+            0.1161218,
+            0.981398,
+            0.470124
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/hpe_dl380_gen10_faces_clean.png",
+          "uv": [
+            0.0372041,
+            0.6110485,
+            0.9627959,
+            0.9470124
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4210r"
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_2933",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_2933",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "hpe_dl380_gen11",
+      "manufacturer": "HPE",
+      "display_name": {
+        "en": "HPE ProLiant DL380 Gen11",
+        "ru": "HPE ProLiant DL380 Gen11"
+      },
+      "desc": {
+        "en": "2U · 8 × 2.5-inch SATA · 32 DIMMs · 2 × 1600 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 8 × SATA 2,5″ · 32 DIMM · 2 БП по 1600 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 3200,
+      "rack_units": 2,
+      "chassis": {
+        "model": "HPE ProLiant DL380 Gen11",
+        "cpu_socket": "LGA4677",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR5 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4410y",
+          "xeon_gold_5418y",
+          "xeon_platinum_8462y_plus",
+          "xeon_silver_4510",
+          "xeon_gold_6548y_plus",
+          "xeon_platinum_8592_plus"
+        ],
+        "max_cpu_tdp_w": 350,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.05,
+              0.25,
+              0.22
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.275,
+              0.25,
+              0.445
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.045,
+              0.505,
+              0.25,
+              0.675
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.05,
+              0.585,
+              0.22
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.275,
+              0.585,
+              0.445
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.38,
+              0.505,
+              0.585,
+              0.675
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.654,
+              0.065,
+              0.68678,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.6885,
+              0.065,
+              0.72127,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.723,
+              0.065,
+              0.75578,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.7575,
+              0.065,
+              0.79028,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.792,
+              0.065,
+              0.82478,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.8265,
+              0.065,
+              0.85928,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.861,
+              0.065,
+              0.89377,
+              0.97
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.8955,
+              0.065,
+              0.92828,
+              0.97
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 48000,
+          "peak_mw": 68000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [],
+      "power_inlets": [
+        {
+          "rect": [
+            0.785,
+            0.6,
+            0.824,
+            0.95
+          ]
+        },
+        {
+          "rect": [
+            0.945,
+            0.6,
+            0.984,
+            0.95
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/hpe_dl380_gen11_faces_clean.png",
+          "uv": [
+            0.0253664,
+            0.1228861,
+            0.9729425,
+            0.4475761
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/hpe_dl380_gen11_faces_clean.png",
+          "uv": [
+            0.0310034,
+            0.5625705,
+            0.9616685,
+            0.9233371
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4410y"
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "hpe_dl360_gen11",
+      "manufacturer": "HPE",
+      "display_name": {
+        "en": "HPE ProLiant DL360 Gen11",
+        "ru": "HPE ProLiant DL360 Gen11"
+      },
+      "desc": {
+        "en": "1U · 8 × 2.5-inch SATA · 32 DIMMs · 2 × 1600 W PSUs · Xeon Scalable · bare chassis or assembled full pack · closed-loop performance cooling included",
+        "ru": "1U · 8 × SATA 2,5″ · 32 DIMM · 2 БП по 1600 Вт · Xeon Scalable · корпус или готовый комплект · замкнутое жидкостное охлаждение включено"
+      },
+      "price": 3000,
+      "rack_units": 1,
+      "chassis": {
+        "model": "HPE ProLiant DL360 Gen11",
+        "cpu_socket": "LGA4677",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR5 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4410y",
+          "xeon_gold_5418y",
+          "xeon_platinum_8462y_plus",
+          "xeon_silver_4510",
+          "xeon_gold_6548y_plus",
+          "xeon_platinum_8592_plus"
+        ],
+        "max_cpu_tdp_w": 350,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4800
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.07,
+              0.12,
+              0.275,
+              0.44
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.056,
+              0.59,
+              0.197,
+              0.9
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.464,
+              0.12,
+              0.621,
+              0.44
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.061,
+              0.115,
+              0.22,
+              0.51
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.061,
+              0.532,
+              0.22,
+              0.927
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.23,
+              0.115,
+              0.389,
+              0.51
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.23,
+              0.532,
+              0.389,
+              0.927
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.399,
+              0.115,
+              0.558,
+              0.51
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.399,
+              0.532,
+              0.558,
+              0.927
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.568,
+              0.535,
+              0.728,
+              0.94
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.735,
+              0.535,
+              0.892,
+              0.94
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 42000,
+          "peak_mw": 59000
+        },
+        "fans": {
+          "idle_mw": 12000,
+          "peak_mw": 65000
+        },
+        "psu": {
+          "capacity_watts": 1600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [],
+      "power_inlets": [
+        {
+          "rect": [
+            0.791,
+            0.3,
+            0.815,
+            0.83
+          ]
+        },
+        {
+          "rect": [
+            0.949,
+            0.3,
+            0.978,
+            0.83
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/hpe_dl360_gen11_faces_clean.png",
+          "uv": [
+            0.0146561,
+            0.210823,
+            0.9859076,
+            0.3799324
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/hpe_dl360_gen11_faces_clean.png",
+          "uv": [
+            0.0146561,
+            0.6245772,
+            0.9859076,
+            0.8060879
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4410y"
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "lenovo_sr650_v2",
+      "manufacturer": "Lenovo",
+      "display_name": {
+        "en": "Lenovo ThinkSystem SR650 V2",
+        "ru": "Lenovo ThinkSystem SR650 V2"
+      },
+      "desc": {
+        "en": "2U · 24 × 2.5-inch SATA · 32 DIMMs · 2 × 1800 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 24 × SATA 2,5″ · 32 DIMM · 2 БП по 1800 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 2500,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Lenovo ThinkSystem SR650 V2",
+        "cpu_socket": "LGA4189",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR4 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4310",
+          "xeon_gold_6330",
+          "xeon_platinum_8352y",
+          "xeon_platinum_8380"
+        ],
+        "max_cpu_tdp_w": 270,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.065,
+              0.272,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.31,
+              0.272,
+              0.49
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.56,
+              0.272,
+              0.74
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.065,
+              0.552,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.31,
+              0.552,
+              0.49
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.56,
+              0.552,
+              0.74
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.707,
+              0.065,
+              0.927,
+              0.24
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.707,
+              0.315,
+              0.927,
+              0.49
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.064,
+              0.12,
+              0.09867,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.1005,
+              0.12,
+              0.13517,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.137,
+              0.12,
+              0.17167,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.1735,
+              0.12,
+              0.20817,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.21,
+              0.12,
+              0.24468,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.2465,
+              0.12,
+              0.28117,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.283,
+              0.12,
+              0.31767,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.3195,
+              0.12,
+              0.35417,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.356,
+              0.12,
+              0.39067,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.3925,
+              0.12,
+              0.42717,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.429,
+              0.12,
+              0.46367,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.4655,
+              0.12,
+              0.50017,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.502,
+              0.12,
+              0.53668,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.5385,
+              0.12,
+              0.57317,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.575,
+              0.12,
+              0.60967,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.6115,
+              0.12,
+              0.64617,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 17",
+            "interface": "SATA",
+            "face_rect": [
+              0.648,
+              0.12,
+              0.68267,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 18",
+            "interface": "SATA",
+            "face_rect": [
+              0.6845,
+              0.12,
+              0.71917,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 19",
+            "interface": "SATA",
+            "face_rect": [
+              0.721,
+              0.12,
+              0.75567,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 20",
+            "interface": "SATA",
+            "face_rect": [
+              0.7575,
+              0.12,
+              0.79217,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 21",
+            "interface": "SATA",
+            "face_rect": [
+              0.794,
+              0.12,
+              0.82867,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 22",
+            "interface": "SATA",
+            "face_rect": [
+              0.8305,
+              0.12,
+              0.86518,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 23",
+            "interface": "SATA",
+            "face_rect": [
+              0.867,
+              0.12,
+              0.90168,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 24",
+            "interface": "SATA",
+            "face_rect": [
+              0.9035,
+              0.12,
+              0.93817,
+              0.91
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1800,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [],
+      "power_inlets": [
+        {
+          "rect": [
+            0.713,
+            0.66,
+            0.757,
+            0.9
+          ]
+        },
+        {
+          "rect": [
+            0.902,
+            0.66,
+            0.949,
+            0.9
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/lenovo_sr650_v2_faces_clean.png",
+          "uv": [
+            0.0202931,
+            0.1240135,
+            0.9797069,
+            0.4543405
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/lenovo_sr650_v2_faces_clean.png",
+          "uv": [
+            0.0332582,
+            0.5682074,
+            0.964487,
+            0.9278467
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4310"
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "lenovo_sr650_v3",
+      "manufacturer": "Lenovo",
+      "display_name": {
+        "en": "Lenovo ThinkSystem SR650 V3",
+        "ru": "Lenovo ThinkSystem SR650 V3"
+      },
+      "desc": {
+        "en": "2U · 24 × 2.5-inch SATA · 32 DIMMs · 2 × 1800 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 24 × SATA 2,5″ · 32 DIMM · 2 БП по 1800 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 3200,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Lenovo ThinkSystem SR650 V3",
+        "cpu_socket": "LGA4677",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR5 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4410y",
+          "xeon_gold_5418y",
+          "xeon_platinum_8462y_plus",
+          "xeon_silver_4510",
+          "xeon_gold_6548y_plus",
+          "xeon_platinum_8592_plus"
+        ],
+        "max_cpu_tdp_w": 350,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5200,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5200,
+                4400
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.065,
+              0.272,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.31,
+              0.272,
+              0.49
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.06,
+              0.56,
+              0.272,
+              0.74
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.065,
+              0.552,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.31,
+              0.552,
+              0.49
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.34,
+              0.56,
+              0.552,
+              0.74
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.707,
+              0.065,
+              0.927,
+              0.24
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.707,
+              0.315,
+              0.927,
+              0.49
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.064,
+              0.12,
+              0.09867,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.1005,
+              0.12,
+              0.13517,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.137,
+              0.12,
+              0.17167,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.1735,
+              0.12,
+              0.20817,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.21,
+              0.12,
+              0.24468,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.2465,
+              0.12,
+              0.28117,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.283,
+              0.12,
+              0.31767,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.3195,
+              0.12,
+              0.35417,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.356,
+              0.12,
+              0.39067,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.3925,
+              0.12,
+              0.42717,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.429,
+              0.12,
+              0.46367,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.4655,
+              0.12,
+              0.50017,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.502,
+              0.12,
+              0.53668,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.5385,
+              0.12,
+              0.57317,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.575,
+              0.12,
+              0.60967,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.6115,
+              0.12,
+              0.64617,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 17",
+            "interface": "SATA",
+            "face_rect": [
+              0.648,
+              0.12,
+              0.68267,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 18",
+            "interface": "SATA",
+            "face_rect": [
+              0.6845,
+              0.12,
+              0.71917,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 19",
+            "interface": "SATA",
+            "face_rect": [
+              0.721,
+              0.12,
+              0.75567,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 20",
+            "interface": "SATA",
+            "face_rect": [
+              0.7575,
+              0.12,
+              0.79217,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 21",
+            "interface": "SATA",
+            "face_rect": [
+              0.794,
+              0.12,
+              0.82867,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 22",
+            "interface": "SATA",
+            "face_rect": [
+              0.8305,
+              0.12,
+              0.86518,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 23",
+            "interface": "SATA",
+            "face_rect": [
+              0.867,
+              0.12,
+              0.90168,
+              0.91
+            ]
+          },
+          {
+            "name": "Bay 24",
+            "interface": "SATA",
+            "face_rect": [
+              0.9035,
+              0.12,
+              0.93817,
+              0.91
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1800,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [],
+      "power_inlets": [
+        {
+          "rect": [
+            0.713,
+            0.66,
+            0.757,
+            0.9
+          ]
+        },
+        {
+          "rect": [
+            0.902,
+            0.66,
+            0.949,
+            0.9
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/lenovo_sr650_v3_faces_clean.png",
+          "uv": [
+            0.0208568,
+            0.1116122,
+            0.9797069,
+            0.4520857
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/lenovo_sr650_v3_faces_clean.png",
+          "uv": [
+            0.0321308,
+            0.5682074,
+            0.9695603,
+            0.9334837
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4410y"
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "cisco_c240_m6",
+      "manufacturer": "Cisco",
+      "display_name": {
+        "en": "Cisco UCS C240 M6",
+        "ru": "Cisco UCS C240 M6"
+      },
+      "desc": {
+        "en": "2U · 24 × 2.5-inch SATA · 32 DIMMs · 2 × 1600 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 24 × SATA 2,5″ · 32 DIMM · 2 БП по 1600 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 3000,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Cisco UCS C240 M6",
+        "cpu_socket": "LGA4189",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR4 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4310",
+          "xeon_gold_6330",
+          "xeon_platinum_8352y",
+          "xeon_platinum_8380"
+        ],
+        "max_cpu_tdp_w": 270,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            },
+            {
+              "memory_type": "DDR4 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1200,
+              "rated_speeds_mt_s": [
+                3200
+              ],
+              "operating_speeds_mt_s": [
+                3200,
+                3200
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.08,
+              0.55,
+              0.27,
+              0.7
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 0,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.08,
+              0.315,
+              0.27,
+              0.465
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.08,
+              0.095,
+              0.27,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.403,
+              0.55,
+              0.593,
+              0.7
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 1,
+            "lanes": 16,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.403,
+              0.315,
+              0.593,
+              0.465
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.403,
+              0.095,
+              0.593,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.7,
+              0.32,
+              0.892,
+              0.47
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 4,
+            "width": 16,
+            "face_rect": [
+              0.7,
+              0.095,
+              0.892,
+              0.245
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.054,
+              0.07,
+              0.08907,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.09092,
+              0.07,
+              0.12599,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.12783,
+              0.07,
+              0.1629,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.16475,
+              0.07,
+              0.19982,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.20167,
+              0.07,
+              0.23674,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.23858,
+              0.07,
+              0.27365,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.2755,
+              0.07,
+              0.31057,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.31242,
+              0.07,
+              0.34749,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 9",
+            "interface": "SATA",
+            "face_rect": [
+              0.34933,
+              0.07,
+              0.3844,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 10",
+            "interface": "SATA",
+            "face_rect": [
+              0.38625,
+              0.07,
+              0.42132,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 11",
+            "interface": "SATA",
+            "face_rect": [
+              0.42317,
+              0.07,
+              0.45824,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 12",
+            "interface": "SATA",
+            "face_rect": [
+              0.46008,
+              0.07,
+              0.49515,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 13",
+            "interface": "SATA",
+            "face_rect": [
+              0.497,
+              0.07,
+              0.53207,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 14",
+            "interface": "SATA",
+            "face_rect": [
+              0.53392,
+              0.07,
+              0.56899,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 15",
+            "interface": "SATA",
+            "face_rect": [
+              0.57083,
+              0.07,
+              0.6059,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 16",
+            "interface": "SATA",
+            "face_rect": [
+              0.60775,
+              0.07,
+              0.64282,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 17",
+            "interface": "SATA",
+            "face_rect": [
+              0.64467,
+              0.07,
+              0.67974,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 18",
+            "interface": "SATA",
+            "face_rect": [
+              0.68158,
+              0.07,
+              0.71665,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 19",
+            "interface": "SATA",
+            "face_rect": [
+              0.7185,
+              0.07,
+              0.75357,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 20",
+            "interface": "SATA",
+            "face_rect": [
+              0.75542,
+              0.07,
+              0.79049,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 21",
+            "interface": "SATA",
+            "face_rect": [
+              0.79233,
+              0.07,
+              0.8274,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 22",
+            "interface": "SATA",
+            "face_rect": [
+              0.82925,
+              0.07,
+              0.86432,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 23",
+            "interface": "SATA",
+            "face_rect": [
+              0.86617,
+              0.07,
+              0.90124,
+              0.96
+            ]
+          },
+          {
+            "name": "Bay 24",
+            "interface": "SATA",
+            "face_rect": [
+              0.90308,
+              0.07,
+              0.93815,
+              0.96
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [
+        {
+          "name": "eth0",
+          "speed_mbps": 10000,
+          "socket": {
+            "rect": [
+              0.4013,
+              0.82,
+              0.4357,
+              0.95
+            ]
+          }
+        },
+        {
+          "name": "eth1",
+          "speed_mbps": 10000,
+          "socket": {
+            "rect": [
+              0.4547,
+              0.82,
+              0.4879,
+              0.95
+            ]
+          }
+        }
+      ],
+      "power_inlets": [
+        {
+          "rect": [
+            0.646,
+            0.58,
+            0.68,
+            0.91
+          ]
+        },
+        {
+          "rect": [
+            0.818,
+            0.58,
+            0.854,
+            0.91
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/cisco_c240_m6_faces_clean.png",
+          "uv": [
+            0.0231116,
+            0.1059752,
+            0.9774521,
+            0.4317926
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/cisco_c240_m6_faces_clean.png",
+          "uv": [
+            0.024239,
+            0.5636979,
+            0.9751973,
+            0.9244645
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4310"
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr4_rdimm_16gb_3200",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 0
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "supermicro_sys_221h_tnr",
+      "manufacturer": "Supermicro",
+      "display_name": {
+        "en": "Supermicro SuperServer SYS-221H-TNR",
+        "ru": "Supermicro SuperServer SYS-221H-TNR"
+      },
+      "desc": {
+        "en": "2U · 8 × 2.5-inch SATA · 32 DIMMs · 2 × 1600 W PSUs · Xeon Scalable · bare chassis or assembled full pack",
+        "ru": "2U · 8 × SATA 2,5″ · 32 DIMM · 2 БП по 1600 Вт · Xeon Scalable · корпус или готовый комплект"
+      },
+      "price": 2800,
+      "rack_units": 2,
+      "chassis": {
+        "model": "Supermicro SuperServer SYS-221H-TNR",
+        "cpu_socket": "LGA4677",
+        "cpu_sockets": 2,
+        "dimm_slots": 32,
+        "memory_type": "DDR5 ECC RDIMM",
+        "additional_memory_types": [],
+        "psu_bays": 2,
+        "supported_cpu_ids": [
+          "xeon_silver_4410y",
+          "xeon_gold_5418y",
+          "xeon_platinum_8462y_plus",
+          "xeon_silver_4510",
+          "xeon_gold_6548y_plus",
+          "xeon_platinum_8592_plus"
+        ],
+        "max_cpu_tdp_w": 350,
+        "identical_cpus": true,
+        "parts_hot_swappable": false,
+        "memory": {
+          "max_capacity_gb": 8192,
+          "channels_per_cpu": 8,
+          "dimms_per_channel": 2,
+          "identical_dimms": true,
+          "supported_dimm_counts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "population_order": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "slots": [
+            {
+              "name": "A1",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "A2",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "A3",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "A4",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "A5",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "A6",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "A7",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "A8",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "A9",
+              "cpu_socket": 0,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "A10",
+              "cpu_socket": 0,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "A11",
+              "cpu_socket": 0,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "A12",
+              "cpu_socket": 0,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "A13",
+              "cpu_socket": 0,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "A14",
+              "cpu_socket": 0,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "A15",
+              "cpu_socket": 0,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "A16",
+              "cpu_socket": 0,
+              "channel": 7,
+              "position": 1
+            },
+            {
+              "name": "B1",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 0
+            },
+            {
+              "name": "B2",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 0
+            },
+            {
+              "name": "B3",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 0
+            },
+            {
+              "name": "B4",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 0
+            },
+            {
+              "name": "B5",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 0
+            },
+            {
+              "name": "B6",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 0
+            },
+            {
+              "name": "B7",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 0
+            },
+            {
+              "name": "B8",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 0
+            },
+            {
+              "name": "B9",
+              "cpu_socket": 1,
+              "channel": 0,
+              "position": 1
+            },
+            {
+              "name": "B10",
+              "cpu_socket": 1,
+              "channel": 1,
+              "position": 1
+            },
+            {
+              "name": "B11",
+              "cpu_socket": 1,
+              "channel": 2,
+              "position": 1
+            },
+            {
+              "name": "B12",
+              "cpu_socket": 1,
+              "channel": 3,
+              "position": 1
+            },
+            {
+              "name": "B13",
+              "cpu_socket": 1,
+              "channel": 4,
+              "position": 1
+            },
+            {
+              "name": "B14",
+              "cpu_socket": 1,
+              "channel": 5,
+              "position": 1
+            },
+            {
+              "name": "B15",
+              "cpu_socket": 1,
+              "channel": 6,
+              "position": 1
+            },
+            {
+              "name": "B16",
+              "cpu_socket": 1,
+              "channel": 7,
+              "position": 1
+            }
+          ],
+          "supported_modules": [
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 16,
+              "ranks": 1,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 32,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 64,
+              "ranks": 2,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 128,
+              "ranks": 4,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            },
+            {
+              "memory_type": "DDR5 ECC RDIMM",
+              "capacity_gb": 256,
+              "ranks": 8,
+              "voltage_mv": 1100,
+              "rated_speeds_mt_s": [
+                4800,
+                5600
+              ],
+              "operating_speeds_mt_s": [
+                5600,
+                4400
+              ]
+            }
+          ]
+        },
+        "pcie_slots": [
+          {
+            "name": "PCIe 1",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.05,
+              0.05,
+              0.296,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 2",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.05,
+              0.28,
+              0.296,
+              0.46
+            ]
+          },
+          {
+            "name": "PCIe 3",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.435,
+              0.05,
+              0.655,
+              0.245
+            ]
+          },
+          {
+            "name": "PCIe 4",
+            "cpu_socket": 1,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.435,
+              0.28,
+              0.655,
+              0.46
+            ]
+          },
+          {
+            "name": "PCIe 5",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.714,
+              0.06,
+              0.966,
+              0.205
+            ]
+          },
+          {
+            "name": "PCIe 6",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.714,
+              0.28,
+              0.966,
+              0.425
+            ]
+          },
+          {
+            "name": "PCIe 7",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.714,
+              0.56,
+              0.966,
+              0.705
+            ]
+          },
+          {
+            "name": "PCIe 8",
+            "cpu_socket": 0,
+            "lanes": 8,
+            "generation": 5,
+            "width": 16,
+            "face_rect": [
+              0.714,
+              0.775,
+              0.966,
+              0.92
+            ]
+          }
+        ],
+        "drive_bays": [
+          {
+            "name": "Bay 1",
+            "interface": "SATA",
+            "face_rect": [
+              0.358,
+              0.025,
+              0.39184,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 2",
+            "interface": "SATA",
+            "face_rect": [
+              0.39363,
+              0.025,
+              0.42747,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 3",
+            "interface": "SATA",
+            "face_rect": [
+              0.42925,
+              0.025,
+              0.46309,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 4",
+            "interface": "SATA",
+            "face_rect": [
+              0.46487,
+              0.025,
+              0.49872,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 5",
+            "interface": "SATA",
+            "face_rect": [
+              0.5005,
+              0.025,
+              0.53434,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 6",
+            "interface": "SATA",
+            "face_rect": [
+              0.53612,
+              0.025,
+              0.56997,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 7",
+            "interface": "SATA",
+            "face_rect": [
+              0.57175,
+              0.025,
+              0.60559,
+              0.95
+            ]
+          },
+          {
+            "name": "Bay 8",
+            "interface": "SATA",
+            "face_rect": [
+              0.60737,
+              0.025,
+              0.64122,
+              0.95
+            ]
+          }
+        ]
+      },
+      "power": {
+        "board": {
+          "idle_mw": 52000,
+          "peak_mw": 74000
+        },
+        "fans": {
+          "idle_mw": 8000,
+          "peak_mw": 45000
+        },
+        "psu": {
+          "capacity_watts": 1600,
+          "efficiency_permille": [
+            [
+              0,
+              800
+            ],
+            [
+              100,
+              860
+            ],
+            [
+              200,
+              900
+            ],
+            [
+              500,
+              940
+            ],
+            [
+              1000,
+              920
+            ]
+          ]
+        },
+        "legacy": {
+          "idle_mw": 90000,
+          "peak_mw": 350000
+        },
+        "power_factor_percent": 90
+      },
+      "onboard_ports": [],
+      "power_inlets": [
+        {
+          "rect": [
+            0.112,
+            0.66,
+            0.148,
+            0.93
+          ]
+        },
+        {
+          "rect": [
+            0.287,
+            0.66,
+            0.324,
+            0.93
+          ]
+        }
+      ],
+      "artwork": {
+        "front": {
+          "path": "equipment/servers/supermicro_sys_221h_tnr_faces_clean.png",
+          "uv": [
+            0.0338219,
+            0.1048478,
+            0.9667418,
+            0.427283
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        },
+        "rear": {
+          "path": "equipment/servers/supermicro_sys_221h_tnr_faces_clean.png",
+          "uv": [
+            0.0496054,
+            0.5749718,
+            0.951522,
+            0.9255919
+          ],
+          "source_size": [
+            1774,
+            887
+          ]
+        }
+      },
+      "full_pack": {
+        "parts": [
+          {
+            "part_id": "xeon_silver_4410y"
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 0
+          },
+          {
+            "part_id": "ddr5_rdimm_16gb_4800",
+            "slot": 1
+          },
+          {
+            "part_id": "intel_i350_t4",
+            "slot": 4
+          }
+        ],
+        "drives": [
+          {
+            "drive_id": "enterprise_ssd_960gb",
+            "bay": 0
+          }
+        ]
+      }
+    }
+  ]
+}

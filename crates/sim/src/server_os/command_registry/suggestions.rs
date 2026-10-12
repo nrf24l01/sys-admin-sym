@@ -140,7 +140,7 @@ impl ArgumentSuggestions {
                 values.push("-c".into());
                 values
             }
-            "source" | "." => context.paths(false),
+            "source" | "." | "nano" | "vim" | "vi" => context.paths(false),
             "ssh" => {
                 let addresses = context.addresses();
                 addresses

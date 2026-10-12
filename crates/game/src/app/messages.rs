@@ -89,6 +89,12 @@ pub enum UiAction {
     OpenIpRanges,
     NetworkCommand(Command),
     RunTerminal(DeviceId, String),
+    SaveTerminalEditor {
+        console: DeviceId,
+        target: DeviceId,
+        path: String,
+        contents: String,
+    },
     LaunchExternalTerminal(DeviceId),
     ApplyConsoleSettings(crate::settings::ConsoleSettings),
     Save,
@@ -123,6 +129,12 @@ pub enum WorkerRequest {
         device: DeviceId,
         input: String,
     },
+    SaveEditor {
+        console: DeviceId,
+        target: DeviceId,
+        path: String,
+        contents: String,
+    },
     Replace(Box<NetworkSim>),
     Remote {
         request: cloud_provider_sim::RemoteRequest,
@@ -144,6 +156,16 @@ pub enum WorkerResponse {
         input: String,
         prompt: String,
         output: TerminalOutput,
+    },
+    EditorOpened {
+        device: DeviceId,
+        input: String,
+        prompt: String,
+        result: Result<cloud_provider_sim::ConsoleEditorFile, String>,
+    },
+    EditorSaved {
+        console: DeviceId,
+        result: Result<String, String>,
     },
     ConsolesReset,
     Error(cloud_provider_sim::SimError),

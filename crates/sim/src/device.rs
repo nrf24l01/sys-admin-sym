@@ -24,6 +24,13 @@ pub struct Device {
 }
 
 impl Device {
+    pub fn rack_units(&self) -> u8 {
+        if let DeviceKind::Server(server) = &self.kind {
+            server.model().rack_units
+        } else {
+            self.template().rack_units()
+        }
+    }
     pub fn ports(&self) -> &[PortId] {
         match &self.kind {
             DeviceKind::Server(v) => &v.ports,
@@ -86,10 +93,13 @@ impl DeviceKind {
                 side: crate::RackSide::Front,
                 position: (0.146, 0.63),
             }),
-            Self::Server(_) => Some(PowerInlet {
+            Self::Server(server) => Some(PowerInlet {
                 connector: PowerInletConnector::IecC14,
                 side: crate::RackSide::Rear,
-                position: (0.945, 0.52),
+                position: server
+                    .model()
+                    .power_inlet_position(0)
+                    .unwrap_or((0.945, 0.52)),
             }),
             Self::Switch(_) => Some(PowerInlet {
                 connector: PowerInletConnector::IecC14,
@@ -123,14 +133,13 @@ impl DeviceKind {
                 {
                     for (slot_index, ports) in hardware.card_ports.iter().enumerate() {
                         if let Some(card_index) = ports.iter().position(|id| id == port)
-                            && let Some(slot) =
-                                crate::server_catalog().chassis.pcie_slots.get(slot_index)
+                            && let Some(slot) = server.model().chassis.pcie_slots.get(slot_index)
                         {
                             return slot.port_position(card_index, ports.len());
                         }
                     }
                 }
-                (0.155 + index as f32 * 0.053, 0.47)
+                server.model().port_position(index).unwrap_or((0.5, 0.5))
             }
             Self::Router(_) if index < 2 => (0.432 + index as f32 * 0.065, 0.63),
             Self::Router(_) => {
@@ -155,10 +164,20 @@ impl DeviceKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Server {
+    #[serde(default)]
+    pub model: crate::ServerModelId,
     pub hostname: String,
     pub ports: Vec<PortId>,
     #[serde(default)]
     pub hardware: Option<crate::ServerHardware>,
+}
+
+impl Server {
+    pub fn model(&self) -> &'static crate::ServerModel {
+        crate::server_catalog()
+            .model(self.model.as_str())
+            .expect("validated server model identity")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,7 +239,7 @@ pub enum DeviceTemplate {
 impl DeviceTemplate {
     pub fn price(self) -> i64 {
         match self {
-            Self::Server => 1_000,
+            Self::Server => crate::server_catalog().default_model().price,
             Self::Switch | Self::Router => 500,
             Self::PatchPanel => 150,
             Self::CableManager => 75,

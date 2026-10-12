@@ -424,6 +424,7 @@ fn installed_power_json_changes_all_equipment_without_rebuilding() {
     let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/equipment");
     for filename in [
         "server_config.json",
+        "servers.json",
         "server_parts.json",
         "router_config.json",
         "switches.json",
@@ -439,6 +440,13 @@ fn installed_power_json_changes_all_equipment_without_rebuilding() {
                 config["power"]["board"] = json!({"idle_mw":30000,"peak_mw":45000});
                 config["power"]["fans"] = json!({"idle_mw":4000,"peak_mw":12000});
                 config["power"]["psu"] =
+                    json!({"capacity_watts":500,"efficiency_permille":[[0,1000],[1000,1000]]});
+            }
+            "servers.json" => {
+                let power = &mut config["models"][0]["power"];
+                power["board"] = json!({"idle_mw":30000,"peak_mw":45000});
+                power["fans"] = json!({"idle_mw":4000,"peak_mw":12000});
+                power["psu"] =
                     json!({"capacity_watts":500,"efficiency_permille":[[0,1000],[1000,1000]]});
             }
             "server_parts.json" => {

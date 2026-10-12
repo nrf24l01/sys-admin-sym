@@ -31,7 +31,8 @@ impl NetworkSim {
         let hardware = server.hardware.as_ref().ok_or_else(|| {
             SimError::ServerHardware("legacy server has no configurable chassis".into())
         })?;
-        let chassis = &catalog.chassis;
+        let model = server.model();
+        let chassis = &model.chassis;
         let selected_slot = match &part.kind {
             ServerPartKind::Cpu { socket, .. } => {
                 if socket != &chassis.cpu_socket || hardware.cpus.len() >= chassis.cpu_sockets {
@@ -42,17 +43,19 @@ impl NetworkSim {
                 let mut candidate = hardware.clone();
                 candidate.cpus.push(part_id.into());
                 candidate
-                    .validate_limits(catalog)
+                    .validate_installation_for_model(model, catalog)
                     .map_err(SimError::ServerHardware)?;
                 None
             }
             ServerPartKind::Ram { memory_type, .. } => {
-                if memory_type != &chassis.memory_type || hardware.ram.len() >= chassis.dimm_slots {
+                if !chassis.supports_memory_type(memory_type)
+                    || hardware.ram.len() >= chassis.dimm_slots
+                {
                     return Err(SimError::ServerHardware(
                         "DIMM type is incompatible or slots are full".into(),
                     ));
                 }
-                let indices = hardware.dimm_slot_indices(catalog);
+                let indices = hardware.dimm_slot_indices_for_model(model);
                 if slot.is_some_and(|index| index >= chassis.dimm_slots || indices.contains(&index))
                 {
                     return Err(SimError::ServerHardware(
@@ -74,7 +77,7 @@ impl NetworkSim {
                     candidate.ram_slot_indices = indices.clone();
                     candidate.ram.push(part_id.into());
                     candidate.ram_slot_indices.push(index);
-                    match candidate.validate_limits(catalog) {
+                    match candidate.validate_installation_for_model(model, catalog) {
                         Ok(()) => return Ok(Some(index)),
                         Err(error) => {
                             first_error.get_or_insert(error);
@@ -113,6 +116,13 @@ impl NetworkSim {
                         hardware.pcie.get(index).is_some_and(Option::is_none)
                             && s.lanes >= *lanes
                             && s.width >= *width
+                            && {
+                                let mut candidate = hardware.clone();
+                                candidate.pcie[index] = Some(part_id.into());
+                                candidate
+                                    .validate_installation_for_model(model, catalog)
+                                    .is_ok()
+                            }
                     })
                 };
                 let index = slot
@@ -155,7 +165,7 @@ impl NetworkSim {
                 let mut candidate = hardware.clone();
                 candidate.pcie[index] = Some(part_id.into());
                 candidate
-                    .validate_limits(catalog)
+                    .validate_installation_for_model(model, catalog)
                     .map_err(SimError::ServerHardware)?;
                 Some(index)
             }
@@ -188,7 +198,7 @@ impl NetworkSim {
         let hardware = server.hardware.as_ref().ok_or_else(|| {
             SimError::ServerHardware("legacy server has no configurable drive bays".into())
         })?;
-        let chassis = &server_catalog().chassis;
+        let chassis = &server.model().chassis;
         let compatible = |index: usize| {
             chassis.drive_bays.get(index).is_some_and(|slot| {
                 slot.interface == drive.interface

@@ -15,7 +15,7 @@ pub(super) fn contents(
     offer: &Offer,
     state: &mut ShopState,
     sim: &NetworkSim,
-    textures: ShopTextures,
+    textures: &ShopTextures,
     actions: &mut MessageWriter<UiAction>,
 ) {
     ui.heading(offer.name());
@@ -69,7 +69,7 @@ pub(super) fn windows(
     viewport: &mut egui::Ui,
     state: &mut ShopState,
     sim: &NetworkSim,
-    textures: ShopTextures,
+    textures: &ShopTextures,
     actions: &mut MessageWriter<UiAction>,
     inline_details: bool,
 ) {

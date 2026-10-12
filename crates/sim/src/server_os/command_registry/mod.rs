@@ -148,6 +148,9 @@ impl CommandRegistry {
             "command",
             "help",
             "ssh",
+            "nano",
+            "vim",
+            "vi",
         ] {
             registry
                 .register(BuiltinCommand::new(name))

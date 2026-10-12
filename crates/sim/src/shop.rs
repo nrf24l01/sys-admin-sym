@@ -9,6 +9,10 @@ pub enum PurchaseItem {
     Device(DeviceTemplate),
     ServerChassis,
     ServerFullPack,
+    ServerModel {
+        model_id: String,
+        configuration: ServerConfiguration,
+    },
     Supply(CableSupply),
     ServerPart(String),
     Drive(String),
@@ -31,6 +35,20 @@ impl PurchaseItem {
             Self::Device(model) => model.price(),
             Self::ServerChassis => DeviceTemplate::Server.price(),
             Self::ServerFullPack => ServerFullPack::price(),
+            Self::ServerModel {
+                model_id,
+                configuration,
+            } => {
+                let model = server_catalog().model(model_id).ok_or_else(|| {
+                    SimError::ServerHardware(format!("unknown server model: {model_id}"))
+                })?;
+                match configuration {
+                    ServerConfiguration::Chassis => model.price,
+                    ServerConfiguration::FullPack => model
+                        .full_pack_price(server_catalog())
+                        .map_err(SimError::ServerHardware)?,
+                }
+            }
             Self::Supply(model) => model.price(),
             Self::ServerPart(id) => {
                 server_catalog()
@@ -79,6 +97,13 @@ impl PurchaseItem {
             Self::Device(kind) => Command::BuyDevice { kind: *kind },
             Self::ServerChassis => Command::BuyServerChassis,
             Self::ServerFullPack => Command::BuyServerFullPack,
+            Self::ServerModel {
+                model_id,
+                configuration,
+            } => Command::BuyServer {
+                model_id: model_id.clone(),
+                configuration: *configuration,
+            },
             Self::Supply(supply) => Command::BuyCableSupply { supply: *supply },
             Self::ServerPart(part_id) => Command::BuyServerPart {
                 part_id: part_id.clone(),

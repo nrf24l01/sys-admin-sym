@@ -2,6 +2,7 @@
 //! simulated network; the host machine is never used as a command backend.
 mod command_registry;
 mod commands;
+mod editor;
 mod filesystem;
 mod network;
 mod services;
@@ -9,6 +10,7 @@ mod shell;
 mod syntax;
 
 pub use command_registry::{CommandRegistry, CompletionContext, LinuxCommand};
+pub use editor::{ConsoleEditorFile, ConsoleEditorKind};
 pub use filesystem::{GuestFile, GuestFilesystem};
 pub use network::{LinuxRoute, RouteSelection};
 use serde::{Deserialize, Serialize};

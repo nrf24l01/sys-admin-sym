@@ -72,6 +72,90 @@ mod tests {
     };
 
     #[test]
+    fn model_round_trip_preserves_hardware_ports_and_cables_and_rejects_unknown_model() {
+        use cloud_provider_sim::ServerConfiguration;
+        let path = std::env::temp_dir().join(format!(
+            "cloud-provider-model-save-{}.db",
+            std::process::id()
+        ));
+        let store = SaveStore::new(&path);
+        let mut sim = NetworkSim::new();
+        sim.money = 100_000;
+        let SimEvent::DeviceAdded(server) = sim
+            .execute(Command::BuyServer {
+                model_id: "dell_r760".into(),
+                configuration: ServerConfiguration::FullPack,
+            })
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        let SimEvent::DeviceAdded(switch) = sim
+            .execute(Command::BuyDevice {
+                kind: DeviceTemplate::Switch,
+            })
+            .unwrap()[0]
+        else {
+            panic!()
+        };
+        for (device, unit) in [(server, 1), (switch, 3)] {
+            sim.execute(Command::PlaceDevice {
+                device,
+                rack: RackId(1),
+                unit,
+            })
+            .unwrap();
+        }
+        for supply in [CableSupply::CableBox305m, CableSupply::Rj45Pack20] {
+            sim.execute(Command::BuyCableSupply { supply }).unwrap();
+        }
+        let a = sim.device(server).unwrap().ports()[0];
+        let b = sim.device(switch).unwrap().ports()[0];
+        sim.execute(Command::Connect { a, b }).unwrap();
+        let link = sim.link_for_port(a).unwrap().clone();
+        store.save(&sim).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.device(server), sim.device(server));
+        assert_eq!(loaded.port(a), sim.port(a));
+        assert_eq!(loaded.link_for_port(a), Some(&link));
+        let payload = ron::ser::to_string_pretty(&sim, ron::ser::PrettyConfig::default()).unwrap();
+        let unknown = payload.replacen("\"dell_r760\"", "\"removed_vendor_model\"", 1);
+        assert_ne!(payload, unknown);
+        store
+            .open()
+            .unwrap()
+            .execute("UPDATE saves SET state=?1 WHERE slot=1", params![unknown])
+            .unwrap();
+        assert!(
+            store
+                .load()
+                .unwrap_err()
+                .to_string()
+                .contains("removed_vendor_model")
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn legacy_ron_without_model_identity_loads_as_r360() {
+        let mut sim = NetworkSim::new();
+        let SimEvent::DeviceAdded(server) = sim.execute(Command::BuyServerFullPack).unwrap()[0]
+        else {
+            panic!()
+        };
+        let payload = ron::ser::to_string_pretty(&sim, ron::ser::PrettyConfig::default()).unwrap();
+        let legacy = payload
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("model:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_ne!(legacy, payload);
+        let mut loaded: NetworkSim = ron::from_str(&legacy).unwrap();
+        loaded.rebuild_indexes();
+        assert_eq!(loaded.device(server), sim.device(server));
+    }
+
+    #[test]
     fn sqlite_round_trip_preserves_domain_state() {
         let path =
             std::env::temp_dir().join(format!("cloud-provider-sim-{}.db", std::process::id()));

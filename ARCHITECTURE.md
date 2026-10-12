@@ -68,8 +68,14 @@ Links are canonical records. The port-to-link map is a transient index rebuilt
 after load. Editor text remains in `EditorDrafts` until **Apply**, so incomplete
 addresses never enter the domain state.
 
-Server chassis dimensions, slot counts, PCIe lane widths, and component models
-come from `assets/equipment/server_parts.json`. Purchased parts live in saved
+Server chassis dimensions, slot counts, CPU/DIMM topology, power curves, onboard
+ports and artwork come from `assets/equipment/servers.json`. Shared component
+models come from `server_parts.json`. Saved servers carry a validated string
+model ID; missing IDs in old saves become `dell_r360`. Generic purchases and
+catalog iteration supply model-specific hardware, full packs, shop offers and
+artwork. Adding a model requires JSON and images rather than enum or renderer
+branches. The default `chassis` projection remains for standalone R360 helpers;
+device consumers resolve their own model. Purchased parts live in saved
 inventory. Installation checks socket and memory compatibility, free bays,
 physical PCIe slot width, generation, and the CPU's total available lanes.
 Ethernet cards are PCI card variants and allocate ordinary server `Port` records,
@@ -343,8 +349,8 @@ without looping through long idle periods. See [power consumption](docs/POWER_CO
 
 ## Hardware compatibility and router LAN switching
 
-`server_hardware/limits.rs` validates CPU/chassis limits and DIMM topology from
-`server_parts.json`. `shop_compatibility.rs` shares these rules with installation
+`server_hardware/limits.rs` validates each model's CPU/chassis limits and DIMM
+topology from `servers.json` against shared `server_parts.json` components. `shop_compatibility.rs` shares these rules with installation
 and shop previews. Physical DIMM indices persist separately from component IDs;
 legacy saves receive the configured population order. Catalogs load once.
 

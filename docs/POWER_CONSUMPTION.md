@@ -64,7 +64,7 @@ own draw, losses and charging.
 
 | File in `assets/equipment` | `power` settings |
 | --- | --- |
-| `server_config.json` | Board/fan curves, PSU capacity/efficiency, power factor, legacy-server envelope |
+| `servers.json` | Per-model board/fan curves, PSU capacity/efficiency, power factor, legacy-server envelope |
 | `server_parts.json` | Per-CPU, per-DIMM and per-NIC curves; NIC link share |
 | `drives.json` | Per-drive idle/full-load curves |
 | `switches.json` | Per-Catalyst curve, link share and power factor |
@@ -177,3 +177,12 @@ overrides: a 500 W PSU with 100% conversion efficiency and changed component
 curves. The [inspector shows those overrides](screenshots/power-consumption-json-override-en.png),
 including 54 W idle and the 500 W capacity, without rebuilding the binary. The
 repository defaults remain the original estimates.
+
+## Multiple server models
+
+`servers.json` supplies each chassis's board/fan curves, redundant PSU count,
+capacity, conversion curve and power factor. Installed CPU/DIMM/NIC curves still
+come from the shared component catalog. Boot checks, current consumption, PSU
+feed telemetry and power connectors resolve the saved model. Capacities are
+output limits; they do not become constant operating draw. Chassis operating
+curves and game prices are estimates.

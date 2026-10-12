@@ -125,8 +125,8 @@ impl NetworkSim {
             PowerEndpoint::Device(id) | PowerEndpoint::DevicePsu { device: id, .. } => {
                 self.devices.get(id).is_some_and(|d| {
                     usize::from(endpoint.inlet())
-                        < if matches!(d.kind, DeviceKind::Server(_)) {
-                            server_catalog().chassis.psu_bays
+                        < if let DeviceKind::Server(server) = &d.kind {
+                            server.model().chassis.psu_bays
                         } else {
                             1
                         }
@@ -245,11 +245,13 @@ impl NetworkSim {
         self.migrate_hosting_management_ports();
         self.remove_legacy_server_management_ports();
         for device in self.devices.values_mut() {
-            if let DeviceKind::Server(server) = &mut device.kind
-                && let Some(hardware) = &mut server.hardware
-            {
-                hardware.normalize_dimm_slots();
-                let slots = server_catalog().chassis.pcie_slots.len();
+            if let DeviceKind::Server(server) = &mut device.kind {
+                let model = server.model();
+                let Some(hardware) = &mut server.hardware else {
+                    continue;
+                };
+                hardware.normalize_dimm_slots_for_model(model);
+                let slots = model.chassis.pcie_slots.len();
                 if hardware.pcie.len() < slots {
                     hardware.pcie.resize(slots, None);
                 }
@@ -258,10 +260,8 @@ impl NetworkSim {
                         .card_ports
                         .resize_with(hardware.pcie.len(), Vec::new);
                 }
-                if hardware.drives.len() < server_catalog().chassis.drive_bays.len() {
-                    hardware
-                        .drives
-                        .resize(server_catalog().chassis.drive_bays.len(), None);
+                if hardware.drives.len() < model.chassis.drive_bays.len() {
+                    hardware.drives.resize(model.chassis.drive_bays.len(), None);
                 }
             }
         }
@@ -738,6 +738,13 @@ impl NetworkSim {
                 let id = self.buy_device(kind)?;
                 vec![SimEvent::DeviceAdded(id)]
             }
+            Command::BuyServer {
+                model_id,
+                configuration,
+            } => {
+                let id = self.buy_server_model(&model_id, configuration)?;
+                vec![SimEvent::DeviceAdded(id)]
+            }
             Command::BuyServerChassis => {
                 let id = self.buy_server_chassis()?;
                 vec![SimEvent::DeviceAdded(id)]
@@ -1056,6 +1063,29 @@ impl NetworkSim {
         price: i64,
         switch_model: SwitchModel,
     ) -> Result<DeviceId, SimError> {
+        self.buy_device_with_profiles(template, price, switch_model, None)
+    }
+
+    pub(crate) fn buy_device_with_server_model(
+        &mut self,
+        model: &ServerModel,
+        _identity: ServerModelId,
+    ) -> Result<DeviceId, SimError> {
+        self.buy_device_with_profiles(
+            DeviceTemplate::Server,
+            model.price,
+            SwitchModel::default(),
+            Some(model),
+        )
+    }
+
+    fn buy_device_with_profiles(
+        &mut self,
+        template: DeviceTemplate,
+        price: i64,
+        switch_model: SwitchModel,
+        selected_server: Option<&ServerModel>,
+    ) -> Result<DeviceId, SimError> {
         if self.money < price {
             return Err(SimError::InsufficientFunds {
                 needed: price,
@@ -1073,23 +1103,37 @@ impl NetworkSim {
             + 1;
         let (name, kind) = match template {
             DeviceTemplate::Server => {
-                let ports = ["eth0", "eth1"]
-                    .into_iter()
-                    .map(|name| {
-                        self.alloc_port(
+                let model = selected_server.unwrap_or_else(|| server_catalog().default_model());
+                let ports = model
+                    .onboard_ports
+                    .iter()
+                    .map(|spec| {
+                        let id = self.alloc_port(
                             id,
-                            name.into(),
+                            spec.name.clone(),
                             PortConnector::Rj45,
                             PortConfig::Server(ServerPortConfig::default()),
-                        )
+                        );
+                        let port = self.ports.get_mut(&id).unwrap();
+                        let speed = LinkSpeed::from_mbps(spec.speed_mbps)
+                            .expect("validated onboard NIC speed");
+                        port.max_speed = speed;
+                        port.advertised_speed = speed;
+                        id
                     })
                     .collect();
                 (
-                    format!("{} #{index:02}", server_catalog().chassis.model),
+                    format!("{} #{index:02}", model.chassis.model),
                     DeviceKind::Server(Server {
+                        model: ServerModelId::parse(&model.id).map_err(SimError::ServerHardware)?,
                         hostname: format!("server{index:02}"),
                         ports,
-                        hardware: None,
+                        hardware: selected_server.map(|model| ServerHardware {
+                            pcie: vec![None; model.chassis.pcie_slots.len()],
+                            card_ports: vec![Vec::new(); model.chassis.pcie_slots.len()],
+                            drives: vec![None; model.chassis.drive_bays.len()],
+                            ..Default::default()
+                        }),
                     }),
                 )
             }
@@ -1272,45 +1316,14 @@ impl NetworkSim {
     }
 
     fn buy_server_chassis(&mut self) -> Result<DeviceId, SimError> {
-        let id = self.buy_device(DeviceTemplate::Server)?;
-        let DeviceKind::Server(server) = &mut self.devices.get_mut(&id).unwrap().kind else {
-            unreachable!()
-        };
-        server.hardware = Some(ServerHardware {
-            pcie: vec![None; server_catalog().chassis.pcie_slots.len()],
-            card_ports: vec![Vec::new(); server_catalog().chassis.pcie_slots.len()],
-            drives: vec![None; server_catalog().chassis.drive_bays.len()],
-            ..Default::default()
-        });
-        self.update_server_load(id);
-        Ok(id)
+        self.buy_server_model(DEFAULT_SERVER_MODEL, ServerConfiguration::Chassis)
     }
 
     fn buy_server_full_pack(&mut self) -> Result<DeviceId, SimError> {
-        let price = ServerFullPack::price();
-        if self.money < price {
-            return Err(SimError::InsufficientFunds {
-                needed: price,
-                available: self.money,
-            });
-        }
-        let mut purchase = self.clone();
-        let id = purchase.buy_server_chassis()?;
-        for part in [
-            ServerFullPack::CPU,
-            ServerFullPack::RAM,
-            ServerFullPack::NIC,
-        ] {
-            purchase.buy_server_part(part)?;
-            purchase.install_server_part(id, part, None)?;
-        }
-        purchase.buy_drive(ServerFullPack::DRIVE)?;
-        purchase.install_drive(id, ServerFullPack::DRIVE, None)?;
-        *self = purchase;
-        Ok(id)
+        self.buy_server_model(DEFAULT_SERVER_MODEL, ServerConfiguration::FullPack)
     }
 
-    fn buy_server_part(&mut self, part_id: &str) -> Result<(), SimError> {
+    pub(crate) fn buy_server_part(&mut self, part_id: &str) -> Result<(), SimError> {
         let part = server_catalog()
             .parts
             .iter()
@@ -1327,7 +1340,7 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn buy_drive(&mut self, drive_id: &str) -> Result<(), SimError> {
+    pub(crate) fn buy_drive(&mut self, drive_id: &str) -> Result<(), SimError> {
         let drive = drive_catalog()
             .drives
             .iter()
@@ -1344,7 +1357,7 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn install_drive(
+    pub(crate) fn install_drive(
         &mut self,
         device: DeviceId,
         drive_id: &str,
@@ -1392,14 +1405,13 @@ impl NetworkSim {
         Ok(())
     }
 
-    fn install_server_part(
+    pub(crate) fn install_server_part(
         &mut self,
         device: DeviceId,
         part_id: &str,
         slot: Option<usize>,
     ) -> Result<(), SimError> {
-        if self.devices.get(&device).is_some_and(|d| d.powered)
-            && !server_catalog().chassis.parts_hot_swappable
+        if self.devices.get(&device).is_some_and(|d| d.powered && matches!(&d.kind, DeviceKind::Server(server) if !server.model().chassis.parts_hot_swappable))
         {
             return Err(SimError::ServerHardware(
                 "power off the server before changing CPU, RAM or PCIe cards".into(),
@@ -1460,11 +1472,12 @@ impl NetworkSim {
         let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind else {
             unreachable!()
         };
+        let model = server.model();
         let hardware = server.hardware.as_mut().unwrap();
         match &part.kind {
             ServerPartKind::Cpu { .. } => hardware.cpus.push(part_id.into()),
             ServerPartKind::Ram { .. } => {
-                hardware.normalize_dimm_slots();
+                hardware.normalize_dimm_slots_for_model(model);
                 hardware.ram.push(part_id.into());
                 hardware.ram_slot_indices.push(selected_slot.unwrap());
             }
@@ -1489,8 +1502,7 @@ impl NetworkSim {
         part_id: &str,
         slot: Option<usize>,
     ) -> Result<(), SimError> {
-        if self.devices.get(&device).is_some_and(|d| d.powered)
-            && !server_catalog().chassis.parts_hot_swappable
+        if self.devices.get(&device).is_some_and(|d| d.powered && matches!(&d.kind, DeviceKind::Server(server) if !server.model().chassis.parts_hot_swappable))
         {
             return Err(SimError::ServerHardware(
                 "power off the server before changing CPU, RAM or PCIe cards".into(),
@@ -1533,12 +1545,43 @@ impl NetworkSim {
         } else {
             None
         };
-        if matches!(part.kind, ServerPartKind::Cpu { .. })
-            && hardware.pcie.iter().any(Option::is_some)
-        {
-            return Err(SimError::ServerHardware(
-                "remove PCIe cards before removing the CPU".into(),
-            ));
+        if matches!(part.kind, ServerPartKind::Cpu { .. }) {
+            let index = hardware
+                .cpus
+                .iter()
+                .rposition(|id| id == part_id)
+                .ok_or_else(|| SimError::ServerHardware("CPU is not installed".into()))?;
+            if hardware.pcie.iter().enumerate().any(|(slot, part)| {
+                part.is_some()
+                    && server
+                        .model()
+                        .chassis
+                        .pcie_slots
+                        .get(slot)
+                        .is_some_and(|s| s.cpu_socket == index)
+            }) {
+                return Err(SimError::ServerHardware(
+                    "remove PCIe cards before removing the CPU".into(),
+                ));
+            }
+            let occupied = hardware
+                .dimm_slot_indices_for_model(server.model())
+                .into_iter()
+                .any(|slot| {
+                    server
+                        .model()
+                        .chassis
+                        .memory
+                        .slots
+                        .get(slot)
+                        .is_some_and(|s| s.cpu_socket == index)
+                });
+            if occupied {
+                return Err(SimError::ServerHardware(format!(
+                    "remove CPU {} DIMMs before removing the CPU",
+                    index + 1
+                )));
+            }
         }
         let ports = pci_slot
             .map(|i| hardware.card_ports[i].clone())
@@ -1552,8 +1595,9 @@ impl NetworkSim {
         let DeviceKind::Server(server) = &mut self.devices.get_mut(&device).unwrap().kind else {
             unreachable!()
         };
+        let model = server.model();
         let hardware = server.hardware.as_mut().unwrap();
-        hardware.normalize_dimm_slots();
+        hardware.normalize_dimm_slots_for_model(model);
         let ram_index = if matches!(part.kind, ServerPartKind::Ram { .. }) {
             Some(
                 hardware
@@ -1578,7 +1622,7 @@ impl NetworkSim {
         };
         if let Some(list) = list {
             let index = ram_index
-                .or_else(|| list.iter().position(|p| p == part_id))
+                .or_else(|| list.iter().rposition(|p| p == part_id))
                 .ok_or_else(|| SimError::ServerHardware("part is not installed".into()))?;
             list.remove(index);
             if ram_index.is_some() {
@@ -1693,7 +1737,10 @@ impl NetworkSim {
             .device_models
             .remove(&id)
             .and_then(|model| optics_catalog().hardware(&model).map(|m| m.price))
-            .unwrap_or_else(|| device.template().price());
+            .unwrap_or_else(|| match &device.kind {
+                DeviceKind::Server(server) => server.model().price,
+                _ => device.template().price(),
+            });
         self.money += price / 2;
         Ok(())
     }
@@ -1703,7 +1750,6 @@ impl NetworkSim {
             .devices
             .get(&id)
             .ok_or(SimError::DeviceNotFound(id))?
-            .template()
             .rack_units();
         let rack = self
             .racks
@@ -1811,15 +1857,10 @@ impl NetworkSim {
         }
         match endpoint {
             PowerEndpoint::Device(id) | PowerEndpoint::DevicePsu { device: id, .. } => {
-                let count = if self
-                    .devices
-                    .get(&id)
-                    .is_some_and(|d| matches!(d.kind, DeviceKind::Server(_)))
-                {
-                    server_catalog().chassis.psu_bays
-                } else {
-                    1
-                };
+                let count = self.devices.get(&id).map_or(1, |d| match &d.kind {
+                    DeviceKind::Server(server) => server.model().chassis.psu_bays,
+                    _ => 1,
+                });
                 if usize::from(endpoint.inlet()) >= count {
                     return Err(SimError::Power("invalid device power inlet".into()));
                 }
@@ -1995,9 +2036,9 @@ impl NetworkSim {
                 ));
             }
             hardware
-                .validate_limits(server_catalog())
+                .validate_for_model(server.model(), server_catalog())
                 .map_err(SimError::ServerHardware)?;
-            if !hardware.ready() {
+            if !hardware.ready_for_model(server.model()) {
                 return Err(SimError::ServerHardware(
                     "component peak demand exceeds configured PSU capacity".into(),
                 ));
@@ -2043,7 +2084,7 @@ impl NetworkSim {
                 continue;
             }
             if let Some(status) = self.power.device_status(*id) {
-                let assembled = !matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready()));
+                let assembled = !matches!(&device.kind, DeviceKind::Server(server) if server.hardware.as_ref().is_some_and(|hardware| !hardware.ready_for_model(server.model())));
                 let next = device.rack.is_some() && status.effective && assembled;
                 if device.powered != next && matches!(device.kind, DeviceKind::Server(_)) {
                     server_transitions.push((*id, next));

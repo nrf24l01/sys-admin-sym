@@ -2,8 +2,11 @@ use super::catalog::Offer;
 use bevy_egui::egui;
 use cloud_provider_sim::PurchaseItem;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(in crate::ui) struct ShopTextures {
+    pub servers:
+        std::sync::Arc<std::collections::BTreeMap<String, crate::ui::server_models::ServerShopIds>>,
+    pub use_full: bool,
     pub server: egui::TextureId,
     pub router: egui::TextureId,
     pub switch: egui::TextureId,
@@ -17,19 +20,21 @@ pub(in crate::ui) struct ShopTextures {
     pub full: [egui::TextureId; 9],
 }
 impl ShopTextures {
-    pub(super) fn full_resolution(mut self) -> Self {
+    pub(super) fn full_resolution(&self) -> Self {
+        let mut result = self.clone();
+        result.use_full = true;
         [
-            self.server,
-            self.router,
-            self.switch,
-            self.ups,
-            self.pdu,
-            self.products,
-        ] = self.full[..6].try_into().unwrap();
-        self.optics.modules = self.full[6];
-        self.optics.cables = self.full[7];
-        self.switch_10g = self.full[8];
-        self
+            result.server,
+            result.router,
+            result.switch,
+            result.ups,
+            result.pdu,
+            result.products,
+        ] = result.full[..6].try_into().unwrap();
+        result.optics.modules = result.full[6];
+        result.optics.cables = result.full[7];
+        result.switch_10g = result.full[8];
+        result
     }
 }
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +45,7 @@ pub(super) struct Artwork {
     pub ready: bool,
 }
 
-pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> {
+pub(super) fn artwork(offer: &Offer, textures: &ShopTextures) -> Option<Artwork> {
     if matches!(
         offer.item,
         PurchaseItem::Transceiver(_) | PurchaseItem::Assembly(_)
@@ -62,6 +67,21 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
             }
         });
     }
+    if let Some(model) = cloud_provider_sim::server_catalog().model(&offer.display_id) {
+        let t = textures.servers.get(&model.id)?;
+        let [l, top, r, b] = model.artwork.front.uv;
+        let [w, h] = model.artwork.front.source_size;
+        return Some(Artwork {
+            texture: if textures.use_full {
+                t.full
+            } else {
+                t.thumbnail
+            },
+            uv: egui::Rect::from_min_max(egui::pos2(l, top), egui::pos2(r, b)),
+            aspect: w as f32 * (r - l) / (h as f32 * (b - top)),
+            ready: t.ready,
+        });
+    }
     let rect = |a, b, c, d| egui::Rect::from_min_max(egui::pos2(a, b), egui::pos2(c, d));
     let panel = |texture, uv: egui::Rect, source: egui::Vec2, ready| {
         Some(Artwork {
@@ -72,12 +92,6 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
         })
     };
     match offer.display_id.as_str() {
-        "dell_r360" => panel(
-            textures.server,
-            rect(0.009, 0.48, 0.995, 0.84),
-            egui::vec2(2048.0, 512.0),
-            textures.ready[0],
-        ),
         "cisco_isr_c1111" => panel(
             textures.router,
             rect(0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
@@ -109,20 +123,27 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
             textures.ready[4],
         ),
         id => {
-            let cell = match id {
-                "xeon_e_2434" => 0,
-                "ddr5_ecc_16gb" | "ddr5_ecc_32gb" => 1,
-                "intel_i350_t4" => 2,
-                "intel_x520_da2" => 3,
-                "enterprise_hdd_2tb" => 4,
-                "enterprise_ssd_960gb" => 5,
-                "ethernet_cable_box" => 6,
-                "rj45_connectors" => 7,
-                "patch_panel" => 8,
-                "fiber_panel" => 9,
-                "cable_manager" => 10,
-                "public_ipv4_pool" | "public_ipv4_pool_24" => 11,
-                _ => return None,
+            let cell = match cloud_provider_sim::server_catalog()
+                .part(id)
+                .map(|p| &p.kind)
+            {
+                Some(cloud_provider_sim::ServerPartKind::Cpu { .. }) => 0,
+                Some(cloud_provider_sim::ServerPartKind::Ram { .. }) => 1,
+                _ => match id {
+                    "xeon_e_2434" => 0,
+                    "ddr5_ecc_16gb" | "ddr5_ecc_32gb" => 1,
+                    "intel_i350_t4" => 2,
+                    "intel_x520_da2" => 3,
+                    "enterprise_hdd_2tb" => 4,
+                    "enterprise_ssd_960gb" => 5,
+                    "ethernet_cable_box" => 6,
+                    "rj45_connectors" => 7,
+                    "patch_panel" => 8,
+                    "fiber_panel" => 9,
+                    "cable_manager" => 10,
+                    "public_ipv4_pool" | "public_ipv4_pool_24" => 11,
+                    _ => return None,
+                },
             };
             Some(Artwork {
                 texture: textures.products,
@@ -137,7 +158,7 @@ pub(super) fn artwork(offer: &Offer, textures: ShopTextures) -> Option<Artwork> 
     }
 }
 
-pub(super) fn image(ui: &mut egui::Ui, offer: &Offer, textures: ShopTextures, size: egui::Vec2) {
+pub(super) fn image(ui: &mut egui::Ui, offer: &Offer, textures: &ShopTextures, size: egui::Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
     ui.painter()
         .rect_filled(rect, 6.0, ui.visuals().faint_bg_color);
@@ -147,6 +168,22 @@ pub(super) fn image(ui: &mut egui::Ui, offer: &Offer, textures: ShopTextures, si
         let image_rect = egui::Rect::from_center_size(bounds.center(), size);
         ui.painter()
             .image(art.texture, image_rect, art.uv, egui::Color32::WHITE);
+        if let PurchaseItem::ServerModel {
+            model_id,
+            configuration,
+        } = &offer.item
+        {
+            let model = cloud_provider_sim::server_catalog()
+                .model(model_id)
+                .unwrap();
+            let mut drives = vec![None; model.chassis.drive_bays.len()];
+            if *configuration == cloud_provider_sim::ServerConfiguration::FullPack {
+                for drive in &model.full_pack.drives {
+                    drives[drive.bay] = Some(drive.drive_id.clone());
+                }
+            }
+            crate::ui::server_drive_faces::paint(ui.painter(), image_rect, model, &drives, false);
+        }
     } else {
         ui.painter().text(
             rect.center(),
@@ -162,6 +199,23 @@ pub(super) fn image(ui: &mut egui::Ui, offer: &Offer, textures: ShopTextures, si
 pub(super) fn test_textures() -> ShopTextures {
     let texture = egui::TextureId::User(1);
     ShopTextures {
+        use_full: false,
+        servers: std::sync::Arc::new(
+            cloud_provider_sim::server_catalog()
+                .models
+                .iter()
+                .map(|m| {
+                    (
+                        m.id.clone(),
+                        crate::ui::server_models::ServerShopIds {
+                            thumbnail: texture,
+                            full: texture,
+                            ready: true,
+                        },
+                    )
+                })
+                .collect(),
+        ),
         server: texture,
         router: texture,
         switch: texture,

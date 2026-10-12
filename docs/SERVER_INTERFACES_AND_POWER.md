@@ -33,15 +33,15 @@ configuration. Disk files survive power loss.
 
 ## JSON configuration
 
-- `server_parts.json`: `chassis.psu_bays` defines included supplies and usable
-  inlets (1–2 for this chassis). Both 600 W supplies are included by default.
-- `server_config.json`: `power.psu.capacity_watts` is the DC rating of **each**
+- Each `servers.json` model: `chassis.psu_bays` defines included supplies and
+  usable inlets (1–2). R360 includes both 600 W supplies by default.
+- Model `power.psu.capacity_watts` is the DC rating of **each**
   PSU, `power.psu.efficiency_permille` is its efficiency curve, and
   `power.power_factor_percent` determines AC VA/current.
 - Component operating envelopes remain in the equipment/parts/drive `power`
   objects. UPS/PDU limits and losses remain in their own JSON catalogs.
-- Socket rectangles live in `server_config.json` under `ports.c14`;
-  `ports.rj-45` contains only the two onboard NICs.
+- Model socket rectangles live in `servers.json` under `power_inlets` and
+  `onboard_ports`; the latter includes only the selected data NICs.
 
 Efficiency and component operating curves are gameplay estimates, not measured
 R360 telemetry. Dell's optional hot-spare sleep policy is not simulated; this
@@ -76,3 +76,12 @@ leaves the server online with [PSU 2 drawing 46 W](screenshots/dell-server-one-f
 The different total follows the configured efficiency curve at each PSU's load.
 Cutting the remaining source leaves the [server offline at 0 W](screenshots/dell-server-outage-en.png).
 These values demonstrate the estimated model, rather than measured Dell power draw.
+
+## Other server models
+
+The same physical NIC and independent-feed rules apply to all catalog servers.
+Onboard port counts/speeds, PSU capacities and connector rectangles come from
+their `servers.json` entry. Network-choice HPE, Lenovo and Supermicro chassis
+can have no onboard data interfaces; their full packs include a PCIe NIC. BMC,
+iLO, iDRAC and XCC management-only sockets in reference artwork are not packet
+forwarding ports. Physical rack occupancy uses each model's 1U/2U size.

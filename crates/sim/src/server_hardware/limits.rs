@@ -9,6 +9,9 @@ pub struct CpuMemoryLimits {
     pub max_dimms: usize,
     pub max_capacity_gb: u32,
     pub max_speed_mt_s: u32,
+    /// Optional CPU-specific clock limits for 1 DPC, 2 DPC, etc.
+    #[serde(default)]
+    pub operating_speeds_mt_s: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -34,6 +37,9 @@ pub struct DimmSlot {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SupportedMemoryModule {
+    /// Empty in legacy R360 data; otherwise identifies the DIMM class.
+    #[serde(default)]
+    pub memory_type: String,
     pub capacity_gb: u16,
     pub ranks: u8,
     pub voltage_mv: u16,
@@ -112,6 +118,9 @@ impl ServerCatalog {
         }
         let mut ids = BTreeSet::new();
         for part in &self.parts {
+            if part.id.is_empty() || part.price < 0 {
+                return Err(format!("invalid part identity or price: {}", part.id));
+            }
             if !ids.insert(&part.id) {
                 return Err(format!("duplicate part ID {}", part.id));
             }
@@ -140,6 +149,9 @@ impl ServerCatalog {
                     || memory.max_dimms > memory.channels * memory.dimms_per_channel
                     || memory.max_capacity_gb == 0
                     || memory.max_speed_mt_s == 0
+                    || (!memory.operating_speeds_mt_s.is_empty()
+                        && (memory.operating_speeds_mt_s.len() != memory.dimms_per_channel
+                            || memory.operating_speeds_mt_s.contains(&0)))
                     || memory.memory_types.is_empty() =>
                 {
                     return Err(format!("invalid CPU limits: {}", part.id));
@@ -171,9 +183,16 @@ impl ServerCatalog {
 
 impl ServerHardware {
     pub fn dimm_slot_indices(&self, catalog: &ServerCatalog) -> Vec<usize> {
+        self.dimm_slot_indices_for_chassis(&catalog.chassis)
+    }
+
+    pub fn dimm_slot_indices_for_model(&self, model: &ServerModel) -> Vec<usize> {
+        self.dimm_slot_indices_for_chassis(&model.chassis)
+    }
+
+    fn dimm_slot_indices_for_chassis(&self, chassis: &ServerChassis) -> Vec<usize> {
         if self.ram_slot_indices.is_empty() && !self.ram.is_empty() {
-            catalog
-                .chassis
+            chassis
                 .memory
                 .population_order
                 .iter()
@@ -185,13 +204,39 @@ impl ServerHardware {
         }
     }
 
-    pub(crate) fn normalize_dimm_slots(&mut self) {
-        self.ram_slot_indices = self.dimm_slot_indices(server_catalog());
+    pub(crate) fn normalize_dimm_slots_for_model(&mut self, model: &ServerModel) {
+        self.ram_slot_indices = self.dimm_slot_indices_for_model(model);
     }
 
     /// Validate against an explicit catalog so configuration overrides use the same rules.
     pub fn validate_limits(&self, catalog: &ServerCatalog) -> Result<(), String> {
-        let c = &catalog.chassis;
+        self.validate_chassis(&catalog.chassis, &catalog.parts, true)
+    }
+
+    pub fn validate_for_model(
+        &self,
+        model: &ServerModel,
+        catalog: &ServerCatalog,
+    ) -> Result<(), String> {
+        self.validate_chassis(&model.chassis, &catalog.parts, true)
+    }
+
+    /// Assembly may temporarily contain fewer DIMMs than a bootable population.
+    /// Every physical, CPU, module and capacity constraint still applies.
+    pub(crate) fn validate_installation_for_model(
+        &self,
+        model: &ServerModel,
+        catalog: &ServerCatalog,
+    ) -> Result<(), String> {
+        self.validate_chassis(&model.chassis, &catalog.parts, false)
+    }
+
+    fn validate_chassis(
+        &self,
+        c: &ServerChassis,
+        parts: &[ServerPart],
+        require_population: bool,
+    ) -> Result<(), String> {
         if self.cpus.len() > c.cpu_sockets {
             return Err(format!("CPU sockets full (maximum {})", c.cpu_sockets));
         }
@@ -205,7 +250,7 @@ impl ServerHardware {
                         ..
                     },
                 ..
-            }) = catalog.parts.iter().find(|p| p.id == *id)
+            }) = parts.iter().find(|p| p.id == *id)
             else {
                 return Err(format!("unknown installed CPU {id}"));
             };
@@ -220,13 +265,12 @@ impl ServerHardware {
                 ));
             }
         }
-        self.memory_status_with_catalog(catalog)?;
+        self.memory_status_for_chassis(c, parts, require_population)?;
         let available: Vec<u16> = self
             .cpus
             .iter()
             .map(|id| {
-                catalog
-                    .parts
+                parts
                     .iter()
                     .find(|p| p.id == *id)
                     .and_then(|p| match p.kind {
@@ -252,7 +296,7 @@ impl ServerHardware {
                         card: PciCard::Ethernet { lanes, width, .. },
                     },
                 ..
-            }) = catalog.parts.iter().find(|p| p.id == *id)
+            }) = parts.iter().find(|p| p.id == *id)
             else {
                 return Err(format!("unknown PCIe card {id}"));
             };
@@ -300,9 +344,32 @@ impl ServerHardware {
         &self,
         catalog: &ServerCatalog,
     ) -> Result<ServerMemoryStatus, String> {
-        let c = &catalog.chassis;
+        self.memory_status_for_chassis(&catalog.chassis, &catalog.parts, true)
+    }
+
+    pub fn memory_status_for_model(
+        &self,
+        model: &ServerModel,
+    ) -> Result<ServerMemoryStatus, String> {
+        self.memory_status_with_model_catalog(model, server_catalog())
+    }
+
+    pub fn memory_status_with_model_catalog(
+        &self,
+        model: &ServerModel,
+        catalog: &ServerCatalog,
+    ) -> Result<ServerMemoryStatus, String> {
+        self.memory_status_for_chassis(&model.chassis, &catalog.parts, true)
+    }
+
+    fn memory_status_for_chassis(
+        &self,
+        c: &ServerChassis,
+        parts: &[ServerPart],
+        require_population: bool,
+    ) -> Result<ServerMemoryStatus, String> {
         let m = &c.memory;
-        let indices = self.dimm_slot_indices(catalog);
+        let indices = self.dimm_slot_indices_for_chassis(c);
         if indices.len() != self.ram.len()
             || indices.iter().copied().collect::<BTreeSet<_>>().len() != indices.len()
         {
@@ -317,7 +384,7 @@ impl ServerHardware {
             let Some(ServerPart {
                 kind: ServerPartKind::Cpu { memory, .. },
                 ..
-            }) = catalog.parts.iter().find(|p| p.id == *id)
+            }) = parts.iter().find(|p| p.id == *id)
             else {
                 return Err(format!("unknown CPU {id}"));
             };
@@ -325,14 +392,52 @@ impl ServerHardware {
             cpu_limits.push(memory);
         }
         if !cpu_limits.is_empty() {
-            status.max_capacity_gb = status
-                .max_capacity_gb
-                .min(cpu_limits.iter().map(|cpu| cpu.max_capacity_gb).sum());
+            let installed_type = self
+                .ram
+                .first()
+                .and_then(|id| parts.iter().find(|p| &p.id == id))
+                .and_then(|p| match &p.kind {
+                    ServerPartKind::Ram { memory_type, .. } => Some(memory_type.as_str()),
+                    _ => None,
+                });
+            let reachable: u32 = cpu_limits
+                .iter()
+                .enumerate()
+                .map(|(socket, cpu)| {
+                    let largest = m
+                        .supported_modules
+                        .iter()
+                        .filter(|module| {
+                            let kind = if module.memory_type.is_empty() {
+                                c.memory_type.as_str()
+                            } else {
+                                module.memory_type.as_str()
+                            };
+                            cpu.memory_types.iter().any(|t| t == kind)
+                                && installed_type.is_none_or(|installed| installed == kind)
+                        })
+                        .map(|m| u32::from(m.capacity_gb))
+                        .max()
+                        .unwrap_or(0);
+                    let slots = m
+                        .slots
+                        .iter()
+                        .filter(|s| {
+                            s.cpu_socket == socket
+                                && s.channel < cpu.channels
+                                && s.position < cpu.dimms_per_channel
+                        })
+                        .count()
+                        .min(cpu.max_dimms) as u32;
+                    cpu.max_capacity_gb.min(largest.saturating_mul(slots))
+                })
+                .sum();
+            status.max_capacity_gb = status.max_capacity_gb.min(reachable);
         }
         if self.ram.is_empty() {
             return Ok(status);
         }
-        if !m.supported_dimm_counts.contains(&self.ram.len()) {
+        if require_population && !m.supported_dimm_counts.contains(&self.ram.len()) {
             return Err("unsupported DIMM population count".into());
         }
         let mut channels = ChannelModules::new();
@@ -360,11 +465,11 @@ impl ServerHardware {
                         voltage_mv,
                     },
                 ..
-            }) = catalog.parts.iter().find(|p| p.id == *id)
+            }) = parts.iter().find(|p| p.id == *id)
             else {
                 return Err(format!("unknown DIMM {id}"));
             };
-            if memory_type != &c.memory_type || !cpu.memory_types.contains(memory_type) {
+            if !c.supports_memory_type(memory_type) || !cpu.memory_types.contains(memory_type) {
                 return Err(format!(
                     "DIMM type {memory_type} is incompatible with chassis/CPU"
                 ));
@@ -376,6 +481,11 @@ impl ServerHardware {
                 ));
             }
             let spec = (memory_type, capacity_gb, speed_mt_s, ranks, voltage_mv);
+            if first_spec
+                .is_some_and(|first: (&String, &u16, &u32, &u8, &u16)| first.0 != memory_type)
+            {
+                return Err("mixing DIMM classes is unsupported".into());
+            }
             if m.identical_dimms && first_spec.is_some_and(|first| first != spec) {
                 return Err(
                     "this chassis requires DIMMs with identical capacity, rank, speed and voltage"
@@ -384,7 +494,8 @@ impl ServerHardware {
             }
             first_spec = Some(spec);
             let Some(module) = m.supported_modules.iter().find(|s| {
-                s.capacity_gb == *capacity_gb
+                (s.memory_type.is_empty() || s.memory_type == *memory_type)
+                    && s.capacity_gb == *capacity_gb
                     && s.ranks == *ranks
                     && s.voltage_mv == *voltage_mv
                     && s.rated_speeds_mt_s.contains(speed_mt_s)
@@ -441,6 +552,14 @@ impl ServerHardware {
                 speed = speed
                     .min(entry.3)
                     .min(entry.2.operating_speeds_mt_s[entries.len() - 1]);
+            }
+        }
+        for ((socket, _), entries) in &channels {
+            if let Some(limit) = cpu_limits[*socket]
+                .operating_speeds_mt_s
+                .get(entries.len() - 1)
+            {
+                speed = speed.min(*limit);
             }
         }
         status.speed_mt_s = speed;

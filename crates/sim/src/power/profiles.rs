@@ -84,7 +84,7 @@ impl PsuPowerProfile {
         (u64::from(output) * 1000).div_ceil(u64::from(efficiency)) as u32
     }
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerPowerProfile {
     pub board: PowerProfile,
@@ -162,11 +162,10 @@ macro_rules! equipment_power {
         }
     };
 }
-equipment_power!(
-    server_power_profile,
-    ServerPowerProfile,
-    "server_config.json"
-);
+/// Backward-compatible default R360 access; model data remains authoritative.
+pub fn server_power_profile() -> &'static ServerPowerProfile {
+    &crate::server_catalog().default_model().power
+}
 equipment_power!(
     router_power_profile,
     RouterPowerProfile,

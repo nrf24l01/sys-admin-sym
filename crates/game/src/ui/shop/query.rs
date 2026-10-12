@@ -167,6 +167,7 @@ pub(super) fn facet_keys(state: &ShopState) -> &'static [&'static str] {
             "rack",
             "ports",
             "psu-watts",
+            "manufacturer",
         ],
         Some(ShopSection::Cpu) => &[
             "socket",

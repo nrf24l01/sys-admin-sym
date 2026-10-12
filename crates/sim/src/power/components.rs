@@ -7,7 +7,14 @@ use crate::*;
 impl ServerHardware {
     /// Estimated maximum DC demand for PSU sizing, excluding conversion losses.
     pub fn peak_load_watts(&self) -> u32 {
-        let p = server_power_profile();
+        self.peak_load_with_profile(server_power_profile())
+    }
+
+    pub fn peak_load_watts_for_model(&self, model: &ServerModel) -> u32 {
+        self.peak_load_with_profile(&model.power)
+    }
+
+    fn peak_load_with_profile(&self, p: &ServerPowerProfile) -> u32 {
         let mut mw = p.board.peak_mw + p.fans.peak_mw;
         for id in self
             .cpus
@@ -34,10 +41,10 @@ impl NetworkSim {
     pub(super) fn server_consumption(
         &self,
         hardware: &ServerHardware,
+        p: &ServerPowerProfile,
         utilization: DeviceWorkload,
         optics: (u32, u32),
     ) -> DeviceConsumption {
-        let p = server_power_profile();
         let mut result = DeviceConsumption::default();
         result.component(
             PowerComponentKind::Board,

@@ -62,7 +62,7 @@ impl NetworkSim {
             || server
                 .hardware
                 .as_ref()
-                .is_some_and(|hardware| !hardware.ready())
+                .is_some_and(|hardware| !hardware.ready_for_model(server.model()))
         {
             return ServerResources::default();
         }

@@ -4,6 +4,8 @@ mod network;
 mod settings;
 mod shop;
 mod state;
+mod terminal_editor;
+pub use terminal_editor::*;
 
 pub use bank::*;
 pub use messages::*;
@@ -48,3 +50,6 @@ pub enum GameSet {
 
 mod hosting;
 pub use hosting::HostingUiState;
+
+#[cfg(test)]
+mod terminal_editor_tests;

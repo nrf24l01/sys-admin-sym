@@ -203,3 +203,50 @@ The R360 onboard NIC count, dual PSU support and hot-spare distinction follow
 and [hot-spare documentation](https://www.dell.com/support/manuals/en-us/poweredge-r360/r360_ism/hot-spare-feature?guid=guid-0bac5ab4-79f5-4a6b-a473-83e87d82b321).
 The game uses balanced load sharing with project-authored efficiency estimates,
 not Dell hot-spare mode or measured server power traces. No new image assets.
+
+## Additional server models and components
+
+`servers.json` profiles use manufacturer-authored reference documents. Each
+entry represents the SATA/SFF configuration described in the server hardware
+guide; optional media bays, management sockets and rear drive cages pictured
+in source artwork are not additional simulated inventory. CPU and DIMM limits
+use the supported catalog components rather than every vendor order code.
+Operating curves and prices remain project-authored game estimates.
+
+- Dell R740: [technical guide](https://i.dell.com/sites/csdocuments/shared-content_data-sheets_documents/en/aa/poweredge_r740_r740xd_technical_guide.pdf), pages 12–13 images and processor/memory/riser tables. `servers/dell_r740_{front,rear}.png` contains original embedded image objects from this guide.
+- Dell R750: [technical guide](https://i.dell.com/sites/csdocuments/product_docs/en/poweredge-r750-technical-guide.pdf), 16-SFF front and eight-slot rear references. `servers/dell_r750_{front,rear}.png` contains its original embedded image objects.
+- Dell R760: [specifications](https://i.dell.com/sites/csdocuments/Product_Docs/en/poweredge-r760-spec-sheet.pdf) and installation guide for CPU/memory/riser options. `servers/dell_r760_{front,rear}.jpg` preserves the original [Nam Viet product gallery collage](https://maychunamviet.vn/upload/img/products/Dell_R760_2.5inch_2.jpg); UI UVs select its front or rear face. Source listing: https://maychunamviet.vn/dell-emc-poweredge-r760. Dell and the source photographer retain their rights; no explicit reuse license was stated.
+- HPE DL380 Gen10: [QuickSpecs a00008180enw](https://www.hpe.com/ca/en/collaterals/collateral.a00008180enw.html). Original image objects for `servers/hpe_dl380_gen10_{front,rear}.png` were obtained from this [unaltered document mirror](https://texnostar.uz/upload/iblock/b87/g0owmm3utgz3xunqw1h2hc6io0frftkl.pdf), overview pages 1–4.
+- HPE DL380 Gen11: [QuickSpecs a50004307enw](https://www.hpe.com/asia_pac/en/collaterals/collateral.a50004307enw.html). Original image objects for `servers/hpe_dl380_gen11_{front,rear}.png` were obtained from the [HPE syndicated document copy](https://cdn.cs.1worldsync.com/syndication/feeds/hp-ent/inline-content/SY/B/E/BE75F69E37395A1C5D3655D68ECB6754FF5FD929_source.pdf), overview pages 1–4.
+- HPE DL360 Gen11: [QuickSpecs a50004306enw](https://www.hpe.com/us/en/collaterals/collateral.a50004306enw.html). Original image objects for `servers/hpe_dl360_gen11_{front,rear}.png` were obtained from the [Ingram Micro document copy](https://pimcontent1.ingrammicro.com/mx/assets/media/brochure/0b12764_hpe-proliant-dl360-gen11.pdf), overview pages 1–4. The represented chassis includes the closed-loop cooling option needed for higher-TDP CPUs.
+- Lenovo SR650 V2: [product guide LP1392](https://lenovopress.lenovo.com/lp1392-thinksystem-sr650-v2-server). `servers/lenovo_sr650_v2_front.png` and `servers/lenovo_sr650_v2_rear.png` are the original front/rear callout images linked by that guide.
+- Lenovo SR650 V3: [product guide LP1601](https://lenovopress.lenovo.com/lp1601-thinksystem-sr650-v3-server). `servers/lenovo_sr650_v3_front.png` is its original front callout image; the guide itself links the SR650 V2 eight-slot rear image used as `servers/lenovo_sr650_v3_rear.png` for this shared enclosure configuration.
+- Cisco C240 M6: [data sheet](https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-c-series-rack-servers/ucs-c240-m6-rack-server-ds.html) and [SFF specification sheet](https://www.cisco.com/c/dam/en/us/products/collateral/servers-unified-computing/ucs-c-series-rack-servers/c240m6-sff-specsheet.pdf). `servers/cisco_c240_m6_{front,rear}.png` contains original image objects from the 24-SFF and eight-slot I/O-centric chassis figures.
+- Supermicro SYS-221H-TNR: [product specifications and callout figures](https://www.supermicro.com/en/products/system/hyper/2u/sys-221h-tnr?mlg=0). `servers/supermicro_sys_221h_tnr_{front,rear}.jpg` preserves its original [front](https://www.supermicro.com/files_SYS/images/System/SYS-221H-TNR_callout_front.JPG) and [rear](https://www.supermicro.com/files_SYS/images/System/SYS-221H-TNR_callout_rear.JPG) images. The eight-x8 riser configuration assigns slots 1–4 to CPU 2 and slots 5–8 to CPU 1; the profile includes the documented optional 1600W C14 PSU.
+
+Clean server face atlases (`servers/*_faces_clean.png`) were edited with the
+built-in image generation tool using the linked manufacturer references above.
+They replace the annotated HPE, Lenovo, Cisco and Supermicro inputs and the
+angled R760 collage in the runtime catalog. The original reference files remain
+available in the source assets. Atlases contain isolated orthographic front/rear
+faces, without callout lines or labels, populated disks, optional rear disks or
+NICs. Dell R740/R750 retain their clean original photographs. Opaque empty-bay
+and installed-carrier overlays derive from device inventory and shop recipes.
+Source owners retain rights to reference designs and trademarks. The edit prompt
+set is recorded in [SERVER_ARTWORK_PROMPTS.md](SERVER_ARTWORK_PROMPTS.md).
+
+Processor base clocks, core/thread counts, TDP, socket, PCIe and memory limits
+follow Intel ARK and the manufacturer processor support tables above, including
+[Intel's second-generation brief](https://www.intel.com/content/www/us/en/products/docs/processors/xeon/2nd-gen-xeon-scalable-processors-brief.html),
+[Silver 4310 specifications](https://www.intel.com/content/www/us/en/products/sku/215277/intel-xeon-silver-4310-processor-18m-cache-2-10-ghz/specifications.html),
+[Platinum 8280L specifications](https://www.intel.com/content/www/us/en/products/sku/192472/intel-xeon-platinum-8280l-processor-38-5m-cache-2-70-ghz/specifications.html),
+and [Lenovo's processor reference](https://lenovopress.lenovo.com/lp1262-intel-xeon-scalable-processor-comparison).
+
+DDR4/DDR5 capacities, classes, ranks, voltage and operating rates follow the
+chassis memory tables above. In particular, the R740's 16GB 2666/2933 RDIMMs are
+2R; its 128GB LRDIMM is 2666 8R, while HPE's 128GB 2933 LRDIMM is 4R. R740
+2933 RDIMMs drop to 2666 with 2DPC. Later DDR5 CPU generations have separate
+2DPC limits; Supermicro's board additionally caps 2DPC at 4400. SR650 V3 uses
+standard RDIMM rates of 5600/4400 and 3DS RDIMM rates of 5200/4400; the generic
+parts do not claim Lenovo Performance+ capability. Component shop
+thumbnails reuse the existing generated CPU/RAM cells by component kind.

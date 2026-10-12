@@ -110,6 +110,7 @@ impl ShellBuiltins {
                 if args.first().is_some_and(|arg| arg == "-c") { let input = args.get(1).ok_or("shell: -c requires a command")?; let output = LinuxShell::execute(sim, device, input); if output.success { Ok(output.lines) } else { Err(output.lines.join("\n")) } }
                 else { LinuxServices::script(sim, device, args.first().ok_or("usage: sh SCRIPT or bash -c COMMAND")?, &args[1..]) }
             }
+            "nano" | "vim" | "vi" => Err(format!("{command}: interactive editor requires the in-game console; run {command} FILE there")),
             "source" | "." => LinuxServices::script(sim, device, args.first().ok_or("source: missing filename")?, &args[1..]),
             "getent" | "nslookup" | "dig" => {
                 let name = if command == "getent" { if args.first().is_none_or(|arg| arg != "hosts") { return Err("usage: getent hosts NAME".into()); } args.get(1) } else { args.first() }.ok_or("missing host name")?;
@@ -129,7 +130,7 @@ impl ShellBuiltins {
             "ps" => { let mut lines = vec!["  PID TTY      STAT COMMAND".into(), "    1 ?        Ss   /sbin/init".into(), "    2 pts/0    Ss   /bin/bash".into()]; for (index, (name, service)) in sim.guest_mut(device).services.iter().enumerate() { if service.active { lines.push(format!("{:>5} ?        Ss   {name}", index + 100)); } } Ok(lines) }
             "uptime" => Ok(vec![format!("up {} seconds, 1 user, load average: 0.00, 0.00, 0.00", sim.simulation_time_ms() / 1000)]),
             "which" | "command" => { let name = args.last().ok_or("missing command name")?; if CommandRegistry::standard().names().join(" ").split_whitespace().any(|command| command == name) { Ok(vec![format!("/usr/bin/{name}")]) } else { Err(format!("{name}: command not found")) } }
-            "help" => Ok(vec!["Linux guest shell: quotes, variables, pipes, <, >, >>, ;, && and ||".into(), format!("Commands: {}", CommandRegistry::standard().names().join(" ")), "Network: ip [-4|-br|-o|-s] addr/link/route/neigh; ip route get; ping [-c COUNT] [-I IFACE] ADDRESS".into(), "Persistent configuration: /etc/network/interfaces; ifup -a or systemctl restart networking".into(), "One IPv4 address can be added per command; multiple addresses per NIC are supported.".into()]),
+            "help" => Ok(vec!["Linux guest shell: quotes, variables, pipes, <, >, >>, ;, && and ||".into(), format!("Commands: {}", CommandRegistry::standard().names().join(" ")), "Network: ip [-4|-br|-o|-s] addr/link/route/neigh; ip route get; ping [-c COUNT] [-I IFACE] ADDRESS".into(), "Persistent configuration: /etc/network/interfaces; ifup -a or systemctl restart networking".into(), "In-game editors: nano FILE (Ctrl+O save, Ctrl+X exit); vim FILE (i insert, Esc normal, :wq save and quit)".into(), "One IPv4 address can be added per command; multiple addresses per NIC are supported.".into()]),
             "ssh" => { let result = sim.execute_console(device, &words.join(" ")); if result.success { Ok(result.lines) } else { Err(result.lines.join("\n")) } }
             _ => Err(format!("bash: {command}: command not found")),
         }

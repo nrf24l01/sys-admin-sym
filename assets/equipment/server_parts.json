@@ -204,8 +204,8 @@
         "ru": "DDR5 ECC UDIMM 16 ГБ"
       },
       "desc": {
-        "en": "16 GB · DDR5-4800 ECC UDIMM · 1 rank · 1.1 V",
-        "ru": "16 ГБ · DDR5-4800 ECC UDIMM · 1 ранг · 1,1 В"
+        "en": "16 GB · DDR5 ECC UDIMM · 4800 MT/s · 1 ranks",
+        "ru": "16 ГБ · DDR5 ECC UDIMM · 4800 МТ/с · 1 рангов"
       },
       "power": {
         "idle_mw": 1600,
@@ -227,8 +227,8 @@
         "ru": "DDR5 ECC UDIMM 32 ГБ"
       },
       "desc": {
-        "en": "32 GB · DDR5-4800 ECC UDIMM · 2 ranks · 1.1 V",
-        "ru": "32 ГБ · DDR5-4800 ECC UDIMM · 2 ранга · 1,1 В"
+        "en": "32 GB · DDR5 ECC UDIMM · 4800 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR5 ECC UDIMM · 4800 МТ/с · 2 рангов"
       },
       "power": {
         "idle_mw": 2200,
@@ -307,6 +307,1270 @@
         "idle_mw": 2400,
         "peak_mw": 6000,
         "link_share_permille": 250
+      }
+    },
+    {
+      "id": "xeon_silver_4110",
+      "name": "Intel Xeon Silver 4110",
+      "display_name": {
+        "en": "Intel Xeon Silver 4110",
+        "ru": "Intel Xeon Silver 4110"
+      },
+      "desc": {
+        "en": "LGA3647 · 8 cores / 16 threads · 2100 MHz · 85 W TDP",
+        "ru": "LGA3647 · 8 ядер / 16 потоков · 2100 МГц · TDP 85 Вт"
+      },
+      "price": 110,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 8,
+      "threads": 16,
+      "frequency_mhz": 2100,
+      "pcie_lanes": 48,
+      "tdp_w": 85,
+      "max_sockets": 2,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 768,
+        "max_speed_mt_s": 2400
+      },
+      "power": {
+        "idle_mw": 8500,
+        "peak_mw": 85000
+      }
+    },
+    {
+      "id": "xeon_gold_6130",
+      "name": "Intel Xeon Gold 6130",
+      "display_name": {
+        "en": "Intel Xeon Gold 6130",
+        "ru": "Intel Xeon Gold 6130"
+      },
+      "desc": {
+        "en": "LGA3647 · 16 cores / 32 threads · 2100 MHz · 125 W TDP",
+        "ru": "LGA3647 · 16 ядер / 32 потоков · 2100 МГц · TDP 125 Вт"
+      },
+      "price": 240,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 16,
+      "threads": 32,
+      "frequency_mhz": 2100,
+      "pcie_lanes": 48,
+      "tdp_w": 125,
+      "max_sockets": 4,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 768,
+        "max_speed_mt_s": 2666
+      },
+      "power": {
+        "idle_mw": 12500,
+        "peak_mw": 125000
+      }
+    },
+    {
+      "id": "xeon_gold_6152",
+      "name": "Intel Xeon Gold 6152",
+      "display_name": {
+        "en": "Intel Xeon Gold 6152",
+        "ru": "Intel Xeon Gold 6152"
+      },
+      "desc": {
+        "en": "LGA3647 · 22 cores / 44 threads · 2100 MHz · 140 W TDP",
+        "ru": "LGA3647 · 22 ядер / 44 потоков · 2100 МГц · TDP 140 Вт"
+      },
+      "price": 360,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 22,
+      "threads": 44,
+      "frequency_mhz": 2100,
+      "pcie_lanes": 48,
+      "tdp_w": 140,
+      "max_sockets": 4,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 768,
+        "max_speed_mt_s": 2666
+      },
+      "power": {
+        "idle_mw": 14000,
+        "peak_mw": 140000
+      }
+    },
+    {
+      "id": "xeon_silver_4210r",
+      "name": "Intel Xeon Silver 4210R",
+      "display_name": {
+        "en": "Intel Xeon Silver 4210R",
+        "ru": "Intel Xeon Silver 4210R"
+      },
+      "desc": {
+        "en": "LGA3647 · 10 cores / 20 threads · 2400 MHz · 100 W TDP",
+        "ru": "LGA3647 · 10 ядер / 20 потоков · 2400 МГц · TDP 100 Вт"
+      },
+      "price": 200,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 10,
+      "threads": 20,
+      "frequency_mhz": 2400,
+      "pcie_lanes": 48,
+      "tdp_w": 100,
+      "max_sockets": 2,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 1024,
+        "max_speed_mt_s": 2400
+      },
+      "power": {
+        "idle_mw": 10000,
+        "peak_mw": 100000
+      }
+    },
+    {
+      "id": "xeon_gold_6230r",
+      "name": "Intel Xeon Gold 6230R",
+      "display_name": {
+        "en": "Intel Xeon Gold 6230R",
+        "ru": "Intel Xeon Gold 6230R"
+      },
+      "desc": {
+        "en": "LGA3647 · 26 cores / 52 threads · 2100 MHz · 150 W TDP",
+        "ru": "LGA3647 · 26 ядер / 52 потоков · 2100 МГц · TDP 150 Вт"
+      },
+      "price": 400,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 26,
+      "threads": 52,
+      "frequency_mhz": 2100,
+      "pcie_lanes": 48,
+      "tdp_w": 150,
+      "max_sockets": 2,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 1024,
+        "max_speed_mt_s": 2933
+      },
+      "power": {
+        "idle_mw": 15000,
+        "peak_mw": 150000
+      }
+    },
+    {
+      "id": "xeon_gold_6248r",
+      "name": "Intel Xeon Gold 6248R",
+      "display_name": {
+        "en": "Intel Xeon Gold 6248R",
+        "ru": "Intel Xeon Gold 6248R"
+      },
+      "desc": {
+        "en": "LGA3647 · 24 cores / 48 threads · 3000 MHz · 205 W TDP",
+        "ru": "LGA3647 · 24 ядер / 48 потоков · 3000 МГц · TDP 205 Вт"
+      },
+      "price": 550,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 24,
+      "threads": 48,
+      "frequency_mhz": 3000,
+      "pcie_lanes": 48,
+      "tdp_w": 205,
+      "max_sockets": 2,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 1024,
+        "max_speed_mt_s": 2933
+      },
+      "power": {
+        "idle_mw": 20500,
+        "peak_mw": 205000
+      }
+    },
+    {
+      "id": "xeon_platinum_8280l",
+      "name": "Intel Xeon Platinum 8280L",
+      "display_name": {
+        "en": "Intel Xeon Platinum 8280L",
+        "ru": "Intel Xeon Platinum 8280L"
+      },
+      "desc": {
+        "en": "LGA3647 · 28 cores / 56 threads · 2700 MHz · 205 W TDP",
+        "ru": "LGA3647 · 28 ядер / 56 потоков · 2700 МГц · TDP 205 Вт"
+      },
+      "price": 950,
+      "kind": "cpu",
+      "socket": "LGA3647",
+      "cores": 28,
+      "threads": 56,
+      "frequency_mhz": 2700,
+      "pcie_lanes": 48,
+      "tdp_w": 205,
+      "max_sockets": 8,
+      "pcie_generation": 3,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM",
+          "DDR4 ECC LRDIMM"
+        ],
+        "channels": 6,
+        "dimms_per_channel": 2,
+        "max_dimms": 12,
+        "max_capacity_gb": 4608,
+        "max_speed_mt_s": 2933
+      },
+      "power": {
+        "idle_mw": 20500,
+        "peak_mw": 205000
+      }
+    },
+    {
+      "id": "xeon_silver_4310",
+      "name": "Intel Xeon Silver 4310",
+      "display_name": {
+        "en": "Intel Xeon Silver 4310",
+        "ru": "Intel Xeon Silver 4310"
+      },
+      "desc": {
+        "en": "LGA4189 · 12 cores / 24 threads · 2100 MHz · 120 W TDP",
+        "ru": "LGA4189 · 12 ядер / 24 потоков · 2100 МГц · TDP 120 Вт"
+      },
+      "price": 600,
+      "kind": "cpu",
+      "socket": "LGA4189",
+      "cores": 12,
+      "threads": 24,
+      "frequency_mhz": 2100,
+      "pcie_lanes": 64,
+      "tdp_w": 120,
+      "max_sockets": 2,
+      "pcie_generation": 4,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 6144,
+        "max_speed_mt_s": 2667
+      },
+      "power": {
+        "idle_mw": 12000,
+        "peak_mw": 120000
+      }
+    },
+    {
+      "id": "xeon_gold_6330",
+      "name": "Intel Xeon Gold 6330",
+      "display_name": {
+        "en": "Intel Xeon Gold 6330",
+        "ru": "Intel Xeon Gold 6330"
+      },
+      "desc": {
+        "en": "LGA4189 · 28 cores / 56 threads · 2000 MHz · 205 W TDP",
+        "ru": "LGA4189 · 28 ядер / 56 потоков · 2000 МГц · TDP 205 Вт"
+      },
+      "price": 850,
+      "kind": "cpu",
+      "socket": "LGA4189",
+      "cores": 28,
+      "threads": 56,
+      "frequency_mhz": 2000,
+      "pcie_lanes": 64,
+      "tdp_w": 205,
+      "max_sockets": 2,
+      "pcie_generation": 4,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 6144,
+        "max_speed_mt_s": 2933
+      },
+      "power": {
+        "idle_mw": 20500,
+        "peak_mw": 205000
+      }
+    },
+    {
+      "id": "xeon_platinum_8352y",
+      "name": "Intel Xeon Platinum 8352Y",
+      "display_name": {
+        "en": "Intel Xeon Platinum 8352Y",
+        "ru": "Intel Xeon Platinum 8352Y"
+      },
+      "desc": {
+        "en": "LGA4189 · 32 cores / 64 threads · 2200 MHz · 205 W TDP",
+        "ru": "LGA4189 · 32 ядер / 64 потоков · 2200 МГц · TDP 205 Вт"
+      },
+      "price": 1400,
+      "kind": "cpu",
+      "socket": "LGA4189",
+      "cores": 32,
+      "threads": 64,
+      "frequency_mhz": 2200,
+      "pcie_lanes": 64,
+      "tdp_w": 205,
+      "max_sockets": 2,
+      "pcie_generation": 4,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 6144,
+        "max_speed_mt_s": 3200
+      },
+      "power": {
+        "idle_mw": 20500,
+        "peak_mw": 205000
+      }
+    },
+    {
+      "id": "xeon_platinum_8380",
+      "name": "Intel Xeon Platinum 8380",
+      "display_name": {
+        "en": "Intel Xeon Platinum 8380",
+        "ru": "Intel Xeon Platinum 8380"
+      },
+      "desc": {
+        "en": "LGA4189 · 40 cores / 80 threads · 2300 MHz · 270 W TDP",
+        "ru": "LGA4189 · 40 ядер / 80 потоков · 2300 МГц · TDP 270 Вт"
+      },
+      "price": 2200,
+      "kind": "cpu",
+      "socket": "LGA4189",
+      "cores": 40,
+      "threads": 80,
+      "frequency_mhz": 2300,
+      "pcie_lanes": 64,
+      "tdp_w": 270,
+      "max_sockets": 2,
+      "pcie_generation": 4,
+      "memory": {
+        "memory_types": [
+          "DDR4 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 6144,
+        "max_speed_mt_s": 3200
+      },
+      "power": {
+        "idle_mw": 27000,
+        "peak_mw": 270000
+      }
+    },
+    {
+      "id": "xeon_silver_4410y",
+      "name": "Intel Xeon Silver 4410Y",
+      "display_name": {
+        "en": "Intel Xeon Silver 4410Y",
+        "ru": "Intel Xeon Silver 4410Y"
+      },
+      "desc": {
+        "en": "LGA4677 · 12 cores / 24 threads · 2000 MHz · 150 W TDP",
+        "ru": "LGA4677 · 12 ядер / 24 потоков · 2000 МГц · TDP 150 Вт"
+      },
+      "price": 900,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 12,
+      "threads": 24,
+      "frequency_mhz": 2000,
+      "pcie_lanes": 80,
+      "tdp_w": 150,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 4000,
+        "operating_speeds_mt_s": [
+          4000,
+          4400
+        ]
+      },
+      "power": {
+        "idle_mw": 15000,
+        "peak_mw": 150000
+      }
+    },
+    {
+      "id": "xeon_gold_5418y",
+      "name": "Intel Xeon Gold 5418Y",
+      "display_name": {
+        "en": "Intel Xeon Gold 5418Y",
+        "ru": "Intel Xeon Gold 5418Y"
+      },
+      "desc": {
+        "en": "LGA4677 · 24 cores / 48 threads · 2000 MHz · 185 W TDP",
+        "ru": "LGA4677 · 24 ядер / 48 потоков · 2000 МГц · TDP 185 Вт"
+      },
+      "price": 1250,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 24,
+      "threads": 48,
+      "frequency_mhz": 2000,
+      "pcie_lanes": 80,
+      "tdp_w": 185,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 4400,
+        "operating_speeds_mt_s": [
+          4400,
+          4400
+        ]
+      },
+      "power": {
+        "idle_mw": 18500,
+        "peak_mw": 185000
+      }
+    },
+    {
+      "id": "xeon_platinum_8462y_plus",
+      "name": "Intel Xeon Platinum 8462Y+",
+      "display_name": {
+        "en": "Intel Xeon Platinum 8462Y+",
+        "ru": "Intel Xeon Platinum 8462Y+"
+      },
+      "desc": {
+        "en": "LGA4677 · 32 cores / 64 threads · 2800 MHz · 300 W TDP",
+        "ru": "LGA4677 · 32 ядер / 64 потоков · 2800 МГц · TDP 300 Вт"
+      },
+      "price": 2400,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 32,
+      "threads": 64,
+      "frequency_mhz": 2800,
+      "pcie_lanes": 80,
+      "tdp_w": 300,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 4800,
+        "operating_speeds_mt_s": [
+          4800,
+          4400
+        ]
+      },
+      "power": {
+        "idle_mw": 30000,
+        "peak_mw": 300000
+      }
+    },
+    {
+      "id": "xeon_silver_4510",
+      "name": "Intel Xeon Silver 4510",
+      "display_name": {
+        "en": "Intel Xeon Silver 4510",
+        "ru": "Intel Xeon Silver 4510"
+      },
+      "desc": {
+        "en": "LGA4677 · 12 cores / 24 threads · 2400 MHz · 150 W TDP",
+        "ru": "LGA4677 · 12 ядер / 24 потоков · 2400 МГц · TDP 150 Вт"
+      },
+      "price": 1100,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 12,
+      "threads": 24,
+      "frequency_mhz": 2400,
+      "pcie_lanes": 80,
+      "tdp_w": 150,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 4400,
+        "operating_speeds_mt_s": [
+          4400,
+          4800
+        ]
+      },
+      "power": {
+        "idle_mw": 15000,
+        "peak_mw": 150000
+      }
+    },
+    {
+      "id": "xeon_gold_6548y_plus",
+      "name": "Intel Xeon Gold 6548Y+",
+      "display_name": {
+        "en": "Intel Xeon Gold 6548Y+",
+        "ru": "Intel Xeon Gold 6548Y+"
+      },
+      "desc": {
+        "en": "LGA4677 · 32 cores / 64 threads · 2500 MHz · 250 W TDP",
+        "ru": "LGA4677 · 32 ядер / 64 потоков · 2500 МГц · TDP 250 Вт"
+      },
+      "price": 1800,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 32,
+      "threads": 64,
+      "frequency_mhz": 2500,
+      "pcie_lanes": 80,
+      "tdp_w": 250,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 5200,
+        "operating_speeds_mt_s": [
+          5200,
+          4800
+        ]
+      },
+      "power": {
+        "idle_mw": 25000,
+        "peak_mw": 250000
+      }
+    },
+    {
+      "id": "xeon_platinum_8592_plus",
+      "name": "Intel Xeon Platinum 8592+",
+      "display_name": {
+        "en": "Intel Xeon Platinum 8592+",
+        "ru": "Intel Xeon Platinum 8592+"
+      },
+      "desc": {
+        "en": "LGA4677 · 64 cores / 128 threads · 1900 MHz · 350 W TDP",
+        "ru": "LGA4677 · 64 ядер / 128 потоков · 1900 МГц · TDP 350 Вт"
+      },
+      "price": 4800,
+      "kind": "cpu",
+      "socket": "LGA4677",
+      "cores": 64,
+      "threads": 128,
+      "frequency_mhz": 1900,
+      "pcie_lanes": 80,
+      "tdp_w": 350,
+      "max_sockets": 2,
+      "pcie_generation": 5,
+      "memory": {
+        "memory_types": [
+          "DDR5 ECC RDIMM"
+        ],
+        "channels": 8,
+        "dimms_per_channel": 2,
+        "max_dimms": 16,
+        "max_capacity_gb": 4096,
+        "max_speed_mt_s": 5600,
+        "operating_speeds_mt_s": [
+          5600,
+          4800
+        ]
+      },
+      "power": {
+        "idle_mw": 35000,
+        "peak_mw": 350000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_8gb_2666",
+      "name": "8 GB DDR4-2666 ECC RDIMM",
+      "display_name": {
+        "en": "8 GB DDR4-2666 ECC RDIMM",
+        "ru": "DDR4-2666 ECC RDIMM 8 ГБ"
+      },
+      "desc": {
+        "en": "8 GB · DDR4 ECC RDIMM · 2666 MT/s · 1 ranks",
+        "ru": "8 ГБ · DDR4 ECC RDIMM · 2666 МТ/с · 1 рангов"
+      },
+      "price": 28,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 8,
+      "speed_mt_s": 2666,
+      "ranks": 1,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 1200,
+        "peak_mw": 3000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_16gb_2666",
+      "name": "16 GB DDR4-2666 ECC RDIMM",
+      "display_name": {
+        "en": "16 GB DDR4-2666 ECC RDIMM",
+        "ru": "DDR4-2666 ECC RDIMM 16 ГБ"
+      },
+      "desc": {
+        "en": "16 GB · DDR4 ECC RDIMM · 2666 MT/s · 2 ranks",
+        "ru": "16 ГБ · DDR4 ECC RDIMM · 2666 МТ/с · 2 рангов"
+      },
+      "price": 56,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 16,
+      "speed_mt_s": 2666,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 1333,
+        "peak_mw": 4000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_32gb_2666",
+      "name": "32 GB DDR4-2666 ECC RDIMM",
+      "display_name": {
+        "en": "32 GB DDR4-2666 ECC RDIMM",
+        "ru": "DDR4-2666 ECC RDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR4 ECC RDIMM · 2666 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR4 ECC RDIMM · 2666 МТ/с · 2 рангов"
+      },
+      "price": 112,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 32,
+      "speed_mt_s": 2666,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 6000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_64gb_2666",
+      "name": "64 GB DDR4-2666 ECC RDIMM",
+      "display_name": {
+        "en": "64 GB DDR4-2666 ECC RDIMM",
+        "ru": "DDR4-2666 ECC RDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR4 ECC RDIMM · 2666 MT/s · 2 ranks",
+        "ru": "64 ГБ · DDR4 ECC RDIMM · 2666 МТ/с · 2 рангов"
+      },
+      "price": 224,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 2666,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_8gb_2933",
+      "name": "8 GB DDR4-2933 ECC RDIMM",
+      "display_name": {
+        "en": "8 GB DDR4-2933 ECC RDIMM",
+        "ru": "DDR4-2933 ECC RDIMM 8 ГБ"
+      },
+      "desc": {
+        "en": "8 GB · DDR4 ECC RDIMM · 2933 MT/s · 1 ranks",
+        "ru": "8 ГБ · DDR4 ECC RDIMM · 2933 МТ/с · 1 рангов"
+      },
+      "price": 28,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 8,
+      "speed_mt_s": 2933,
+      "ranks": 1,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 1200,
+        "peak_mw": 3000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_16gb_2933",
+      "name": "16 GB DDR4-2933 ECC RDIMM",
+      "display_name": {
+        "en": "16 GB DDR4-2933 ECC RDIMM",
+        "ru": "DDR4-2933 ECC RDIMM 16 ГБ"
+      },
+      "desc": {
+        "en": "16 GB · DDR4 ECC RDIMM · 2933 MT/s · 2 ranks",
+        "ru": "16 ГБ · DDR4 ECC RDIMM · 2933 МТ/с · 2 рангов"
+      },
+      "price": 56,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 16,
+      "speed_mt_s": 2933,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 1333,
+        "peak_mw": 4000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_32gb_2933",
+      "name": "32 GB DDR4-2933 ECC RDIMM",
+      "display_name": {
+        "en": "32 GB DDR4-2933 ECC RDIMM",
+        "ru": "DDR4-2933 ECC RDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR4 ECC RDIMM · 2933 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR4 ECC RDIMM · 2933 МТ/с · 2 рангов"
+      },
+      "price": 112,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 32,
+      "speed_mt_s": 2933,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 6000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_64gb_2933",
+      "name": "64 GB DDR4-2933 ECC RDIMM",
+      "display_name": {
+        "en": "64 GB DDR4-2933 ECC RDIMM",
+        "ru": "DDR4-2933 ECC RDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR4 ECC RDIMM · 2933 MT/s · 2 ranks",
+        "ru": "64 ГБ · DDR4 ECC RDIMM · 2933 МТ/с · 2 рангов"
+      },
+      "price": 224,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 2933,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_16gb_3200",
+      "name": "16 GB DDR4-3200 ECC RDIMM",
+      "display_name": {
+        "en": "16 GB DDR4-3200 ECC RDIMM",
+        "ru": "DDR4-3200 ECC RDIMM 16 ГБ"
+      },
+      "desc": {
+        "en": "16 GB · DDR4 ECC RDIMM · 3200 MT/s · 1 ranks",
+        "ru": "16 ГБ · DDR4 ECC RDIMM · 3200 МТ/с · 1 рангов"
+      },
+      "price": 56,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 16,
+      "speed_mt_s": 3200,
+      "ranks": 1,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 1333,
+        "peak_mw": 4000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_32gb_3200",
+      "name": "32 GB DDR4-3200 ECC RDIMM",
+      "display_name": {
+        "en": "32 GB DDR4-3200 ECC RDIMM",
+        "ru": "DDR4-3200 ECC RDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR4 ECC RDIMM · 3200 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR4 ECC RDIMM · 3200 МТ/с · 2 рангов"
+      },
+      "price": 112,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 32,
+      "speed_mt_s": 3200,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 6000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_64gb_3200",
+      "name": "64 GB DDR4-3200 ECC RDIMM",
+      "display_name": {
+        "en": "64 GB DDR4-3200 ECC RDIMM",
+        "ru": "DDR4-3200 ECC RDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR4 ECC RDIMM · 3200 MT/s · 2 ranks",
+        "ru": "64 ГБ · DDR4 ECC RDIMM · 3200 МТ/с · 2 рангов"
+      },
+      "price": 224,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 3200,
+      "ranks": 2,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_128gb_3200",
+      "name": "128 GB DDR4-3200 ECC RDIMM",
+      "display_name": {
+        "en": "128 GB DDR4-3200 ECC RDIMM",
+        "ru": "DDR4-3200 ECC RDIMM 128 ГБ"
+      },
+      "desc": {
+        "en": "128 GB · DDR4 ECC RDIMM · 3200 MT/s · 4 ranks",
+        "ru": "128 ГБ · DDR4 ECC RDIMM · 3200 МТ/с · 4 рангов"
+      },
+      "price": 448,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 128,
+      "speed_mt_s": 3200,
+      "ranks": 4,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 4333,
+        "peak_mw": 13000
+      }
+    },
+    {
+      "id": "ddr4_rdimm_256gb_3200",
+      "name": "256 GB DDR4-3200 ECC RDIMM",
+      "display_name": {
+        "en": "256 GB DDR4-3200 ECC RDIMM",
+        "ru": "DDR4-3200 ECC RDIMM 256 ГБ"
+      },
+      "desc": {
+        "en": "256 GB · DDR4 ECC RDIMM · 3200 MT/s · 8 ranks",
+        "ru": "256 ГБ · DDR4 ECC RDIMM · 3200 МТ/с · 8 рангов"
+      },
+      "price": 896,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC RDIMM",
+      "capacity_gb": 256,
+      "speed_mt_s": 3200,
+      "ranks": 8,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 6000,
+        "peak_mw": 18000
+      }
+    },
+    {
+      "id": "ddr4_lrdimm_64gb_2666",
+      "name": "64 GB DDR4-2666 ECC LRDIMM",
+      "display_name": {
+        "en": "64 GB DDR4-2666 ECC LRDIMM",
+        "ru": "DDR4-2666 ECC LRDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR4 ECC LRDIMM · 2666 MT/s · 4 ranks",
+        "ru": "64 ГБ · DDR4 ECC LRDIMM · 2666 МТ/с · 4 рангов"
+      },
+      "price": 224,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC LRDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 2666,
+      "ranks": 4,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr4_lrdimm_128gb_2666",
+      "name": "128 GB DDR4-2666 ECC LRDIMM",
+      "display_name": {
+        "en": "128 GB DDR4-2666 ECC LRDIMM",
+        "ru": "DDR4-2666 ECC LRDIMM 128 ГБ"
+      },
+      "desc": {
+        "en": "128 GB · DDR4 ECC LRDIMM · 2666 MT/s · 8 ranks",
+        "ru": "128 ГБ · DDR4 ECC LRDIMM · 2666 МТ/с · 8 рангов"
+      },
+      "price": 448,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC LRDIMM",
+      "capacity_gb": 128,
+      "speed_mt_s": 2666,
+      "ranks": 8,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 4333,
+        "peak_mw": 13000
+      }
+    },
+    {
+      "id": "ddr4_lrdimm_64gb_2933",
+      "name": "64 GB DDR4-2933 ECC LRDIMM",
+      "display_name": {
+        "en": "64 GB DDR4-2933 ECC LRDIMM",
+        "ru": "DDR4-2933 ECC LRDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR4 ECC LRDIMM · 2933 MT/s · 4 ranks",
+        "ru": "64 ГБ · DDR4 ECC LRDIMM · 2933 МТ/с · 4 рангов"
+      },
+      "price": 224,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC LRDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 2933,
+      "ranks": 4,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr4_lrdimm_128gb_2933",
+      "name": "128 GB DDR4-2933 ECC LRDIMM",
+      "display_name": {
+        "en": "128 GB DDR4-2933 ECC LRDIMM",
+        "ru": "DDR4-2933 ECC LRDIMM 128 ГБ"
+      },
+      "desc": {
+        "en": "128 GB · DDR4 ECC LRDIMM · 2933 MT/s · 4 ranks",
+        "ru": "128 ГБ · DDR4 ECC LRDIMM · 2933 МТ/с · 4 рангов"
+      },
+      "price": 448,
+      "kind": "ram",
+      "memory_type": "DDR4 ECC LRDIMM",
+      "capacity_gb": 128,
+      "speed_mt_s": 2933,
+      "ranks": 4,
+      "voltage_mv": 1200,
+      "power": {
+        "idle_mw": 4333,
+        "peak_mw": 13000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_16gb_4800",
+      "name": "16 GB DDR5-4800 ECC RDIMM",
+      "display_name": {
+        "en": "16 GB DDR5-4800 ECC RDIMM",
+        "ru": "DDR5-4800 ECC RDIMM 16 ГБ"
+      },
+      "desc": {
+        "en": "16 GB · DDR5 ECC RDIMM · 4800 MT/s · 1 ranks",
+        "ru": "16 ГБ · DDR5 ECC RDIMM · 4800 МТ/с · 1 рангов"
+      },
+      "price": 96,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 16,
+      "speed_mt_s": 4800,
+      "ranks": 1,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 1333,
+        "peak_mw": 4000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_32gb_4800",
+      "name": "32 GB DDR5-4800 ECC RDIMM",
+      "display_name": {
+        "en": "32 GB DDR5-4800 ECC RDIMM",
+        "ru": "DDR5-4800 ECC RDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR5 ECC RDIMM · 4800 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR5 ECC RDIMM · 4800 МТ/с · 2 рангов"
+      },
+      "price": 192,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 32,
+      "speed_mt_s": 4800,
+      "ranks": 2,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 6000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_64gb_4800",
+      "name": "64 GB DDR5-4800 ECC RDIMM",
+      "display_name": {
+        "en": "64 GB DDR5-4800 ECC RDIMM",
+        "ru": "DDR5-4800 ECC RDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR5 ECC RDIMM · 4800 MT/s · 2 ranks",
+        "ru": "64 ГБ · DDR5 ECC RDIMM · 4800 МТ/с · 2 рангов"
+      },
+      "price": 384,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 4800,
+      "ranks": 2,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_128gb_4800",
+      "name": "128 GB DDR5-4800 ECC RDIMM",
+      "display_name": {
+        "en": "128 GB DDR5-4800 ECC RDIMM",
+        "ru": "DDR5-4800 ECC RDIMM 128 ГБ"
+      },
+      "desc": {
+        "en": "128 GB · DDR5 ECC RDIMM · 4800 MT/s · 4 ranks",
+        "ru": "128 ГБ · DDR5 ECC RDIMM · 4800 МТ/с · 4 рангов"
+      },
+      "price": 768,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 128,
+      "speed_mt_s": 4800,
+      "ranks": 4,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 4333,
+        "peak_mw": 13000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_256gb_4800",
+      "name": "256 GB DDR5-4800 ECC RDIMM",
+      "display_name": {
+        "en": "256 GB DDR5-4800 ECC RDIMM",
+        "ru": "DDR5-4800 ECC RDIMM 256 ГБ"
+      },
+      "desc": {
+        "en": "256 GB · DDR5 ECC RDIMM · 4800 MT/s · 8 ranks",
+        "ru": "256 ГБ · DDR5 ECC RDIMM · 4800 МТ/с · 8 рангов"
+      },
+      "price": 1536,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 256,
+      "speed_mt_s": 4800,
+      "ranks": 8,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 6000,
+        "peak_mw": 18000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_16gb_5600",
+      "name": "16 GB DDR5-5600 ECC RDIMM",
+      "display_name": {
+        "en": "16 GB DDR5-5600 ECC RDIMM",
+        "ru": "DDR5-5600 ECC RDIMM 16 ГБ"
+      },
+      "desc": {
+        "en": "16 GB · DDR5 ECC RDIMM · 5600 MT/s · 1 ranks",
+        "ru": "16 ГБ · DDR5 ECC RDIMM · 5600 МТ/с · 1 рангов"
+      },
+      "price": 96,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 16,
+      "speed_mt_s": 5600,
+      "ranks": 1,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 1333,
+        "peak_mw": 4000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_32gb_5600",
+      "name": "32 GB DDR5-5600 ECC RDIMM",
+      "display_name": {
+        "en": "32 GB DDR5-5600 ECC RDIMM",
+        "ru": "DDR5-5600 ECC RDIMM 32 ГБ"
+      },
+      "desc": {
+        "en": "32 GB · DDR5 ECC RDIMM · 5600 MT/s · 2 ranks",
+        "ru": "32 ГБ · DDR5 ECC RDIMM · 5600 МТ/с · 2 рангов"
+      },
+      "price": 192,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 32,
+      "speed_mt_s": 5600,
+      "ranks": 2,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 2000,
+        "peak_mw": 6000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_64gb_5600",
+      "name": "64 GB DDR5-5600 ECC RDIMM",
+      "display_name": {
+        "en": "64 GB DDR5-5600 ECC RDIMM",
+        "ru": "DDR5-5600 ECC RDIMM 64 ГБ"
+      },
+      "desc": {
+        "en": "64 GB · DDR5 ECC RDIMM · 5600 MT/s · 2 ranks",
+        "ru": "64 ГБ · DDR5 ECC RDIMM · 5600 МТ/с · 2 рангов"
+      },
+      "price": 384,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 64,
+      "speed_mt_s": 5600,
+      "ranks": 2,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 3000,
+        "peak_mw": 9000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_128gb_5600",
+      "name": "128 GB DDR5-5600 ECC RDIMM",
+      "display_name": {
+        "en": "128 GB DDR5-5600 ECC RDIMM",
+        "ru": "DDR5-5600 ECC RDIMM 128 ГБ"
+      },
+      "desc": {
+        "en": "128 GB · DDR5 ECC RDIMM · 5600 MT/s · 4 ranks",
+        "ru": "128 ГБ · DDR5 ECC RDIMM · 5600 МТ/с · 4 рангов"
+      },
+      "price": 768,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 128,
+      "speed_mt_s": 5600,
+      "ranks": 4,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 4333,
+        "peak_mw": 13000
+      }
+    },
+    {
+      "id": "ddr5_rdimm_256gb_5600",
+      "name": "256 GB DDR5-5600 ECC RDIMM",
+      "display_name": {
+        "en": "256 GB DDR5-5600 ECC RDIMM",
+        "ru": "DDR5-5600 ECC RDIMM 256 ГБ"
+      },
+      "desc": {
+        "en": "256 GB · DDR5 ECC RDIMM · 5600 MT/s · 8 ranks",
+        "ru": "256 ГБ · DDR5 ECC RDIMM · 5600 МТ/с · 8 рангов"
+      },
+      "price": 1536,
+      "kind": "ram",
+      "memory_type": "DDR5 ECC RDIMM",
+      "capacity_gb": 256,
+      "speed_mt_s": 5600,
+      "ranks": 8,
+      "voltage_mv": 1100,
+      "power": {
+        "idle_mw": 6000,
+        "peak_mw": 18000
       }
     }
   ]

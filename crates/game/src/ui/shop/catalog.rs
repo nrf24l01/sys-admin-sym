@@ -110,6 +110,16 @@ impl Offer {
         if matches!(self.item, PurchaseItem::PublicIpv4Pool24) {
             return tr("ui.public-ipv4-24-address-pool");
         }
+        if let PurchaseItem::ServerModel {
+            configuration: ServerConfiguration::FullPack,
+            ..
+        } = &self.item
+        {
+            return crate::localization::tr_args(
+                "shop.model-full-pack",
+                &[item_name(&self.display_id, &self.display_id)],
+            );
+        }
         if matches!(self.item, PurchaseItem::ServerFullPack) {
             return tr("shop.server-full-pack");
         }
@@ -121,6 +131,31 @@ impl Offer {
             PurchaseItem::PublicIpv4Pool | PurchaseItem::PublicIpv4Pool24
         ) {
             return tr("ui.open-ip-ranges-to-select-its-uplink");
+        }
+        if let PurchaseItem::ServerModel {
+            model_id,
+            configuration: ServerConfiguration::FullPack,
+        } = &self.item
+        {
+            let model = server_catalog().model(model_id).unwrap();
+            let capacity: u64 = model
+                .full_pack
+                .parts
+                .iter()
+                .filter_map(|p| server_catalog().part(&p.part_id))
+                .filter_map(|p| match p.kind {
+                    ServerPartKind::Ram { capacity_gb, .. } => Some(u64::from(capacity_gb)),
+                    _ => None,
+                })
+                .sum();
+            return format!(
+                "{}\n{}",
+                item_description(&self.display_id),
+                crate::localization::tr_args(
+                    "shop.model-full-pack-description",
+                    &[capacity.to_string()]
+                )
+            );
         }
         if matches!(self.item, PurchaseItem::ServerFullPack) {
             return tr("ui.full-pack-cpu-16-gb-ram-4");
@@ -295,6 +330,12 @@ impl Offer {
                     }
                     PurchaseItem::OpticalHardware(id) => {
                         sim.optics.device_models.get(&d.id) == Some(id)
+                    }
+                    PurchaseItem::ServerModel {
+                        model_id,
+                        configuration,
+                    } => {
+                        matches!(&d.kind, DeviceKind::Server(server) if server.model.as_str()==model_id && (*configuration==ServerConfiguration::Chassis || server.hardware.as_ref().is_some_and(|h| server.model().contains_full_pack(h))))
                     }
                     PurchaseItem::ServerChassis => matches!(d.kind, DeviceKind::Server(_)),
                     PurchaseItem::ServerFullPack => {

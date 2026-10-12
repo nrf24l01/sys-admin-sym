@@ -7,6 +7,12 @@ pub struct DevicePsus {
     pub count: u8,
     pub profile: PsuPowerProfile,
     pub dc_demand_mw: u32,
+    #[serde(default = "legacy_server_power_factor")]
+    pub power_factor_percent: u16,
+}
+
+fn legacy_server_power_factor() -> u16 {
+    90
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +86,7 @@ impl PowerSystem {
         }
         let input = ElectricalLoad::from_watts_pf(
             psus.profile.input_mw(output_mw).div_ceil(1000),
-            server_power_profile().power_factor_percent,
+            psus.power_factor_percent,
         );
         Some(PsuTelemetry {
             outlet,
