@@ -1,0 +1,17 @@
+services:
+  website:
+    image: sys-admin-sym-website:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DOWNLOAD_BASE_URL: ${DOWNLOAD_BASE_URL:?Set DOWNLOAD_BASE_URL in website/.env}
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - website-net
+
+networks:
+  website-net:
+    driver: bridge

@@ -37,18 +37,20 @@ bun run preview
 
 `dist/` is a static site. Configure the host to serve `index.html` for page URLs such as `/ru/docs/game-ssh`; this SPA fallback is required for refreshes and shared article links. The host must also serve a `runtime-config.js` that sets `window.__APP_CONFIG__.downloadBaseUrl`. The repository copy is empty, so downloads remain disabled until a base URL is configured. Nothing is deployed by development or build commands. Assets use root-relative paths, so host the site at the domain root unless you adjust Vite's base and the public asset references.
 
-The production container serves the built site on port `8080` and includes SPA routing and a healthcheck:
+The production container serves the built site on port `8080` and includes SPA routing and a healthcheck. Compose publishes it on localhost so a host reverse proxy can route traffic to it. Set the required public download base URL in `website/.env` first:
 
 ```sh
-docker build -t sys-admin-sym-website ./website
-docker run --rm -p 8080:8080 \
-  -e DOWNLOAD_BASE_URL=https://cdn.spb.bober.cc/sys-admin-sym \
-  sys-admin-sym-website
+cd website
+cp .env.example .env
+# The example uses same-origin resources at /resources/.
+docker compose -f compose.prod.yml up -d
 ```
+
+`compose.prod.yml` pulls `ghcr.io/nrf24l01/sys-admin-sym-website:latest`. To build and run the checked-out source locally instead, use `docker compose -f compose.dev.yml up --build -d`. Both Compose configurations fail if `DOWNLOAD_BASE_URL` is empty; neither puts S3 credentials in the container.
 
 ## Download sources
 
-The site does not query S3 or GitHub for releases. Each download button links directly to `<downloadBaseUrl>/resources/<filename>`, and checksum links append `.sha256`. The base URL comes from runtime configuration, so it can change without rebuilding the Vite bundle.
+The site does not query S3 or GitHub for releases. `DOWNLOAD_BASE_URL` is the complete directory containing downloadable files. With `/resources/`, a button links to `/resources/<filename>` and its checksum to `/resources/<filename>.sha256`. An absolute value such as `https://cdn.example.test/sys-admin-sym/resources/` works too. The value comes from runtime configuration, so it can change without rebuilding the Vite bundle.
 
 Game and standalone client downloads use these filenames for Windows and Linux:
 
@@ -61,7 +63,7 @@ A matching `<filename>.sha256` becomes a checksum link. The game package include
 
 If the runtime base URL is not configured, download buttons are disabled. Publishing packages is separate from building the website; the site does not upload or inspect game builds.
 
-Set `DOWNLOAD_BASE_URL` in the container environment. For example, the deployment can set it to `https://cdn.spb.bober.cc/sys-admin-sym`; the image has no default and refuses to start if the value is absent or not HTTPS. For a static host, configure its runtime `runtime-config.js` response instead. This URL is public and must not contain credentials.
+Set `DOWNLOAD_BASE_URL` in the container environment; the provided `.env.example` sets it to `/resources/`. The image refuses to start if it is absent and accepts either a same-origin path or an HTTPS URL. When using `/resources/`, configure the site's CDN or reverse proxy to serve that path from the public object storage resources. For a static host, configure its runtime `runtime-config.js` response instead. This value is public and must not contain credentials.
 
 ## GitHub Actions and S3
 
@@ -77,9 +79,9 @@ Create these repository Actions secrets before the next successful `main` build:
 | `S3_ENDPOINT_URL` | S3 API endpoint, using HTTPS |
 | `S3_REGION` | S3 signing region |
 
-The game workflows store immutable packages under `downloads/versions/<commit-sha>/` and publish the current ZIP and checksum files under `resources/`. The website image is published only to GHCR. The configured base URL must resolve those resource keys directly. Bucket/CDN read access must allow visitors to fetch ZIPs and `.sha256` files; a browser must never receive an S3 access key. Set the GHCR package visibility to public if visitors should pull the image without authentication.
+The game workflows store immutable packages under `downloads/versions/<commit-sha>/` and publish the current ZIP and checksum files under `resources/`. The website image is published only to GHCR. The configured directory path must resolve those resource keys directly. Bucket/CDN read access must allow visitors to fetch ZIPs and `.sha256` files; a browser must never receive an S3 access key. Set the GHCR package visibility to public if visitors should pull the image without authentication.
 
-The endpoint redirected HTTP requests to HTTPS in a credential-free check. The workflows reject non-HTTPS endpoint and download URLs. No S3 credentials are stored in this repository; rotate any keys previously pasted into chat before adding their replacements to GitHub Secrets. The provided read-only key is not embedded in the frontend; static browsers cannot safely hold private S3 credentials.
+The workflows reject non-HTTPS S3 endpoints. No S3 credentials are stored in this repository; rotate any keys previously pasted into chat before adding their replacements to GitHub Secrets. The provided read-only key is not embedded in the frontend; static browsers cannot safely hold private S3 credentials.
 
 ## Documentation and languages
 
