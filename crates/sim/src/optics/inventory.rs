@@ -245,6 +245,7 @@ impl NetworkSim {
                         b,
                         enabled: true,
                         length_cm: spec.length_cm,
+                        length_mm: None,
                         auto_length: false,
                         color: spec.color,
                         route,

@@ -1,0 +1,260 @@
+{
+  "types": [
+    {
+      "id": "rj-45",
+      "family": "network",
+      "role": "data",
+      "mates_with": [
+        "rj-45"
+      ],
+      "default_size": [
+        0.036,
+        0.25
+      ]
+    },
+    {
+      "id": "sfp",
+      "family": "network",
+      "role": "data",
+      "mates_with": [
+        "sfp"
+      ],
+      "default_size": [
+        0.034,
+        0.36
+      ]
+    },
+    {
+      "id": "lc",
+      "family": "network",
+      "role": "data",
+      "mates_with": [
+        "lc"
+      ],
+      "default_size": [
+        0.034,
+        0.36
+      ]
+    },
+    {
+      "id": "c14",
+      "family": "power",
+      "role": "inlet",
+      "mates_with": [
+        "c13"
+      ],
+      "default_size": [
+        0.07,
+        0.4
+      ]
+    },
+    {
+      "id": "c13",
+      "family": "power",
+      "role": "outlet",
+      "mates_with": [
+        "c14"
+      ],
+      "default_size": [
+        0.064,
+        0.4
+      ]
+    },
+    {
+      "id": "cisco-four-pin",
+      "family": "power",
+      "role": "inlet",
+      "mates_with": [
+        "cisco-four-pin"
+      ],
+      "default_size": [
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "id": "anchor",
+      "family": "routing",
+      "role": "anchor",
+      "mates_with": [],
+      "default_size": [
+        0.1,
+        0.3
+      ]
+    }
+  ],
+  "equipment_maps": [
+    "switch_config.json",
+    "switch_4x_config.json",
+    "ups_config.json",
+    "server_config.json",
+    "router_config.json",
+    "patch_panel_config.json",
+    "pdu_config.json",
+    "cable_manager_config.json"
+  ],
+  "atlases": {
+    "rj45": "cables/rj45_plug.png",
+    "optical": "equipment/optical_connectors.png",
+    "power": "equipment/power_connectors.png",
+    "power-plugs": "equipment/power_plugs_rear.png"
+  },
+  "sprites": {
+    "rj45-plug": {
+      "atlas": "rj45",
+      "uv": [
+        0.1,
+        0.17,
+        0.9,
+        1
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "iec-plug": {
+      "atlas": "power-plugs",
+      "uv": [
+        0.0552423900789177,
+        0.18489289740698986,
+        0.5355129650507328,
+        0.7846674182638106
+      ],
+      "cable_exit": [
+        0.495,
+        0.7
+      ]
+    },
+    "cisco-four-pin-plug": {
+      "atlas": "power-plugs",
+      "uv": [
+        0.6459977452085682,
+        0.1544532130777903,
+        0.9041713641488163,
+        0.7835400225479143
+      ],
+      "cable_exit": [
+        0.5,
+        0.745
+      ]
+    },
+    "iec-socket": {
+      "atlas": "power",
+      "uv": [
+        0.025,
+        0.15,
+        0.338,
+        0.34
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "empty-cage": {
+      "atlas": "optical",
+      "uv": [
+        0.10526315789473684,
+        0.03349282296650718,
+        0.41626794258373206,
+        0.21212121212121213
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "duplex-module": {
+      "atlas": "optical",
+      "uv": [
+        0.5861244019138756,
+        0.03189792663476874,
+        0.8995215311004785,
+        0.2240829346092504
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "simplex-module": {
+      "atlas": "optical",
+      "uv": [
+        0.11084529505582137,
+        0.2503987240829346,
+        0.4130781499202552,
+        0.44178628389154706
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "copper-module": {
+      "atlas": "optical",
+      "uv": [
+        0.5877192982456141,
+        0.24880382775119617,
+        0.9019138755980861,
+        0.4473684210526316
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "duplex-plug": {
+      "atlas": "optical",
+      "uv": [
+        0.14513556618819776,
+        0.4784688995215311,
+        0.40350877192982454,
+        0.7065390749601276
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "simplex-plug": {
+      "atlas": "optical",
+      "uv": [
+        0.6236044657097288,
+        0.4784688995215311,
+        0.8724082934609251,
+        0.7081339712918661
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "dac-plug": {
+      "atlas": "optical",
+      "uv": [
+        0.12280701754385964,
+        0.7145135566188198,
+        0.42025518341307816,
+        0.9872408293460925
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    },
+    "aoc-plug": {
+      "atlas": "optical",
+      "uv": [
+        0.5845295055821371,
+        0.7145135566188198,
+        0.905103668261563,
+        0.988835725677831
+      ],
+      "cable_exit": [
+        0.5,
+        0.5
+      ]
+    }
+  }
+}

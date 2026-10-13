@@ -66,8 +66,19 @@ pub struct ServerOnboardPort {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerSocketRect {
     pub rect: [f32; 4],
+    #[serde(default)]
+    pub connector: Option<crate::ConnectorType>,
+    #[serde(default)]
+    pub side: Option<String>,
 }
 impl ServerSocketRect {
+    pub fn side(&self) -> crate::RackSide {
+        if self.side.as_deref() == Some("front") {
+            crate::RackSide::Front
+        } else {
+            crate::RackSide::Rear
+        }
+    }
     pub fn center(&self) -> (f32, f32) {
         let [l, t, r, b] = self.rect;
         ((l + r) * 0.5, (t + b) * 0.5)

@@ -152,6 +152,9 @@ pub enum PciCard {
         ports: u8,
         #[serde(default)]
         connector: crate::PortConnector,
+        /// Connector rectangles local to the JSON-defined chassis PCIe slot.
+        #[serde(default)]
+        socket_rects: Vec<[f32; 4]>,
         #[serde(default)]
         cage: Option<crate::CageProfile>,
         speed_mbps: u32,

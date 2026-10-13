@@ -9,6 +9,7 @@ name = "texture-mapper"
 path = "src/main.rs"
 
 [dependencies]
+cloud-provider-sim = { path = "../../crates/sim" }
 bevy.workspace = true
 bevy_egui.workspace = true
 serde.workspace = true

@@ -166,8 +166,7 @@ pub(super) fn socket_picker(
         });
 }
 
-/// Crops of the unmodified 1254×1254 connector atlas. Keep these in one place
-/// so rack sockets and seated cable ends use the same hardware presentation.
+/// States choose JSON sprite definitions shared by sockets and seated cable ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum OpticalSprite {
     EmptyCage,
@@ -181,20 +180,17 @@ pub(super) enum OpticalSprite {
 }
 impl OpticalSprite {
     pub(super) fn uv(self) -> egui::Rect {
-        let (left, top, right, bottom) = match self {
-            Self::EmptyCage => (132.0, 42.0, 522.0, 266.0),
-            Self::DuplexModule => (735.0, 40.0, 1128.0, 281.0),
-            Self::SimplexModule => (139.0, 314.0, 518.0, 554.0),
-            Self::CopperModule => (737.0, 312.0, 1131.0, 561.0),
-            Self::DuplexPlug => (182.0, 600.0, 506.0, 886.0),
-            Self::SimplexPlug => (782.0, 600.0, 1094.0, 888.0),
-            Self::DacPlug => (154.0, 896.0, 527.0, 1238.0),
-            Self::AocPlug => (733.0, 896.0, 1135.0, 1240.0),
+        let name = match self {
+            Self::EmptyCage => "empty-cage",
+            Self::DuplexModule => "duplex-module",
+            Self::SimplexModule => "simplex-module",
+            Self::CopperModule => "copper-module",
+            Self::DuplexPlug => "duplex-plug",
+            Self::SimplexPlug => "simplex-plug",
+            Self::DacPlug => "dac-plug",
+            Self::AocPlug => "aoc-plug",
         };
-        egui::Rect::from_min_max(
-            egui::pos2(left / 1254.0, top / 1254.0),
-            egui::pos2(right / 1254.0, bottom / 1254.0),
-        )
+        super::equipment::connector_sprite_uv(name)
     }
 }
 

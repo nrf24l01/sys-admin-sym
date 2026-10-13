@@ -35,14 +35,28 @@ pub struct CableInventory {
     pub connectors: u32,
     /// Unplugged, already crimped leads. They cannot be converted back into raw stock.
     pub patch_cables_cm: Vec<u32>,
+    /// Exact finished lengths, parallel to `patch_cables_cm`. Older entries use cm.
+    #[serde(default)]
+    pub patch_cable_lengths_mm: Vec<u32>,
     /// Jacket color for each reusable lead, parallel to `patch_cables_cm`.
     /// Missing entries (including legacy saves) are treated as white.
     #[serde(default)]
     pub patch_cable_colors: Vec<CableColor>,
 }
 
+impl CableInventory {
+    pub fn patch_cable_length_mm(&self, index: usize) -> Option<u32> {
+        self.patch_cables_cm.get(index).map(|cm| {
+            self.patch_cable_lengths_mm
+                .get(index)
+                .copied()
+                .unwrap_or_else(|| cm.saturating_mul(10))
+        })
+    }
+}
+
 /// Saved defaults for automatically sized copper leads. The extra allowance is
-/// added to the routed minimum, which already includes installation slack.
+/// added to the measured routed minimum, retaining millimetre precision.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CableSettings {
@@ -59,13 +73,13 @@ impl CableSettings {
         Ok(())
     }
 
-    fn automatic_length(self, minimum_cm: u32) -> Result<u32, SimError> {
+    fn automatic_length_mm(self, minimum_mm: u32) -> Result<u32, SimError> {
         self.validate()?;
-        let minimum = u64::from(minimum_cm);
+        let minimum = u64::from(minimum_mm);
         let length = minimum
             + (minimum * u64::from(self.extra_percent)).div_ceil(100)
-            + u64::from(self.extra_cm);
-        if length > 10_000 {
+            + u64::from(self.extra_cm) * 10;
+        if length > 100_000 {
             return Err(SimError::CableTooLong);
         }
         Ok(length as u32)
@@ -74,7 +88,9 @@ impl CableSettings {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CableQuote {
+    /// Whole centimetres consumed from stock, including the sub-cm offcut.
     pub length_cm: u32,
+    pub length_mm: u32,
     pub reused: bool,
     pub color: CableColor,
 }
@@ -89,6 +105,10 @@ impl CableQuote {
 
 impl NetworkSim {
     pub(crate) fn normalize_patch_cable_colors(&mut self) {
+        self.cable_inventory.patch_cable_lengths_mm =
+            (0..self.cable_inventory.patch_cables_cm.len())
+                .map(|index| self.cable_inventory.patch_cable_length_mm(index).unwrap())
+                .collect();
         self.cable_inventory.patch_cable_colors.resize(
             self.cable_inventory.patch_cables_cm.len(),
             CableColor::White,
@@ -137,13 +157,17 @@ impl NetworkSim {
     /// Straight socket-to-socket distance, rounded up to a cm. Automatic
     /// percentage and fixed allowances are applied when quoting a new lead.
     pub fn minimum_cable_length(&self, a: PortId, b: PortId) -> Result<u32, SimError> {
+        Ok(self.minimum_cable_length_mm(a, b)?.div_ceil(10))
+    }
+
+    pub fn minimum_cable_length_mm(&self, a: PortId, b: PortId) -> Result<u32, SimError> {
         let placements = [self.port_position(a)?, self.port_position(b)?];
         let cm = if placements[0].0 == placements[1].0 {
             (placements[0].1 - placements[1].1).hypot(placements[0].2 - placements[1].2)
         } else {
             self.room_distance(placements[0], placements[1])?
         };
-        Ok(cm.ceil() as u32)
+        Ok((cm * 10.0).ceil() as u32)
     }
 
     /// Routed leads follow their selected fixing points. The measured run from
@@ -155,8 +179,19 @@ impl NetworkSim {
         b: PortId,
         route: &[crate::CableRoutePoint],
     ) -> Result<u32, SimError> {
+        Ok(self
+            .minimum_routed_cable_length_mm(a, b, route)?
+            .div_ceil(10))
+    }
+
+    pub fn minimum_routed_cable_length_mm(
+        &self,
+        a: PortId,
+        b: PortId,
+        route: &[crate::CableRoutePoint],
+    ) -> Result<u32, SimError> {
         if route.is_empty() {
-            return self.minimum_cable_length(a, b);
+            return self.minimum_cable_length_mm(a, b);
         }
         let endpoints = [self.port_position(a)?, self.port_position(b)?];
         let mut points = Vec::with_capacity(route.len() + 2);
@@ -195,7 +230,7 @@ impl NetworkSim {
             };
             total += segment;
         }
-        Ok(total.ceil() as u32)
+        Ok((total * 10.0).ceil() as u32)
     }
 
     fn room_distance(&self, a: (RackId, f32, f32), b: (RackId, f32, f32)) -> Result<f32, SimError> {
@@ -246,7 +281,11 @@ impl NetworkSim {
             .iter()
             .position(|port| port == &id)
             .ok_or(SimError::PortNotFound(id))?;
-        let (x, y) = device.kind.port_position_normalized(index);
+        let (x, y) = device
+            .kind
+            .connector_socket(p, p.side, index)
+            .map(|socket| socket.center())
+            .unwrap_or_else(|| device.kind.port_position_normalized(index));
         Ok((
             placement.rack,
             x * RACK_FACE_WIDTH_CM,
@@ -273,35 +312,43 @@ impl NetworkSim {
         color: CableColor,
     ) -> Result<CableQuote, SimError> {
         self.validate_cable_endpoints(a, b)?;
-        let minimum_cm = self.minimum_cable_length(a, b)?;
-        self.quote_cable_for_minimum(minimum_cm, length_cm, color)
+        let minimum_mm = self.minimum_cable_length_mm(a, b)?;
+        self.quote_cable_for_minimum(minimum_mm, centimeters_to_millimeters(length_cm)?, color)
     }
 
     fn quote_cable_for_minimum(
         &self,
-        minimum_cm: u32,
-        length_cm: Option<u32>,
+        minimum_mm: u32,
+        length_mm: Option<u32>,
         color: CableColor,
     ) -> Result<CableQuote, SimError> {
-        let target = match length_cm {
+        let target = match length_mm {
             Some(length) => length,
-            None => self.cable_settings.automatic_length(minimum_cm)?,
+            None => self.cable_settings.automatic_length_mm(minimum_mm)?,
         };
-        if target < minimum_cm {
-            return Err(SimError::CableTooShort { minimum_cm });
+        if target < minimum_mm {
+            return Err(SimError::CableTooShort {
+                minimum_cm: minimum_mm.div_ceil(10),
+            });
         }
-        if target > 10_000 {
+        if target > 100_000 {
             return Err(SimError::CableTooLong);
         }
-        let allow_longer = length_cm.is_none() && self.cable_settings.reuse_longer_leads;
+        let allow_longer = length_mm.is_none() && self.cable_settings.reuse_longer_leads;
         let existing = self
             .cable_inventory
             .patch_cables_cm
             .iter()
             .copied()
             .enumerate()
+            .map(|(index, _)| {
+                (
+                    index,
+                    self.cable_inventory.patch_cable_length_mm(index).unwrap(),
+                )
+            })
             .filter(|(index, length)| {
-                (*length == target || (allow_longer && *length >= target && *length <= 10_000))
+                (*length == target || (allow_longer && *length >= target && *length <= 100_000))
                     && self
                         .cable_inventory
                         .patch_cable_colors
@@ -313,7 +360,8 @@ impl NetworkSim {
             .map(|(_, length)| length)
             .min();
         Ok(CableQuote {
-            length_cm: existing.unwrap_or(target),
+            length_cm: existing.unwrap_or(target).div_ceil(10),
+            length_mm: existing.unwrap_or(target),
             reused: existing.is_some(),
             color,
         })
@@ -327,9 +375,20 @@ impl NetworkSim {
         color: CableColor,
         route: &[crate::CableRoutePoint],
     ) -> Result<CableQuote, SimError> {
+        self.quote_millimeter_cable(a, b, centimeters_to_millimeters(length_cm)?, color, route)
+    }
+
+    pub fn quote_millimeter_cable(
+        &self,
+        a: PortId,
+        b: PortId,
+        length_mm: Option<u32>,
+        color: CableColor,
+        route: &[crate::CableRoutePoint],
+    ) -> Result<CableQuote, SimError> {
         self.validate_cable_endpoints(a, b)?;
-        let minimum_cm = self.minimum_routed_cable_length(a, b, route)?;
-        self.quote_cable_for_minimum(minimum_cm, length_cm, color)
+        let minimum_mm = self.minimum_routed_cable_length_mm(a, b, route)?;
+        self.quote_cable_for_minimum(minimum_mm, length_mm, color)
     }
 
     pub(crate) fn consume_cable(&mut self, quote: CableQuote) -> Result<(), SimError> {
@@ -342,6 +401,8 @@ impl NetworkSim {
                 .enumerate()
                 .position(|(index, cm)| {
                     *cm == quote.length_cm
+                        && self.cable_inventory.patch_cable_length_mm(index)
+                            == Some(quote.length_mm)
                         && self
                             .cable_inventory
                             .patch_cable_colors
@@ -352,6 +413,7 @@ impl NetworkSim {
                 })
                 .ok_or(SimError::CableInventoryFull)?;
             self.cable_inventory.patch_cables_cm.remove(index);
+            self.cable_inventory.patch_cable_lengths_mm.remove(index);
             if index < self.cable_inventory.patch_cable_colors.len() {
                 self.cable_inventory.patch_cable_colors.remove(index);
             }
@@ -374,9 +436,29 @@ impl NetworkSim {
     }
 }
 
+fn centimeters_to_millimeters(length_cm: Option<u32>) -> Result<Option<u32>, SimError> {
+    length_cm
+        .map(|cm| cm.checked_mul(10).ok_or(SimError::CableTooLong))
+        .transpose()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_cable_two_and_ten_percent_allowances_are_distinct() {
+        let two = CableSettings {
+            extra_percent: 2,
+            ..Default::default()
+        };
+        let ten = CableSettings {
+            extra_percent: 10,
+            ..Default::default()
+        };
+        assert_eq!(two.automatic_length_mm(50).unwrap(), 51);
+        assert_eq!(ten.automatic_length_mm(50).unwrap(), 55);
+    }
 
     fn installed_server_pair() -> (NetworkSim, PortId, PortId) {
         let mut sim = NetworkSim::new();

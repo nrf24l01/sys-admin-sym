@@ -58,9 +58,9 @@ pub(super) fn show(
                             .patch_cables_cm
                             .iter()
                             .enumerate()
-                            .map(|(index, cm)| {
+                            .map(|(index, _)| {
                                 (
-                                    *cm,
+                                    stock.patch_cable_length_mm(index).unwrap(),
                                     stock
                                         .patch_cable_colors
                                         .get(index)
@@ -69,15 +69,15 @@ pub(super) fn show(
                                 )
                             })
                             .collect();
-                        leads.sort_by_key(|(cm, color)| (*cm, *color as u8));
+                        leads.sort_by_key(|(mm, color)| (*mm, *color as u8));
                         leads.dedup();
-                        for (cm, color) in leads {
+                        for (mm, color) in leads {
                             let count = stock
                                 .patch_cables_cm
                                 .iter()
                                 .enumerate()
-                                .filter(|(index, length)| {
-                                    **length == cm
+                                .filter(|(index, _)| {
+                                    stock.patch_cable_length_mm(*index) == Some(mm)
                                         && stock
                                             .patch_cable_colors
                                             .get(*index)
@@ -90,14 +90,14 @@ pub(super) fn show(
                                 .small_button(crate::localization::tr_args(
                                     "ui.m-use",
                                     &[
-                                        format!("{:.2}", cm as f32 / 100.0),
+                                        format!("{:.3}", mm as f32 / 1000.0),
                                         crate::localization::cable_color(color),
                                         (count).to_string(),
                                     ],
                                 ))
                                 .clicked()
                             {
-                                state.cable_length_cm = Some(cm);
+                                state.cable_length_mm = Some(mm);
                                 state.cable_color = color;
                             }
                         }
@@ -174,7 +174,7 @@ pub(super) fn show(
                                     &[
                                         format!("{:02}", link.id.0),
                                         crate::localization::cable_color(link.color),
-                                        format!("{:.2}", link.length_cm as f32 / 100.0),
+                                        format!("{:.3}", link.physical_length_mm() as f32 / 1000.0),
                                     ],
                                 ),
                             )

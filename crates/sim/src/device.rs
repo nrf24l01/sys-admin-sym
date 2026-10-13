@@ -32,15 +32,7 @@ impl Device {
         }
     }
     pub fn ports(&self) -> &[PortId] {
-        match &self.kind {
-            DeviceKind::Server(v) => &v.ports,
-            DeviceKind::Switch(v) => &v.ports,
-            DeviceKind::Router(v) => &v.ports,
-            DeviceKind::PatchPanel(v) => &v.ports,
-            DeviceKind::CableManager(v) => &v.ports,
-            DeviceKind::Ups(v) => &v.ports,
-            DeviceKind::Pdu(v) => &v.ports,
-        }
+        self.kind.ports()
     }
 
     pub fn template(&self) -> DeviceTemplate {
@@ -85,80 +77,87 @@ pub const RACK_FACE_HEIGHT_CM: f32 = 4.445;
 pub const RACK_GAP_CM: f32 = 0.5;
 
 impl DeviceKind {
-    /// Authoritative physical power inlet metadata shared by simulation and UI.
-    pub fn power_inlet(&self) -> Option<PowerInlet> {
+    pub fn ports(&self) -> &[PortId] {
         match self {
-            Self::Router(_) => Some(PowerInlet {
-                connector: PowerInletConnector::CiscoFourPin,
-                side: crate::RackSide::Front,
-                position: (0.146, 0.63),
-            }),
-            Self::Server(server) => Some(PowerInlet {
-                connector: PowerInletConnector::IecC14,
-                side: crate::RackSide::Rear,
-                position: server
-                    .model()
-                    .power_inlet_position(0)
-                    .unwrap_or((0.945, 0.52)),
-            }),
-            Self::Switch(_) => Some(PowerInlet {
-                connector: PowerInletConnector::IecC14,
-                side: crate::RackSide::Rear,
-                position: (0.094, 0.42),
-            }),
-            Self::Ups(_) => Some(PowerInlet {
-                connector: PowerInletConnector::IecC14,
-                side: crate::RackSide::Rear,
-                position: (0.920, 0.48),
-            }),
-            Self::Pdu(_) => Some(PowerInlet {
-                connector: PowerInletConnector::IecC14,
-                side: crate::RackSide::Rear,
-                position: (0.887, 0.46),
-            }),
-            _ => None,
+            DeviceKind::Server(v) => &v.ports,
+            DeviceKind::Switch(v) => &v.ports,
+            DeviceKind::Router(v) => &v.ports,
+            DeviceKind::PatchPanel(v) => &v.ports,
+            DeviceKind::CableManager(v) => &v.ports,
+            DeviceKind::Ups(v) => &v.ports,
+            DeviceKind::Pdu(v) => &v.ports,
         }
     }
-    /// Socket centers on the equipment face, shared by cable cuts and rendering.
+
+    /// Legacy power inlet view backed by the common JSON connector resolver.
+    pub fn power_inlet(&self) -> Option<PowerInlet> {
+        let socket = self.power_connector_socket(0)?;
+        let connector = match socket.connector {
+            crate::ConnectorType::IecC14 => PowerInletConnector::IecC14,
+            crate::ConnectorType::CiscoFourPin => PowerInletConnector::CiscoFourPin,
+            _ => return None,
+        };
+        Some(PowerInlet {
+            connector,
+            side: socket.side,
+            position: socket.center(),
+        })
+    }
+
+    /// Socket centers shared by cable cuts and rendering. New callers with port
+    /// metadata should use `connector_socket` directly.
     pub fn port_position_normalized(&self, index: usize) -> (f32, f32) {
-        match self {
-            Self::Switch(_) if index < 24 => (
-                0.342 + (index / 12) as f32 * 0.263 + ((index % 12) / 2) as f32 * 0.0336,
-                0.37 + (index % 2) as f32 * 0.29,
-            ),
-            Self::Switch(_) => (0.833 + (index - 24) as f32 * 0.040, 0.69),
+        let (connector, side) = match self {
             Self::Server(server) => {
-                if let Some(hardware) = &server.hardware
-                    && let Some(port) = server.ports.get(index)
-                {
-                    for (slot_index, ports) in hardware.card_ports.iter().enumerate() {
-                        if let Some(card_index) = ports.iter().position(|id| id == port)
-                            && let Some(slot) = server.model().chassis.pcie_slots.get(slot_index)
+                let connector = server
+                    .hardware
+                    .as_ref()
+                    .and_then(|hardware| {
+                        let port = server.ports.get(index)?;
+                        let slot = hardware
+                            .card_ports
+                            .iter()
+                            .position(|ports| ports.contains(port))?;
+                        let part_id = hardware.pcie.get(slot)?.as_deref()?;
+                        let part = crate::server_catalog()
+                            .parts
+                            .iter()
+                            .find(|p| p.id == part_id)?;
+                        if let crate::ServerPartKind::PciCard {
+                            card: crate::PciCard::Ethernet { connector, .. },
+                        } = &part.kind
                         {
-                            return slot.port_position(card_index, ports.len());
+                            Some(*connector)
+                        } else {
+                            None
                         }
-                    }
-                }
-                server.model().port_position(index).unwrap_or((0.5, 0.5))
+                    })
+                    .unwrap_or(crate::PortConnector::Rj45);
+                (connector, crate::RackSide::Rear)
             }
-            Self::Router(_) if index < 2 => (0.432 + index as f32 * 0.065, 0.63),
-            Self::Router(_) => {
-                let lan = index - 2;
-                (
-                    0.201 + (lan % 4) as f32 * 0.0465,
-                    0.32 + (lan / 4) as f32 * 0.32,
-                )
-            }
-            Self::PatchPanel(_) => {
-                let slot = (index / 2).min(23);
-                (
-                    (0.16 + (slot % 12) as f32 * 0.062).min(0.90),
-                    0.30 + (slot / 12) as f32 * 0.38,
-                )
-            }
-            Self::CableManager(_) => (0.5, 0.5),
-            Self::Ups(_) | Self::Pdu(_) => (0.5, 0.5),
-        }
+            Self::Switch(sw) => (
+                if index < sw.model.spec().copper_ports {
+                    crate::PortConnector::Rj45
+                } else {
+                    crate::PortConnector::Sfp
+                },
+                crate::RackSide::Front,
+            ),
+            Self::Router(_) => (crate::PortConnector::Rj45, crate::RackSide::Front),
+            Self::PatchPanel(_) => (
+                crate::PortConnector::Rj45,
+                if index.is_multiple_of(2) {
+                    crate::RackSide::Rear
+                } else {
+                    crate::RackSide::Front
+                },
+            ),
+            _ => return (0.5, 0.5),
+        };
+        self.connector_socket(&connector, side, index)
+            .or_else(|| self.find_connector_socket(&connector, index))
+            .map(|socket| socket.center())
+            .unwrap_or((0.5, 0.5))
     }
 }
 

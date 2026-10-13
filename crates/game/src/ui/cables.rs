@@ -1,7 +1,10 @@
 use crate::app::CableVisibility;
 use crate::localization::tr;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
-use cloud_provider_sim::{CableRoutePoint, LinkId, NetworkSim, OutletId, PortId};
+use cloud_provider_sim::{
+    CableRoutePoint, Connector, ConnectorType, LinkId, NetworkSim, OutletId, PortId,
+    connector_catalog,
+};
 use std::collections::HashMap;
 
 const SEGMENTS: usize = 64;
@@ -17,13 +20,22 @@ struct Rope {
     length: f32,
     endpoints: (Pos2, Pos2),
 }
+
+struct RopeSpan {
+    start: usize,
+    end: usize,
+    a: Pos2,
+    b: Pos2,
+    length: f32,
+}
 impl Rope {
     fn new(a: Pos2, b: Pos2, length: f32) -> Self {
         let slack = (length * length - a.distance(b).powi(2)).max(0.0).sqrt() * 0.35;
+        let bend = cable_bend_direction(a, b);
         let points: Vec<_> = (0..=SEGMENTS)
             .map(|i| {
                 let t = i as f32 / SEGMENTS as f32;
-                a.lerp(b, t) + Vec2::new(0.0, (std::f32::consts::PI * t).sin() * slack)
+                a.lerp(b, t) + bend * (std::f32::consts::PI * t).sin() * slack
             })
             .collect();
         Self {
@@ -48,6 +60,19 @@ impl Rope {
         pins: &[(usize, Pos2)],
     ) {
         self.endpoints = (a, b);
+        let mut route_points = std::iter::once(a)
+            .chain(pins.iter().map(|(_, point)| *point))
+            .chain(std::iter::once(b));
+        let mut previous = route_points.next().unwrap();
+        let mut path_length = 0.0;
+        for point in route_points {
+            path_length += previous.distance(point);
+            previous = point;
+        }
+        if grab.is_none() && (self.length - path_length).abs() <= 0.01 {
+            self.seed_pinned_path(a, b, pins);
+            return;
+        }
         for i in 1..SEGMENTS {
             let point = self.points[i];
             let velocity = (point - self.previous[i]) * 0.975;
@@ -56,7 +81,12 @@ impl Rope {
         }
         // A moved endpoint cannot cause an unsatisfiable solver. Domain cable
         // length remains unchanged; overstretch is only clamped for rendering.
-        let segment_length = self.length.max(a.distance(b) * 1.01) / SEGMENTS as f32;
+        let spans = rope_spans(self.length, a, b, pins, grab);
+        let mut segment_lengths = [0.0; SEGMENTS];
+        for span in &spans {
+            segment_lengths[span.start..span.end]
+                .fill(span.length / (span.end - span.start) as f32);
+        }
         for _ in 0..CONSTRAINT_PASSES {
             self.points[0] = a;
             self.points[SEGMENTS] = b;
@@ -67,7 +97,7 @@ impl Rope {
             if let Some((i, p)) = grab {
                 self.points[i] = p;
             }
-            for i in 0..SEGMENTS {
+            for (i, segment_length) in segment_lengths.iter().enumerate() {
                 let delta = self.points[i + 1] - self.points[i];
                 let distance = delta.length();
                 if distance < 0.00001 {
@@ -107,6 +137,51 @@ impl Rope {
             self.points[i] = p;
             self.previous[i] = p;
         }
+        self.constrain_span_lengths(&spans);
+    }
+
+    /// Numerical segment constraints can stretch under gravity. Project the
+    /// each section towards its chord until it fits its own allowance. Slack
+    /// cannot migrate through a fixed anchor into the neighbouring section.
+    fn constrain_span_lengths(&mut self, spans: &[RopeSpan]) {
+        for span in spans {
+            let measured: f32 = self.points[span.start..=span.end]
+                .windows(2)
+                .map(|pair| pair[0].distance(pair[1]))
+                .sum();
+            if measured <= span.length + 0.0001 {
+                continue;
+            }
+            let baseline = |index: usize| {
+                span.a.lerp(
+                    span.b,
+                    (index - span.start) as f32 / (span.end - span.start) as f32,
+                )
+            };
+            let length_at = |amount: f32| {
+                (span.start..span.end)
+                    .map(|index| {
+                        baseline(index)
+                            .lerp(self.points[index], amount)
+                            .distance(baseline(index + 1).lerp(self.points[index + 1], amount))
+                    })
+                    .sum::<f32>()
+            };
+            let (mut low, mut high) = (0.0, 1.0);
+            for _ in 0..24 {
+                let middle = (low + high) * 0.5;
+                if length_at(middle) > span.length {
+                    high = middle;
+                } else {
+                    low = middle;
+                }
+            }
+            for index in span.start..=span.end {
+                let point = baseline(index).lerp(self.points[index], low);
+                self.previous[index] += point - self.points[index];
+                self.points[index] = point;
+            }
+        }
     }
 
     fn pin_endpoints(&mut self, a: Pos2, b: Pos2) {
@@ -129,14 +204,98 @@ impl Rope {
         stops.push((0, a));
         stops.extend_from_slice(pins);
         stops.push((SEGMENTS, b));
+        let minimum: f32 = stops
+            .windows(2)
+            .map(|pair| pair[0].1.distance(pair[1].1))
+            .sum();
+        let ratio = if self.length <= minimum + 0.01 {
+            1.0
+        } else {
+            self.length / minimum.max(0.001)
+        };
         for pair in stops.windows(2) {
             let ((start, from), (end, to)) = (pair[0], pair[1]);
+            let distance = from.distance(to);
+            let slack = ((distance * ratio).powi(2) - distance.powi(2))
+                .max(0.0)
+                .sqrt()
+                * 0.35;
+            let bend = cable_bend_direction(from, to);
             for index in start..=end {
                 let t = (index - start) as f32 / (end - start).max(1) as f32;
-                self.points[index] = from.lerp(to, t);
+                self.points[index] =
+                    from.lerp(to, t) + bend * (std::f32::consts::PI * t).sin() * slack;
                 self.previous[index] = self.points[index];
             }
         }
+    }
+}
+
+fn cable_bend_direction(a: Pos2, b: Pos2) -> Vec2 {
+    let delta = b - a;
+    if delta.length_sq() < 0.0001 {
+        return Vec2::new(0.0, 1.0);
+    }
+    let normal = Vec2::new(-delta.y, delta.x).normalized();
+    if normal.y < 0.0 || (normal.y == 0.0 && normal.x < 0.0) {
+        -normal
+    } else {
+        normal
+    }
+}
+
+fn rope_spans(
+    length: f32,
+    a: Pos2,
+    b: Pos2,
+    pins: &[(usize, Pos2)],
+    grab: Option<(usize, Pos2)>,
+) -> Vec<RopeSpan> {
+    let mut stops = Vec::with_capacity(pins.len() + 3);
+    stops.push((0, a));
+    stops.extend_from_slice(pins);
+    stops.extend(grab);
+    stops.push((SEGMENTS, b));
+    stops.sort_by_key(|(index, _)| *index);
+    stops.dedup_by_key(|(index, _)| *index);
+    let minimum: f32 = stops
+        .windows(2)
+        .map(|pair| pair[0].1.distance(pair[1].1))
+        .sum();
+    let available = length.max(minimum);
+    stops
+        .windows(2)
+        .map(|pair| {
+            let ((start, a), (end, b)) = (pair[0], pair[1]);
+            let distance = a.distance(b);
+            let share = if grab.is_some() || minimum < 0.0001 {
+                (end - start) as f32 / SEGMENTS as f32
+            } else {
+                distance / minimum
+            };
+            RopeSpan {
+                start,
+                end,
+                a,
+                b,
+                length: (available * share).max(distance),
+            }
+        })
+        .collect()
+}
+
+fn visible_rope_length(
+    visible_path_cm: f32,
+    cut_length_cm: Option<f32>,
+    minimum_length_cm: Option<f32>,
+) -> f32 {
+    match (cut_length_cm, minimum_length_cm) {
+        (Some(cut), Some(minimum)) if minimum > 0.0001 => {
+            visible_path_cm * (cut / minimum).max(1.0)
+        }
+        (Some(cut), Some(_)) => visible_path_cm + cut,
+        (Some(cut), None) => cut.max(visible_path_cm),
+        (None, _) => visible_path_cm,
     }
 }
 
@@ -460,6 +619,18 @@ pub(super) struct CableConnector {
     pub kind: ConnectorKind,
 }
 
+impl Connector for CableConnector {
+    fn connector_type(&self) -> ConnectorType {
+        match self.kind {
+            ConnectorKind::Rj45 => ConnectorType::Rj45,
+            ConnectorKind::Optical { .. } => ConnectorType::Lc,
+            ConnectorKind::Attached { .. } => ConnectorType::Sfp,
+            ConnectorKind::Iec => ConnectorType::IecC14,
+            ConnectorKind::CiscoFourPin => ConnectorType::CiscoFourPin,
+        }
+    }
+}
+
 impl CableConnector {
     fn optical_sprite(self) -> Option<super::optics::OpticalSprite> {
         use super::optics::OpticalSprite;
@@ -472,31 +643,21 @@ impl CableConnector {
         }
     }
 
+    fn sprite_name(self) -> &'static str {
+        match self.kind {
+            ConnectorKind::Iec => "iec-plug",
+            ConnectorKind::CiscoFourPin => "cisco-four-pin-plug",
+            _ => "rj45-plug",
+        }
+    }
+
     fn uv(self) -> Rect {
-        let (left, top, right, bottom) = match self.kind {
-            ConnectorKind::Rj45
-            | ConnectorKind::Optical { .. }
-            | ConnectorKind::Attached { .. } => (0.10, 0.17, 0.90, 1.0),
-            // End-on cable-exit faces, measured in the 1774 × 887 rear atlas.
-            ConnectorKind::Iec => (98.0 / 1774.0, 164.0 / 887.0, 950.0 / 1774.0, 696.0 / 887.0),
-            ConnectorKind::CiscoFourPin => (
-                1146.0 / 1774.0,
-                137.0 / 887.0,
-                1604.0 / 1774.0,
-                695.0 / 887.0,
-            ),
-        };
-        Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
+        super::equipment::connector_sprite_uv(self.sprite_name())
     }
 
     fn cable_exit(self) -> Vec2 {
-        match self.kind {
-            ConnectorKind::Rj45
-            | ConnectorKind::Optical { .. }
-            | ConnectorKind::Attached { .. } => Vec2::splat(0.5),
-            ConnectorKind::Iec => Vec2::new(0.495, 0.70),
-            ConnectorKind::CiscoFourPin => Vec2::new(0.50, 0.745),
-        }
+        let [x, y] = connector_catalog().sprite(self.sprite_name()).cable_exit;
+        Vec2::new(x, y)
     }
 
     fn rect(self) -> Rect {
@@ -529,6 +690,7 @@ struct RenderCable<Id> {
     id: Id,
     paths: Vec<Vec<Pos2>>,
     length_cm: Option<f32>,
+    minimum_length_cm: Option<f32>,
     connectors: Vec<CableConnector>,
     color: Color32,
     selected: bool,
@@ -574,7 +736,7 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
                 })
                 .collect();
             let total = distances.iter().sum::<f32>();
-            let length = cable.length_cm.unwrap_or(total * 1.05).max(total);
+            let length = visible_rope_length(total, cable.length_cm, cable.minimum_length_cm);
             for (index, path) in cable
                 .paths
                 .iter()
@@ -772,6 +934,7 @@ impl CableScene {
                     routed: view.routed.contains(id) || paths.iter().any(|path| path.len() > 2),
                     paths,
                     length_cm: (*length > 0).then_some(*length as f32),
+                    minimum_length_cm: None,
                     connectors: view.connectors.get(id).cloned().unwrap_or_default(),
                     color: Color32::from_rgb(31, 35, 38),
                     selected: view.selected == Some(*id),
@@ -818,16 +981,16 @@ impl CableScene {
                     &link.route,
                     &view.anchors,
                 );
-                let complete = ports.contains_key(&link.a)
-                    && ports.contains_key(&link.b)
-                    && link
-                        .route
-                        .iter()
-                        .all(|point| anchor_position(point, &view.anchors).is_some());
+                let minimum = if link.route.is_empty() {
+                    sim.minimum_cable_length_mm(link.a, link.b)
+                } else {
+                    sim.minimum_routed_cable_length_mm(link.a, link.b, &link.route)
+                };
                 Some(RenderCable {
                     id: link.id,
                     paths,
-                    length_cm: complete.then_some(link.length_cm as f32),
+                    length_cm: Some(link.physical_length_mm() as f32 / 10.0),
+                    minimum_length_cm: minimum.ok().map(|length| length as f32 / 10.0),
                     connectors: [link.a, link.b]
                         .iter()
                         .filter_map(|id| {
@@ -948,6 +1111,12 @@ fn route_pin_indices(path: &[Pos2]) -> Vec<(usize, Pos2)> {
     let mut travelled = 0.0;
     let mut previous_index = 0;
     let last_anchor = path.len() - 2;
+    // A short section still needs an interior particle to show its reserve.
+    let minimum_segments = if (path.len() - 1) * 2 <= SEGMENTS {
+        2
+    } else {
+        1
+    };
     path.windows(2)
         .enumerate()
         .filter_map(|(segment, pair)| {
@@ -956,8 +1125,10 @@ fn route_pin_indices(path: &[Pos2]) -> Vec<(usize, Pos2)> {
                 return None;
             }
             let remaining = last_anchor - segment;
-            let index = ((travelled / total * SEGMENTS as f32).round() as usize)
-                .clamp(previous_index + 1, SEGMENTS - remaining);
+            let index = ((travelled / total * SEGMENTS as f32).round() as usize).clamp(
+                previous_index + minimum_segments,
+                SEGMENTS - remaining * minimum_segments,
+            );
             previous_index = index;
             Some((index, path[segment + 1]))
         })
@@ -996,6 +1167,25 @@ mod tests {
         CableSupply, Command, DeviceTemplate, NetworkOutletKind, RackId, RackSide, SimEvent,
         SourceId,
     };
+
+    #[test]
+    fn taut_cable_does_not_gain_hidden_rendering_slack() {
+        let a = Pos2::ZERO;
+        let b = Pos2::new(100.0, 0.0);
+
+        let mut rope = Rope::new(a, b, 100.0);
+        for _ in 0..120 {
+            rope.step(a, b, 300.0, None);
+        }
+        assert!(rope.points[SEGMENTS / 2].y.abs() < 0.1);
+    }
+
+    #[test]
+    fn visible_spans_get_only_the_length_above_the_physical_minimum() {
+        assert_eq!(visible_rope_length(40.0, Some(100.0), Some(100.0)), 40.0);
+        assert!((visible_rope_length(40.0, Some(102.0), Some(100.0)) - 40.8).abs() < 0.001);
+        assert!((visible_rope_length(40.0, Some(110.0), Some(100.0)) - 44.0).abs() < 0.001);
+    }
 
     #[test]
     fn switch_to_room_uplink_has_a_visible_rack_cable_segment() {
@@ -1267,6 +1457,7 @@ mod tests {
                 id,
                 paths: vec![path],
                 length_cm: None,
+                minimum_length_cm: None,
                 connectors: sockets
                     .iter()
                     .map(|socket| CableConnector {
@@ -1966,6 +2157,68 @@ mod tests {
         assert!(rope.points[SEGMENTS / 2].y > 20.0);
         let length: f32 = rope.points.windows(2).map(|p| p[0].distance(p[1])).sum();
         assert!((length - 75.0).abs() < 2.0, "length={length}");
+    }
+
+    #[test]
+    fn small_allowances_bound_the_rendered_curve_length_after_settling() {
+        let (a, b) = (Pos2::ZERO, egui::pos2(100.0, 0.0));
+        for intended in [102.0, 110.0] {
+            let mut rope = Rope::new(a, b, intended);
+            for _ in 0..1200 {
+                rope.step(a, b, 300.0, None);
+            }
+            let measured: f32 = rope.points.windows(2).map(|p| p[0].distance(p[1])).sum();
+            assert!(
+                (measured - intended).abs() < 0.05,
+                "intended={intended}, rendered={measured}"
+            );
+        }
+    }
+
+    #[test]
+    fn vertical_runs_show_distinct_bends_for_two_and_ten_percent() {
+        let (a, b) = (Pos2::ZERO, egui::pos2(0.0, 100.0));
+        let mut bends = Vec::new();
+        for intended in [102.0, 110.0] {
+            let mut rope = Rope::new(a, b, intended);
+            for _ in 0..1200 {
+                rope.step(a, b, 300.0, None);
+            }
+            bends.push(
+                rope.points
+                    .iter()
+                    .map(|p| p.x.abs())
+                    .fold(0.0_f32, f32::max),
+            );
+        }
+        assert!(bends[1] > bends[0] + 0.1, "bends={bends:?}");
+    }
+
+    #[test]
+    fn left_to_right_anchor_span_retains_its_own_length_allowance() {
+        let path = [
+            egui::pos2(-0.5, 0.0),
+            Pos2::ZERO,
+            egui::pos2(48.26, 0.0),
+            egui::pos2(48.76, 0.0),
+        ];
+        let pins = route_pin_indices(&path);
+        for ratio in [1.0, 1.02, 1.10] {
+            let mut rope = Rope::new(path[0], path[3], 49.26 * ratio);
+            rope.seed_pinned_path(path[0], path[3], &pins);
+            for _ in 0..1200 {
+                rope.step_with_pins(path[0], path[3], 100.0, None, &pins);
+            }
+            let between_anchors: f32 = rope.points[pins[0].0..=pins[1].0]
+                .windows(2)
+                .map(|pair| pair[0].distance(pair[1]))
+                .sum();
+            assert!(
+                (between_anchors - 48.26 * ratio).abs() < 0.02,
+                "ratio={ratio}, anchor span={between_anchors}, expected={}",
+                48.26 * ratio
+            );
+        }
     }
     #[test]
     fn rope_survives_drag_release_moved_anchors_and_floor_contact() {

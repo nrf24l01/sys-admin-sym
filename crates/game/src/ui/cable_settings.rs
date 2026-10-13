@@ -12,17 +12,24 @@ pub(super) fn show(
 ) {
     let mut settings = sim.cable_settings();
     ui.add_enabled_ui(state.pending_assembly.is_none(), |ui| {
-        let mut automatic = state.cable_length_cm.is_none();
+        let mut automatic = state.cable_length_mm.is_none();
         if ui
             .checkbox(&mut automatic, tr("cable.auto-length"))
             .changed()
         {
-            state.cable_length_cm = if automatic { None } else { Some(100) };
+            state.cable_length_mm = if automatic { None } else { Some(1000) };
         }
-        if let Some(cm) = &mut state.cable_length_cm {
+        if let Some(mm) = &mut state.cable_length_mm {
             ui.horizontal(|ui| {
                 ui.label(tr("ui.cut-length"));
-                meters(ui, cm, 1);
+                ui.add(
+                    egui::DragValue::new(mm)
+                        .range(1..=100_000)
+                        .speed(10)
+                        .custom_formatter(|value, _| format!("{:.3}", value / 1000.0))
+                        .custom_parser(|text| parse_meters_precision(text, 1000.0))
+                        .suffix(tr("cable.meters")),
+                );
             });
         } else {
             ui.horizontal(|ui| {
@@ -96,8 +103,13 @@ fn meters(ui: &mut egui::Ui, cm: &mut u32, minimum: u32) {
 }
 
 fn parse_meters(text: &str) -> Option<f64> {
+    parse_meters_precision(text, 100.0)
+}
+
+fn parse_meters_precision(text: &str, units_per_meter: f64) -> Option<f64> {
     let meters: f64 = text.trim().replace(',', ".").parse().ok()?;
-    (meters.is_finite() && (0.0..=100.0).contains(&meters)).then(|| (meters * 100.0).round())
+    (meters.is_finite() && (0.0..=100.0).contains(&meters))
+        .then(|| (meters * units_per_meter).round())
 }
 
 #[cfg(test)]

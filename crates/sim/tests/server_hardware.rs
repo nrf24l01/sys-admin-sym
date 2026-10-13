@@ -195,7 +195,9 @@ fn bare_chassis_requires_parts_and_installed_nic_adds_real_ports() {
             .unwrap()
             .kind
             .port_position_normalized(onboard + index);
-        assert_eq!(position, slot.port_position(index, 4));
+        let expected = slot.port_position(index, 4);
+        assert!((position.0 - expected.0).abs() < 0.0001);
+        assert!((position.1 - expected.1).abs() < 0.0001);
         assert_eq!(
             server.hardware.as_ref().unwrap().card_ports[1][index],
             *port

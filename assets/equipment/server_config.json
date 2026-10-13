@@ -26,7 +26,8 @@
           0.595
         ],
         "speed": "1G",
-        "side": "back"
+        "side": "back",
+        "index": 0
       },
       {
         "left_down": [
@@ -38,7 +39,8 @@
           0.595
         ],
         "speed": "1G",
-        "side": "back"
+        "side": "back",
+        "index": 1
       }
     ],
     "c14": [
@@ -51,7 +53,8 @@
           0.9742785,
           0.87608224
         ],
-        "side": "back"
+        "side": "back",
+        "index": 0
       },
       {
         "left_down": [
@@ -62,7 +65,8 @@
           0.8225842,
           0.90566385
         ],
-        "side": "back"
+        "side": "back",
+        "index": 1
       }
     ]
   },
@@ -105,5 +109,19 @@
       "peak_mw": 180000
     },
     "power_factor_percent": 90
+  },
+  "texture_uvs": {
+    "front": [
+      0,
+      0,
+      1,
+      1
+    ],
+    "back": [
+      0,
+      0,
+      1,
+      1
+    ]
   }
 }

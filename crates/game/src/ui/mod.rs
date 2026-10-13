@@ -29,7 +29,6 @@ mod test_windows;
 mod textures;
 mod upstream;
 use cables::{CableScene, CableView, PowerCableView};
-use equipment::equipment_power_port_position;
 use rack::RackLayout;
 use terminal_renderer::TerminalRenderer;
 
@@ -218,12 +217,12 @@ pub fn load_equipment_images(mut images: ResMut<EquipmentImages>, assets: Res<As
     images.ups_faces = textures::load(&assets, "equipment/ups_faces.png");
     images.pdu_faces = textures::load(&assets, "equipment/pdu_faces.png");
     images.jacket = textures::load(&assets, "cables/pvc_jacket.png");
-    images.plug = textures::load(&assets, "cables/rj45_plug.png");
-    images.optical_connectors = textures::load(&assets, "equipment/optical_connectors.png");
+    images.plug = textures::load(&assets, connector_catalog().atlas("rj45"));
+    images.optical_connectors = textures::load(&assets, connector_catalog().atlas("optical"));
     images.shop_connectors = textures::load(&assets, "cables/optical_shop_connectors.png");
     images.shop_products = textures::load(&assets, "equipment/shop_products.png");
-    images.power_connectors = textures::load(&assets, "equipment/power_connectors.png");
-    images.power_plugs_rear = textures::load(&assets, "equipment/power_plugs_rear.png");
+    images.power_connectors = textures::load(&assets, connector_catalog().atlas("power"));
+    images.power_plugs_rear = textures::load(&assets, connector_catalog().atlas("power-plugs"));
     let sources = [
         images.server_front.id(),
         images.server_rear.id(),
@@ -1459,7 +1458,7 @@ fn link_inspector(
         ui.label(crate::localization::tr_args(
             "ui.m-ethernet-lead-2-rj45-plugs",
             &[
-                format!("{:.2}", link.length_cm as f32 / 100.0),
+                format!("{:.3}", link.physical_length_mm() as f32 / 1000.0),
                 crate::localization::cable_color(link.color),
             ],
         ));
@@ -1468,22 +1467,23 @@ fn link_inspector(
     if let Some(fault) = sim.link_status(link.a).fault {
         ui.weak(crate::localization::link_fault(fault));
     }
-    if let Ok(minimum) = sim.minimum_routed_cable_length(link.a, link.b, &link.route) {
+    if let Ok(minimum_mm) = sim.minimum_routed_cable_length_mm(link.a, link.b, &link.route) {
+        let cut_mm = link.physical_length_mm();
         ui.label(crate::localization::tr_args(
             "cable.route-minimum",
-            &[format!("{:.2}", minimum as f64 / 100.0)],
+            &[format!("{:.3}", minimum_mm as f64 / 1000.0)],
         ));
-        if link.length_cm >= minimum {
+        if cut_mm >= minimum_mm {
             ui.weak(crate::localization::tr_args(
                 "cable.length-reserve",
-                &[format!("{:.2}", (link.length_cm - minimum) as f64 / 100.0)],
+                &[format!("{:.3}", (cut_mm - minimum_mm) as f64 / 1000.0)],
             ));
         } else {
             ui.colored_label(
                 egui::Color32::LIGHT_RED,
                 crate::localization::tr_args(
                     "cable.length-shortage",
-                    &[format!("{:.2}", (minimum - link.length_cm) as f64 / 100.0)],
+                    &[format!("{:.3}", (minimum_mm - cut_mm) as f64 / 1000.0)],
                 ),
             );
         }
@@ -2218,15 +2218,14 @@ fn rack_view(
                                         }
                                     }
                                 }
-                                let inlet_meta = device.kind.power_inlet();
-                                if inlet_meta.is_some_and(|inlet| inlet.side == state.rack_side)
-                                    && device.rack.is_some_and(|p| p.unit == unit)
+                                if device.rack.is_some_and(|p| p.unit == unit)
                                     && !matches!(
                                         device.kind,
                                         DeviceKind::PatchPanel(_) | DeviceKind::CableManager(_)
                                     )
                                 {
                                     for endpoint in device_power_endpoints(device) {
+                                        if !device.kind.power_connector_socket(usize::from(endpoint.inlet())).is_some_and(|socket| socket.side == state.rack_side) { continue; }
                                         let inlet = device_power_inlet_rect(&device.kind, panel_rect, usize::from(endpoint.inlet()))
                                             .expect("device has power inlet");
                                         power_socket_rects.push((PowerSocket::Inlet(endpoint), inlet));
@@ -2280,9 +2279,7 @@ fn rack_view(
                                         });
                                     }
                                 }
-                                if state.rack_side == RackSide::Rear
-                                    && device.rack.is_some_and(|p| p.unit == unit)
-                                {
+                                if device.rack.is_some_and(|p| p.unit == unit) {
                                     let source = match device.kind {
                                         DeviceKind::Ups(ref x) => x.source,
                                         DeviceKind::Pdu(ref x) => x.source,
@@ -2291,8 +2288,7 @@ fn rack_view(
                                     if let Some(source) = source {
                                         let count = sim.power.outlets(source);
                                         for n in 0..count {
-                                            let socket =
-                                                source_outlet_rect(&device.kind, panel_rect, n);
+                                            let Some(socket) = equipment::equipment_socket_rect(&device.kind, &ConnectorType::IecC13, state.rack_side, n, panel_rect) else { continue; };
                                             let occupied =
                                                 sim.power.connections.contains_key(&OutletId {
                                                     source,
@@ -2869,10 +2865,10 @@ fn rack_view(
                                             )
                                             .is_ok()
                                         } else {
-                                            sim.quote_routed_colored_cable(
+                                            sim.quote_millimeter_cable(
                                                 first,
                                                 *port,
-                                                state.cable_length_cm,
+                                                state.cable_length_mm,
                                                 state.cable_color,
                                                 &state.pending_cable_route,
                                             )
@@ -3131,20 +3127,20 @@ fn rack_view(
                                 && sim.port_is_copper(port_id)
                         })
                         .map(|first| {
-                            match sim.quote_routed_colored_cable(
+                            match sim.quote_millimeter_cable(
                                 first,
                                 port_id,
-                                state.cable_length_cm,
+                                state.cable_length_mm,
                                 state.cable_color,
                                 &state.pending_cable_route,
                             ) {
                                 Ok(q) if q.reused => crate::localization::tr_args(
                                     "ui.reuse-m-finished-lead-no-materials-used",
-                                    &[format!("{:.2}", q.length_cm as f32 / 100.0)],
+                                    &[format!("{:.3}", q.length_mm as f32 / 1000.0)],
                                 ),
                                 Ok(q) => crate::localization::tr_args(
                                     "ui.cut-m-cable-2-rj45-connectors",
-                                    &[format!("{:.2}", q.length_cm as f32 / 100.0)],
+                                    &[format!("{:.3}", q.length_mm as f32 / 1000.0)],
                                 ),
                                 Err(error) => crate::localization::tr_args(
                                     "format.diagnostic-line",
@@ -3216,35 +3212,10 @@ fn rack_view(
 }
 
 fn equipment_uv(kind: &DeviceKind, side: RackSide) -> egui::Rect {
-    // Crop the generated photographs to their front panels at render time.
-    let (left, top, right, bottom) = match kind {
-        DeviceKind::Server(server) => {
-            let face = if side == RackSide::Front {
-                &server.model().artwork.front
-            } else {
-                &server.model().artwork.rear
-            };
-            let [l, t, r, b] = face.uv;
-            (l, t, r, b)
-        }
-        DeviceKind::Switch(_) if side == RackSide::Rear => (0.002, 0.45, 0.997, 0.755),
-        DeviceKind::Switch(sw)
-            if side == RackSide::Front && sw.model == SwitchModel::Catalyst24T4X =>
-        {
-            (8.0 / 500.0, 203.0 / 400.0, 495.0 / 500.0, 251.0 / 400.0)
-        }
-        DeviceKind::Switch(_) => (0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
-        DeviceKind::Router(_) if side == RackSide::Rear => (0.0, 0.31, 1.0, 0.70),
-        DeviceKind::Router(_) => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
-        DeviceKind::Ups(_) if side == RackSide::Front => (90.0 / 2048.0, 0.0, 1958.0 / 2048.0, 0.5),
-        DeviceKind::Ups(_) => (0.0, 0.5, 1.0, 1.0),
-        DeviceKind::Pdu(_) if side == RackSide::Front => {
-            (78.0 / 2048.0, 128.0 / 768.0, 1970.0 / 2048.0, 370.0 / 768.0)
-        }
-        DeviceKind::Pdu(_) => (78.0 / 2048.0, 375.0 / 768.0, 1970.0 / 2048.0, 619.0 / 768.0),
-        _ => (0.0, 0.0, 1.0, 1.0),
-    };
-    egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
+    equipment::equipment_face_uv(kind, side).unwrap_or(egui::Rect::from_min_max(
+        egui::pos2(0.0, 0.0),
+        egui::pos2(1.0, 1.0),
+    ))
 }
 
 fn normalized_panel_position(panel: egui::Rect, normalized: (f32, f32)) -> egui::Pos2 {
@@ -3259,24 +3230,8 @@ fn device_power_inlet_rect(
     panel: egui::Rect,
     index: usize,
 ) -> Option<egui::Rect> {
-    let inlet = kind.power_inlet()?;
-    if inlet.connector == PowerInletConnector::CiscoFourPin {
-        return Some(egui::Rect::from_center_size(
-            normalized_panel_position(panel, inlet.position),
-            egui::vec2(
-                (panel.width() * 0.04).clamp(12.0, 24.0),
-                (panel.height() * 0.4).clamp(12.0, 24.0),
-            ),
-        ));
-    }
-    Some(
-        equipment::equipment_power_port_rect(kind, "c14", index, panel).unwrap_or_else(|| {
-            egui::Rect::from_center_size(
-                normalized_panel_position(panel, inlet.position),
-                egui::vec2(16.0, 22.0),
-            )
-        }),
-    )
+    let socket = kind.power_connector_socket(index)?;
+    equipment::equipment_socket_rect(kind, &socket, socket.side, index, panel)
 }
 
 fn power_connector_kind(sim: &NetworkSim, socket: PowerSocket) -> cables::ConnectorKind {
@@ -3292,30 +3247,10 @@ fn power_connector_kind(sim: &NetworkSim, socket: PowerSocket) -> cables::Connec
     cables::ConnectorKind::Iec
 }
 
+#[cfg(test)]
 fn source_outlet_rect(kind: &DeviceKind, panel: egui::Rect, index: usize) -> egui::Rect {
-    if let Some(rect) = equipment::equipment_power_port_rect(kind, "c13", index, panel) {
-        return rect;
-    }
-    if let Some((x, y)) = equipment_power_port_position(kind, "c13", index) {
-        return egui::Rect::from_center_size(
-            normalized_panel_position(panel, (x, y)),
-            egui::vec2(panel.width() * 0.064, panel.height() * 0.40),
-        );
-    }
-    let (x, y, w, h) = match kind {
-        DeviceKind::Ups(_) => (
-            [0.611, 0.679, 0.748, 0.816][index.min(3)],
-            0.479,
-            0.064,
-            0.40,
-        ),
-        DeviceKind::Pdu(_) => (0.105 + 0.0928 * index.min(7) as f32, 0.50, 0.073, 0.64),
-        _ => (0.5, 0.5, 0.06, 0.4),
-    };
-    egui::Rect::from_center_size(
-        normalized_panel_position(panel, (x, y)),
-        egui::vec2(panel.width() * w, panel.height() * h),
-    )
+    equipment::equipment_power_port_rect(kind, "c13", index, panel)
+        .unwrap_or_else(|| egui::Rect::from_center_size(panel.center(), egui::Vec2::ZERO))
 }
 
 /// Power sockets are part of the equipment face interaction layer. They stay
@@ -3325,7 +3260,7 @@ fn paint_power_socket(painter: &egui::Painter, texture: egui::TextureId, rect: e
     painter.image(
         texture,
         rect,
-        egui::Rect::from_min_max(egui::pos2(0.025, 0.15), egui::pos2(0.338, 0.34)),
+        equipment::connector_sprite_uv("iec-socket"),
         egui::Color32::WHITE,
     );
 }
@@ -3397,10 +3332,19 @@ fn power_socket_location(
         PowerSocket::Inlet(PowerEndpoint::Source(source)) => (source_device(source)?, true),
     };
     let placement = device.rack?;
-    let side = if inlet {
-        device.kind.power_inlet()?.side
-    } else {
-        RackSide::Rear
+    let side = match socket {
+        PowerSocket::Inlet(endpoint) => {
+            device
+                .kind
+                .power_connector_socket(usize::from(endpoint.inlet()))?
+                .side
+        }
+        PowerSocket::Outlet(outlet) => {
+            device
+                .kind
+                .find_connector_socket(&ConnectorType::IecC13, usize::from(outlet.index))?
+                .side
+        }
     };
     Some(CableRoutePoint {
         rack: placement.rack,
@@ -3473,19 +3417,13 @@ fn rack_port_rect(
     connector: PortConnector,
     side: RackSide,
 ) -> egui::Rect {
-    let center = rack_port_position(kind, panel, index, connector, side);
-    let normalized_size = match (&kind, connector) {
-        (DeviceKind::Router(_), PortConnector::Rj45) => egui::vec2(0.041, 0.27),
-        (DeviceKind::Server(_), PortConnector::Rj45) => egui::vec2(0.036, 0.25),
-        (_, PortConnector::Rj45) => egui::vec2(0.029, 0.27),
-        (_, PortConnector::Sfp | PortConnector::Lc) => egui::vec2(0.034, 0.36),
-    };
+    if let Some(rect) = equipment::equipment_port_rect(kind, connector, side, index, panel) {
+        return rect;
+    }
+    // Unmapped virtual ports have no physical socket on the equipment face.
     egui::Rect::from_center_size(
-        center,
-        egui::vec2(
-            panel.width() * normalized_size.x,
-            panel.height() * normalized_size.y,
-        ),
+        rack_port_position(kind, panel, index, connector, side),
+        egui::Vec2::ZERO,
     )
 }
 
@@ -3534,15 +3472,14 @@ fn paint_server_backplane(
             egui::StrokeKind::Inside,
         );
         if let ServerPartKind::PciCard {
-            card: PciCard::Ethernet { .. },
+            card: PciCard::Ethernet { connector, .. },
         } = &part.kind
         {
             for port_id in hardware.card_ports.get(slot_index).into_iter().flatten() {
                 let Some(index) = server.ports.iter().position(|id| id == port_id) else {
                     continue;
                 };
-                let socket =
-                    rack_port_rect(kind, panel, index, PortConnector::Rj45, RackSide::Rear);
+                let socket = rack_port_rect(kind, panel, index, *connector, RackSide::Rear);
                 painter.rect_filled(socket, 1.0, egui::Color32::from_rgb(8, 12, 14));
                 painter.rect_stroke(
                     socket,
@@ -3700,8 +3637,7 @@ mod power_geometry_tests {
         let kind = &sim.device(id).unwrap().kind;
         let hitbox = device_power_inlet_rect(kind, panel, 0).unwrap();
         assert!(hitbox.center().distance(inlet) < 0.001);
-        let rear_c14 = equipment::equipment_power_port_rect(kind, "c14", 0, panel).unwrap();
-        assert!(!hitbox.intersects(rear_c14));
+        assert!(equipment::equipment_power_port_rect(kind, "c14", 0, panel).is_none());
         assert!(matches!(
             power_connector_kind(&sim, PowerSocket::Inlet(PowerEndpoint::Device(id))),
             cables::ConnectorKind::CiscoFourPin

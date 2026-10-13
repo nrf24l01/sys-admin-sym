@@ -1,26 +1,10 @@
 use bevy::{asset::AssetPlugin, prelude::*};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, egui};
-use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env, fs};
 
-#[derive(Clone, Serialize, Deserialize)]
-struct Config {
-    #[serde(rename = "type")]
-    kind: String,
-    texture: String,
-    #[serde(default)]
-    textures: HashMap<String, String>,
-    #[serde(default)]
-    ports: HashMap<String, Vec<Port>>,
-}
-#[derive(Clone, Serialize, Deserialize)]
-struct Port {
-    left_down: [f32; 2],
-    right_up: [f32; 2],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    speed: Option<String>,
-    side: String,
-}
+use cloud_provider_sim::{
+    EquipmentSocketConfig as Config, SocketMapping as Port, connector_catalog,
+};
 #[derive(Resource)]
 struct State {
     path: String,
@@ -59,6 +43,7 @@ fn main() {
         &fs::read_to_string(project_path(&path)).expect("cannot read --config"),
     )
     .expect("invalid config JSON");
+    config.validate().expect("invalid socket configuration");
     let texture = asset_path(arg("--texture").unwrap_or(config.texture.clone()));
     App::new()
         .add_plugins(
@@ -133,6 +118,7 @@ fn load_selection(state: &mut State, assets: &AssetServer) -> Result<(), String>
         &fs::read_to_string(project_path(&state.path)).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    config.validate()?;
     state.config = config;
     state.output = state.path.clone();
     state.texture_path = asset_path(state.config.texture.clone());
@@ -244,7 +230,11 @@ fn ui(
         egui::ComboBox::from_label("Port type")
             .selected_text(&s.group)
             .show_ui(u, |u| {
-                let mut groups: Vec<_> = s.config.ports.keys().cloned().collect();
+                let mut groups: Vec<_> = connector_catalog()
+                    .types
+                    .iter()
+                    .map(|definition| definition.id.key().to_owned())
+                    .collect();
                 groups.sort();
                 for group in groups {
                     u.selectable_value(&mut s.group, group.clone(), group);
@@ -267,7 +257,15 @@ fn ui(
         let p = s.config.ports.entry(g).or_default();
         u.label(format!("{} mapped ports", p.len()));
         if add {
+            let index = p
+                .iter()
+                .filter(|port| port.side == side_for_new)
+                .enumerate()
+                .map(|(i, port)| port.index.unwrap_or(i))
+                .max()
+                .map_or(0, |i| i + 1);
             p.push(Port {
+                index: Some(index),
                 left_down: [0.45, 0.45],
                 right_up: [0.55, 0.55],
                 speed: None,
@@ -277,10 +275,20 @@ fn ui(
         if distribute_clicked {
             distribute(p, &selected, vertical);
         }
+        if let Some(index) = selected.first().copied().filter(|index| *index < p.len()) {
+            u.horizontal(|ui| {
+                ui.label("Socket index");
+                ui.add(egui::DragValue::new(p[index].index.get_or_insert(index)).range(0..=255));
+            });
+        }
         if u.button("Save JSON").clicked() {
-            s.status = match serde_json::to_string_pretty(&s.config)
-                .and_then(|x| fs::write(project_path(&s.output), x).map_err(serde_json::Error::io))
-            {
+            s.status = match s
+                .config
+                .validate()
+                .and_then(|()| serde_json::to_string_pretty(&s.config).map_err(|e| e.to_string()))
+                .and_then(|json| {
+                    fs::write(project_path(&s.output), json).map_err(|e| e.to_string())
+                }) {
                 Ok(_) => "Saved".into(),
                 Err(e) => e.to_string(),
             };
@@ -290,13 +298,21 @@ fn ui(
         u.small("Drag a port box to move it. Shift-click selects multiple ports.");
     });
     egui::CentralPanel::default().show(&mut root, |u| {
-        let uv = face_uv(&s.config.kind, &s.side);
+        let uv = s
+            .config
+            .texture_uvs
+            .get(&s.side)
+            .map(|[l, t, r, b]| egui::Rect::from_min_max(egui::pos2(*l, *t), egui::pos2(*r, *b)))
+            .unwrap_or(egui::Rect::from_min_max(
+                egui::pos2(0.0, 0.0),
+                egui::pos2(1.0, 1.0),
+            ));
         let image = s.images.get(&s.side);
         let aspect = image
             .and_then(|handle| images.get(handle))
             .map(|image| {
                 let size = image.texture_descriptor.size;
-                size.width as f32 / (size.height as f32 * uv.height())
+                size.width as f32 * uv.width() / (size.height as f32 * uv.height())
             })
             .unwrap_or(16.0 / 9.0);
         let max = u.available_size().min(egui::vec2(1100.0, 760.0)) * s.zoom;
@@ -385,19 +401,6 @@ fn ui(
     Ok(())
 }
 
-fn face_uv(kind: &str, side: &str) -> egui::Rect {
-    let (left, top, right, bottom) = match (kind, side) {
-        ("switch", "front") => (0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
-        ("switch", "back") => (0.002, 0.45, 0.997, 0.755),
-        ("router", "front") => (0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
-        ("router", "back") => (0.0, 0.31, 1.0, 0.70),
-        ("server", "front") => (0.009, 0.48, 0.995, 0.84),
-        ("ups", "front") | ("pdu", "front") => (0.0, 0.0, 1.0, 0.5),
-        ("ups", "back") | ("pdu", "back") => (0.0, 0.5, 1.0, 1.0),
-        _ => (0.0, 0.0, 1.0, 1.0),
-    };
-    egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom))
-}
 fn rect(r: egui::Rect, p: &Port) -> egui::Rect {
     let f = |x: [f32; 2]| egui::pos2(r.left() + r.width() * x[0], r.top() + r.height() * x[1]);
     egui::Rect::from_two_pos(f(p.left_down), f(p.right_up))

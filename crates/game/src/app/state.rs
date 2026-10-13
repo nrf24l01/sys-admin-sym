@@ -64,7 +64,7 @@ pub struct UiState {
     pub pending_assembly: Option<cloud_provider_sim::CableAssemblyId>,
     /// Route points collected between choosing the source and destination plug.
     pub pending_cable_route: Vec<CableRoutePoint>,
-    pub cable_length_cm: Option<u32>,
+    pub cable_length_mm: Option<u32>,
     pub cable_color: CableColor,
     pub terminal_windows: HashSet<DeviceId>,
     pub terminal_window_focus: HashSet<DeviceId>,

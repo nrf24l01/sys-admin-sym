@@ -4490,6 +4490,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_egui",
+ "cloud-provider-sim",
  "serde",
  "serde_json",
 ]

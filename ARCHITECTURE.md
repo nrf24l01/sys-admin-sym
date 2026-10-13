@@ -64,6 +64,13 @@ panels, clickable ports, and cable paths are derived presentation and are never
 authoritative. Runtime telemetry is separate from saved configuration so
 activity indicators do not change persistence data.
 
+Physical sockets share the `sim::Connector` trait and `ConnectorSocket` geometry.
+Network and power adapters retain their saved representations, while connector
+families, mating metadata and equipment maps come from `connectors.json` and the
+equipment/server/card catalogs. The simulation and UI resolve the same socket
+rectangles and centers. The texture mapper uses the same serialized schema.
+See [Physical connectors](docs/CONNECTORS.md).
+
 Links are canonical records. The port-to-link map is a transient index rebuilt
 after load. Editor text remains in `EditorDrafts` until **Apply**, so incomplete
 addresses never enter the domain state.

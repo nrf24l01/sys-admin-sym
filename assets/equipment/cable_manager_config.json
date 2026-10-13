@@ -10,12 +10,26 @@
   },
   "type": "cable_manager",
   "texture": "",
+  "texture_uvs": {
+    "front": [
+      0,
+      0,
+      1,
+      1
+    ],
+    "back": [
+      0,
+      0,
+      1,
+      1
+    ]
+  },
   "ports": {
     "anchor": [
-      { "left_down": [0.10, 0.35], "right_up": [0.20, 0.65], "side": "front" },
-      { "left_down": [0.30, 0.35], "right_up": [0.40, 0.65], "side": "front" },
-      { "left_down": [0.50, 0.35], "right_up": [0.60, 0.65], "side": "front" },
-      { "left_down": [0.70, 0.35], "right_up": [0.80, 0.65], "side": "front" }
+      {"left_down": [0.1, 0.35], "right_up": [0.2, 0.65], "side": "front", "index": 0},
+      {"left_down": [0.3, 0.35], "right_up": [0.4, 0.65], "side": "front", "index": 1},
+      {"left_down": [0.5, 0.35], "right_up": [0.6, 0.65], "side": "front", "index": 2},
+      {"left_down": [0.7, 0.35], "right_up": [0.8, 0.65], "side": "front", "index": 3}
     ]
   }
 }

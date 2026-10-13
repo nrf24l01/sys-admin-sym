@@ -63,6 +63,27 @@ type ChannelModules<'a> =
 
 impl ServerCatalog {
     pub fn validate(&self) -> Result<(), String> {
+        for part in &self.parts {
+            if let ServerPartKind::PciCard {
+                card:
+                    PciCard::Ethernet {
+                        ports,
+                        socket_rects,
+                        ..
+                    },
+            } = &part.kind
+                && !socket_rects.is_empty()
+                && (socket_rects.len() != usize::from(*ports)
+                    || socket_rects.iter().any(|rect| {
+                        rect.iter()
+                            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+                            || rect[0] >= rect[2]
+                            || rect[1] >= rect[3]
+                    }))
+            {
+                return Err(format!("invalid NIC socket layout for {}", part.id));
+            }
+        }
         let c = &self.chassis;
         let m = &c.memory;
         if c.cpu_sockets == 0

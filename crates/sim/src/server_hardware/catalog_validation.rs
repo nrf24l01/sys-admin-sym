@@ -32,12 +32,20 @@ impl ServerCatalog {
                     models: Vec::new(),
                 };
                 profile.validate()?;
-                if model.power_inlets.iter().any(|p| !rect_valid(p.rect))
-                    || model
-                        .chassis
-                        .pcie_slots
-                        .iter()
-                        .any(|p| !rect_valid(p.face_rect))
+                if model.power_inlets.iter().any(|p| {
+                    !rect_valid(p.rect)
+                        || !matches!(p.side.as_deref(), None | Some("front" | "back"))
+                        || !matches!(
+                            p.connector,
+                            None | Some(
+                                crate::ConnectorType::IecC14 | crate::ConnectorType::CiscoFourPin
+                            )
+                        )
+                }) || model
+                    .chassis
+                    .pcie_slots
+                    .iter()
+                    .any(|p| !rect_valid(p.face_rect))
                     || model
                         .chassis
                         .drive_bays
@@ -52,6 +60,11 @@ impl ServerCatalog {
                         || port.name.is_empty()
                         || crate::LinkSpeed::from_mbps(port.speed_mbps).is_none()
                         || !rect_valid(port.socket.rect)
+                        || !matches!(port.socket.side.as_deref(), None | Some("front" | "back"))
+                        || !matches!(
+                            port.socket.connector,
+                            None | Some(crate::ConnectorType::Rj45)
+                        )
                     {
                         return Err("invalid onboard_ports name, speed or geometry".into());
                     }
