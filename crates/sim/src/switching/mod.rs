@@ -24,6 +24,11 @@ impl NetworkSim {
     pub(crate) fn switch_services(&self, device: DeviceId) -> Option<&SwitchServices> {
         match &self.device(device)?.kind {
             DeviceKind::Switch(switch) => Some(&switch.services),
+            DeviceKind::Router(router)
+                if router.model().category == NetworkDeviceCategory::Switch =>
+            {
+                Some(&router.services)
+            }
             _ => None,
         }
     }
@@ -39,6 +44,11 @@ impl NetworkSim {
             .kind
         {
             DeviceKind::Switch(switch) => Ok(&mut switch.services),
+            DeviceKind::Router(router)
+                if router.model().category == NetworkDeviceCategory::Switch =>
+            {
+                Ok(&mut router.services)
+            }
             _ => Err("% This command requires a switch.".into()),
         }
     }

@@ -22,7 +22,7 @@ pub(super) fn port_controls(
     if let Some(fault) = status.fault {
         ui.weak(crate::localization::link_fault(fault));
     }
-    if p.connector == PortConnector::Rj45 {
+    if p.connector == PortConnector::Rj45 && sim.cage_profile(port).is_none() {
         return;
     }
     ui.separator();
@@ -56,9 +56,9 @@ pub(super) fn port_controls(
                 .values()
                 .filter(|m| m.port.is_none())
             {
-                if optics_catalog()
-                    .module(&module.model_id)
-                    .is_some_and(|m| cage.supports(m))
+                if sim
+                    .transceiver_model_supported_at_port(&module.model_id, port)
+                    .is_ok()
                 {
                     let (_, count) = modules
                         .entry(module.model_id.as_str())
@@ -286,20 +286,25 @@ mod tests {
 
     #[test]
     fn localized_port_install_button_emits_a_typed_inventory_command() {
-        for language in ["en", "ru"] {
+        for (language, model_id, port_index) in [
+            ("en", "c1000_24t_4g_l", 24),
+            ("ru", "c1000_24t_4g_l", 24),
+            ("en", "isr_4321", 0),
+            ("ru", "isr_4321", 0),
+        ] {
             let mut localization = Localization::default();
             localization.select(language).unwrap();
             let _scope = localization.enter();
             let mut sim = NetworkSim::new();
             let SimEvent::DeviceAdded(device) = sim
-                .execute(Command::BuyDevice {
-                    kind: DeviceTemplate::Switch,
+                .execute(Command::BuyNetworkDevice {
+                    model_id: model_id.into(),
                 })
                 .unwrap()[0]
             else {
                 panic!()
             };
-            let port = sim.device(device).unwrap().ports()[24];
+            let port = sim.device(device).unwrap().ports()[port_index];
             sim.execute(Command::Optics(OpticsCommand::BuyTransceiver {
                 model: "sfp_1g_sx".into(),
             }))

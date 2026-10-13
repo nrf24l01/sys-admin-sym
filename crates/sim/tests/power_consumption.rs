@@ -426,8 +426,7 @@ fn installed_power_json_changes_all_equipment_without_rebuilding() {
         "server_config.json",
         "servers.json",
         "server_parts.json",
-        "router_config.json",
-        "switches.json",
+        "network_devices.json",
         "drives.json",
         "ups_config.json",
         "pdu_config.json",
@@ -461,14 +460,17 @@ fn installed_power_json_changes_all_equipment_without_rebuilding() {
                     json!({"idle_mw":4000,"peak_mw":8000,"link_share_permille":500});
             }
             "drives.json" => config["drives"][1]["power"] = json!({"idle_mw":2000,"peak_mw":6000}),
-            "router_config.json" => {
-                config["power"]["idle_mw"] = json!(12000);
-                config["power"]["peak_mw"] = json!(48000);
-                config["power"]["adapter"]["efficiency_percent"] = json!(80);
-                config["power"]["adapter"]["output_watts"] = json!(20);
-            }
-            "switches.json" => {
-                config[0]["power"] = json!({"idle_mw":20000,"peak_mw":30000,"link_share_permille":500,"power_factor_percent":95})
+            "network_devices.json" => {
+                for model in config["models"].as_array_mut().unwrap() {
+                    if model["id"] == "cisco_isr_c1111" {
+                        model["power"]["idle_mw"] = json!(12000);
+                        model["power"]["peak_mw"] = json!(48000);
+                        model["adapter"]["efficiency_percent"] = json!(80);
+                        model["adapter"]["output_watts"] = json!(20);
+                    } else if model["id"] == "c1000_24t_4g_l" {
+                        model["power"] = json!({"idle_mw":20000,"peak_mw":30000,"link_share_permille":500,"power_factor_percent":95});
+                    }
+                }
             }
             "ups_config.json" => {
                 config["power"]["capacity_watts"] = json!(800);

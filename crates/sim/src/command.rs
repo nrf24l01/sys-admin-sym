@@ -50,6 +50,9 @@ pub enum Command {
     BuyDevice {
         kind: DeviceTemplate,
     },
+    BuyNetworkDevice {
+        model_id: String,
+    },
     BuyServerChassis,
     BuyServerFullPack,
     BuyServer {

@@ -58,6 +58,16 @@ pub(super) fn equipment_port_position(
 }
 
 #[cfg(test)]
+fn equipment_power_port_position(
+    kind: &DeviceKind,
+    connector: &str,
+    index: usize,
+) -> Option<(f32, f32)> {
+    let socket = kind.power_connector_socket(index)?;
+    (socket.connector.key() == connector).then(|| socket.center())
+}
+
+#[cfg(test)]
 pub(super) fn equipment_power_port_rect(
     kind: &DeviceKind,
     connector: &str,
@@ -79,6 +89,54 @@ fn configs() -> &'static [cloud_provider_sim::EquipmentSocketConfig] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_network_models_use_catalog_socket_and_power_geometry() {
+        use cloud_provider_sim::*;
+        for model in &network_device_catalog().models {
+            let mut sim = NetworkSim::new();
+            sim.money = 1_000_000;
+            let id = sim
+                .execute(Command::BuyNetworkDevice {
+                    model_id: model.id.clone(),
+                })
+                .unwrap()
+                .into_iter()
+                .find_map(|e| match e {
+                    SimEvent::DeviceAdded(id) => Some(id),
+                    _ => None,
+                })
+                .unwrap();
+            let kind = &sim.device(id).unwrap().kind;
+            for (index, port) in model.ports.iter().enumerate() {
+                assert_eq!(
+                    equipment_port_position(kind, port.connector, port.side, index),
+                    Some(port.socket.center())
+                );
+                assert_eq!(
+                    equipment_port_position(
+                        kind,
+                        port.connector,
+                        if port.side == RackSide::Front {
+                            RackSide::Rear
+                        } else {
+                            RackSide::Front
+                        },
+                        index
+                    ),
+                    None
+                );
+            }
+            for (index, inlet) in model.power_inlets.iter().enumerate() {
+                if inlet.connector == PowerInletConnector::IecC14 {
+                    assert_eq!(
+                        equipment_power_port_position(kind, "c14", index),
+                        Some(inlet.socket.center())
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn bundled_switch_map_is_readable() {

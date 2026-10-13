@@ -6,6 +6,8 @@ use cloud_provider_sim::PurchaseItem;
 pub(in crate::ui) struct ShopTextures {
     pub servers:
         std::sync::Arc<std::collections::BTreeMap<String, crate::ui::server_models::ServerShopIds>>,
+    pub network:
+        std::sync::Arc<std::collections::BTreeMap<String, crate::ui::server_models::ServerShopIds>>,
     pub use_full: bool,
     pub server: egui::TextureId,
     pub router: egui::TextureId,
@@ -82,6 +84,21 @@ pub(super) fn artwork(offer: &Offer, textures: &ShopTextures) -> Option<Artwork>
             ready: t.ready,
         });
     }
+    if let Some(model) = cloud_provider_sim::network_device_catalog().model(&offer.display_id) {
+        let t = textures.network.get(&model.id)?;
+        let [l, top, r, b] = model.artwork.front.uv;
+        let [w, h] = model.artwork.front.source_size;
+        return Some(Artwork {
+            texture: if textures.use_full {
+                t.full
+            } else {
+                t.thumbnail
+            },
+            uv: egui::Rect::from_min_max(egui::pos2(l, top), egui::pos2(r, b)),
+            aspect: w as f32 * (r - l) / (h as f32 * (b - top)),
+            ready: t.ready,
+        });
+    }
     let rect = |a, b, c, d| egui::Rect::from_min_max(egui::pos2(a, b), egui::pos2(c, d));
     let panel = |texture, uv: egui::Rect, source: egui::Vec2, ready| {
         Some(Artwork {
@@ -92,24 +109,6 @@ pub(super) fn artwork(offer: &Offer, textures: &ShopTextures) -> Option<Artwork>
         })
     };
     match offer.display_id.as_str() {
-        "cisco_isr_c1111" => panel(
-            textures.router,
-            rect(0.0, 193.0 / 683.0, 1.0, 480.0 / 683.0),
-            egui::vec2(2172.0, 724.0),
-            textures.ready[1],
-        ),
-        "cisco_catalyst_c1000" => panel(
-            textures.switch,
-            rect(0.0, 210.0 / 666.0, 1.0, 434.0 / 666.0),
-            egui::vec2(2200.0, 715.0),
-            textures.ready[2],
-        ),
-        "switch_10g" => panel(
-            textures.switch_10g,
-            rect(8.0 / 500.0, 203.0 / 400.0, 495.0 / 500.0, 251.0 / 400.0),
-            egui::vec2(500.0, 400.0),
-            textures.ready[8],
-        ),
         "apc_smt1500" => panel(
             textures.ups,
             rect(90.0 / 2048.0, 0.0, 1958.0 / 2048.0, 0.5),
@@ -199,6 +198,22 @@ pub(super) fn image(ui: &mut egui::Ui, offer: &Offer, textures: &ShopTextures, s
 pub(super) fn test_textures() -> ShopTextures {
     let texture = egui::TextureId::User(1);
     ShopTextures {
+        network: std::sync::Arc::new(
+            cloud_provider_sim::network_device_catalog()
+                .models
+                .iter()
+                .map(|m| {
+                    (
+                        m.id.clone(),
+                        crate::ui::server_models::ServerShopIds {
+                            thumbnail: texture,
+                            full: texture,
+                            ready: true,
+                        },
+                    )
+                })
+                .collect(),
+        ),
         use_full: false,
         servers: std::sync::Arc::new(
             cloud_provider_sim::server_catalog()

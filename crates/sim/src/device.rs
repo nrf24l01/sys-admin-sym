@@ -27,6 +27,8 @@ impl Device {
     pub fn rack_units(&self) -> u8 {
         if let DeviceKind::Server(server) = &self.kind {
             server.model().rack_units
+        } else if let Some(model) = self.kind.network_model() {
+            model.rack_units
         } else {
             self.template().rack_units()
         }
@@ -39,7 +41,7 @@ impl Device {
         match self.kind {
             DeviceKind::Server(_) => DeviceTemplate::Server,
             DeviceKind::Switch(_) => DeviceTemplate::Switch,
-            DeviceKind::Router(_) => DeviceTemplate::Router,
+            DeviceKind::Router(ref r) => r.model().category.template(),
             DeviceKind::PatchPanel(_) => DeviceTemplate::PatchPanel,
             DeviceKind::CableManager(_) => DeviceTemplate::CableManager,
             DeviceKind::Ups(_) => DeviceTemplate::Ups,
@@ -79,19 +81,24 @@ pub const RACK_GAP_CM: f32 = 0.5;
 impl DeviceKind {
     pub fn ports(&self) -> &[PortId] {
         match self {
-            DeviceKind::Server(v) => &v.ports,
-            DeviceKind::Switch(v) => &v.ports,
-            DeviceKind::Router(v) => &v.ports,
-            DeviceKind::PatchPanel(v) => &v.ports,
-            DeviceKind::CableManager(v) => &v.ports,
-            DeviceKind::Ups(v) => &v.ports,
-            DeviceKind::Pdu(v) => &v.ports,
+            Self::Server(v) => &v.ports,
+            Self::Switch(v) => &v.ports,
+            Self::Router(v) => &v.ports,
+            Self::PatchPanel(v) => &v.ports,
+            Self::CableManager(v) => &v.ports,
+            Self::Ups(v) => &v.ports,
+            Self::Pdu(v) => &v.ports,
         }
     }
-
-    /// Legacy power inlet view backed by the common JSON connector resolver.
-    pub fn power_inlet(&self) -> Option<PowerInlet> {
-        let socket = self.power_connector_socket(0)?;
+    pub fn network_model(&self) -> Option<&'static crate::NetworkDeviceModel> {
+        match self {
+            Self::Switch(s) => Some(s.model.spec()),
+            Self::Router(r) => Some(r.model()),
+            _ => None,
+        }
+    }
+    pub fn power_inlet_at(&self, index: usize) -> Option<PowerInlet> {
+        let socket = self.power_connector_socket(index)?;
         let connector = match socket.connector {
             crate::ConnectorType::IecC14 => PowerInletConnector::IecC14,
             crate::ConnectorType::CiscoFourPin => PowerInletConnector::CiscoFourPin,
@@ -103,10 +110,16 @@ impl DeviceKind {
             position: socket.center(),
         })
     }
-
-    /// Socket centers shared by cable cuts and rendering. New callers with port
-    /// metadata should use `connector_socket` directly.
+    pub fn power_inlet(&self) -> Option<PowerInlet> {
+        self.power_inlet_at(0)
+    }
     pub fn port_position_normalized(&self, index: usize) -> (f32, f32) {
+        if let Some(model) = self.network_model() {
+            return model
+                .ports
+                .get(index)
+                .map_or((0.5, 0.5), |p| p.position(p.connector));
+        }
         let (connector, side) = match self {
             Self::Server(server) => {
                 let connector = server
@@ -135,15 +148,9 @@ impl DeviceKind {
                     .unwrap_or(crate::PortConnector::Rj45);
                 (connector, crate::RackSide::Rear)
             }
-            Self::Switch(sw) => (
-                if index < sw.model.spec().copper_ports {
-                    crate::PortConnector::Rj45
-                } else {
-                    crate::PortConnector::Sfp
-                },
-                crate::RackSide::Front,
-            ),
-            Self::Router(_) => (crate::PortConnector::Rj45, crate::RackSide::Front),
+            Self::Switch(_) | Self::Router(_) => {
+                (crate::PortConnector::Rj45, crate::RackSide::Front)
+            }
             Self::PatchPanel(_) => (
                 crate::PortConnector::Rj45,
                 if index.is_multiple_of(2) {
@@ -191,6 +198,10 @@ pub struct Switch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Router {
+    #[serde(default)]
+    pub model: crate::NetworkModelId,
+    #[serde(default)]
+    pub services: crate::SwitchServices,
     pub ports: Vec<PortId>,
     pub interfaces: Vec<RouterInterface>,
     pub routes: Vec<Route>,
@@ -202,6 +213,12 @@ pub struct Router {
     pub svi_ports: Vec<PortId>,
     #[serde(default = "routing_enabled_default")]
     pub routing_enabled: bool,
+}
+
+impl Router {
+    pub fn model(&self) -> &'static crate::NetworkDeviceModel {
+        self.model.spec()
+    }
 }
 
 pub(crate) fn default_router_vlans() -> Vec<Vlan> {
@@ -239,7 +256,8 @@ impl DeviceTemplate {
     pub fn price(self) -> i64 {
         match self {
             Self::Server => crate::server_catalog().default_model().price,
-            Self::Switch | Self::Router => 500,
+            Self::Switch => crate::SwitchModel::default().spec().price,
+            Self::Router => crate::NetworkModelId::default().spec().price,
             Self::PatchPanel => 150,
             Self::CableManager => 75,
             Self::Ups => 1_200,

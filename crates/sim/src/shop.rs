@@ -7,6 +7,7 @@ pub const MAX_PURCHASE_QUANTITY: u32 = 100;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PurchaseItem {
     Device(DeviceTemplate),
+    NetworkDevice(String),
     ServerChassis,
     ServerFullPack,
     ServerModel {
@@ -33,6 +34,12 @@ impl PurchaseItem {
     pub fn unit_price(&self) -> Result<i64, SimError> {
         Ok(match self {
             Self::Device(model) => model.price(),
+            Self::NetworkDevice(id) => {
+                network_device_catalog()
+                    .model(id)
+                    .ok_or(OpticsError::UnknownModel)?
+                    .price
+            }
             Self::ServerChassis => DeviceTemplate::Server.price(),
             Self::ServerFullPack => ServerFullPack::price(),
             Self::ServerModel {
@@ -95,6 +102,9 @@ impl PurchaseItem {
     fn command(&self) -> Command {
         match self {
             Self::Device(kind) => Command::BuyDevice { kind: *kind },
+            Self::NetworkDevice(model_id) => Command::BuyNetworkDevice {
+                model_id: model_id.clone(),
+            },
             Self::ServerChassis => Command::BuyServerChassis,
             Self::ServerFullPack => Command::BuyServerFullPack,
             Self::ServerModel {

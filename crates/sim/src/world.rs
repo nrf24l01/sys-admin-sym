@@ -117,6 +117,7 @@ impl NetworkSim {
             workload.storage = workload.storage.min(1000);
         }
         self.normalize_switch_models();
+        self.normalize_combo_connectors();
         self.migrate_legacy_sfp_nic();
         self.power
             .devices
@@ -128,7 +129,7 @@ impl NetworkSim {
                         < if let DeviceKind::Server(server) = &d.kind {
                             server.model().chassis.psu_bays
                         } else {
-                            1
+                            d.kind.network_model().map_or(1, |m| m.power_inlets.len())
                         }
                 })
             }
@@ -156,10 +157,9 @@ impl NetworkSim {
         for (outlet, endpoint) in missing_cords {
             let kind = match endpoint {
                 PowerEndpoint::Device(id)
-                    if self
-                        .devices
-                        .get(&id)
-                        .is_some_and(|d| matches!(d.kind, DeviceKind::Router(_))) =>
+                    if self.devices.get(&id).is_some_and(|d| {
+                        d.kind.network_model().is_some_and(|m| m.adapter.is_some())
+                    }) =>
                 {
                     PowerCordKind::Cisco66WAdapter
                 }
@@ -758,6 +758,13 @@ impl NetworkSim {
                 let id = self.buy_device(kind)?;
                 vec![SimEvent::DeviceAdded(id)]
             }
+            Command::BuyNetworkDevice { model_id } => {
+                let model = network_device_catalog()
+                    .model(&model_id)
+                    .ok_or(OpticsError::UnknownModel)?;
+                let id = self.buy_network_device(model)?;
+                vec![SimEvent::DeviceAdded(id)]
+            }
             Command::BuyServer {
                 model_id,
                 configuration,
@@ -1083,7 +1090,7 @@ impl NetworkSim {
         price: i64,
         switch_model: SwitchModel,
     ) -> Result<DeviceId, SimError> {
-        self.buy_device_with_profiles(template, price, switch_model, None)
+        self.buy_device_with_profiles(template, price, switch_model, None, None)
     }
 
     pub(crate) fn buy_device_with_server_model(
@@ -1096,6 +1103,20 @@ impl NetworkSim {
             model.price,
             SwitchModel::default(),
             Some(model),
+            None,
+        )
+    }
+
+    pub(crate) fn buy_network_device(
+        &mut self,
+        model: &'static NetworkDeviceModel,
+    ) -> Result<DeviceId, SimError> {
+        self.buy_device_with_profiles(
+            model.category.template(),
+            model.price,
+            SwitchModel::default(),
+            None,
+            Some(model),
         )
     }
 
@@ -1105,6 +1126,7 @@ impl NetworkSim {
         price: i64,
         switch_model: SwitchModel,
         selected_server: Option<&ServerModel>,
+        selected_network: Option<&NetworkDeviceModel>,
     ) -> Result<DeviceId, SimError> {
         if self.money < price {
             return Err(SimError::InsufficientFunds {
@@ -1157,109 +1179,78 @@ impl NetworkSim {
                     }),
                 )
             }
-            DeviceTemplate::Switch => {
-                let spec = switch_model.spec();
-                let mut ports: Vec<_> = (1..=spec.copper_ports)
-                    .map(|n| {
-                        self.alloc_port(
-                            id,
-                            format!("Gi1/0/{n:02}"),
-                            PortConnector::Rj45,
-                            PortConfig::Switch(SwitchPortConfig {
-                                mode: SwitchPortMode::Access { vlan: None },
+            DeviceTemplate::Switch | DeviceTemplate::Router => {
+                let model = selected_network.unwrap_or_else(|| {
+                    if template == DeviceTemplate::Switch {
+                        switch_model.spec()
+                    } else {
+                        NetworkModelId::default().spec()
+                    }
+                });
+                let mut interfaces = Vec::new();
+                let ports = model
+                    .ports
+                    .iter()
+                    .map(|spec| {
+                        let config = match spec.role {
+                            NetworkPortRole::Routed => {
+                                PortConfig::Router(RouterPortConfig::default())
+                            }
+                            NetworkPortRole::Switch => PortConfig::Switch(SwitchPortConfig {
+                                mode: if spec.trunk {
+                                    SwitchPortMode::Trunk {
+                                        native_vlan: Some(VlanId(1)),
+                                        allowed: vec![VlanId(1)],
+                                    }
+                                } else {
+                                    SwitchPortMode::Access { vlan: None }
+                                },
                             }),
-                        )
+                        };
+                        let port = self.alloc_port(id, spec.name.clone(), spec.connector, config);
+                        let p = self.ports.get_mut(&port).unwrap();
+                        let speed = LinkSpeed::from_mbps(spec.speed_mbps)
+                            .expect("validated network port speed");
+                        p.max_speed = speed;
+                        p.advertised_speed = speed;
+                        p.side = spec.side;
+                        if let Some(cage) = &spec.cage {
+                            self.optics.cages.insert(port, cage.clone());
+                        }
+                        if spec.default_wan {
+                            let interface = RouterInterface::wan(&spec.name, port);
+                            if let PortConfig::Router(c) = &mut p.config {
+                                c.interfaces.push(interface.clone());
+                            }
+                            interfaces.push(interface);
+                        }
+                        port
                     })
                     .collect();
-                for port in &ports {
-                    self.ports.get_mut(port).unwrap().side = RackSide::Front;
-                }
-                ports.extend((1..=spec.uplinks).map(|n| {
-                    let speed = spec.cage.modes.iter().map(|mode| mode.speed).max().unwrap();
-                    let name = if speed == LinkSpeed::Gbps10 {
-                        format!("Te1/0/{n:02}")
-                    } else {
-                        format!("Gi1/0/{:02}", spec.copper_ports + n)
-                    };
-                    let port = self.alloc_port(
-                        id,
-                        name,
-                        PortConnector::Sfp,
-                        PortConfig::Switch(SwitchPortConfig {
-                            mode: SwitchPortMode::Trunk {
-                                native_vlan: Some(VlanId(1)),
-                                allowed: vec![VlanId(1)],
-                            },
-                        }),
-                    );
-                    let p = self.ports.get_mut(&port).unwrap();
-                    p.max_speed = speed;
-                    p.advertised_speed = speed;
-                    p.side = RackSide::Front;
-                    self.optics.cages.insert(port, spec.cage.clone());
-                    port
-                }));
-                (
-                    format!("{} #{index:02}", spec.name),
-                    DeviceKind::Switch(Switch {
-                        model: switch_model,
+                let kind = if model.category == NetworkDeviceCategory::Router
+                    || model.routing_enabled
+                {
+                    DeviceKind::Router(Router {
+                        model: NetworkModelId::parse(&model.id)
+                            .map_err(SimError::ServerHardware)?,
                         services: SwitchServices::default(),
                         ports,
-                        vlans: vec![Vlan {
-                            id: VlanId(1),
-                            name: "Default".into(),
-                        }],
-                    }),
-                )
-            }
-            DeviceTemplate::Router => {
-                let mut ports = Vec::new();
-                let profile = router_network_profile();
-                for index in 0..profile.wan_ports.len() + profile.lan_ports.len() {
-                    let wan = profile.wan_ports.iter().position(|i| *i == index);
-                    let name = wan.map(|n| format!("WAN{}", n + 1)).unwrap_or_else(|| {
-                        format!(
-                            "LAN{}",
-                            profile.lan_ports.iter().position(|i| *i == index).unwrap() + 1
-                        )
-                    });
-                    ports.push(self.alloc_port(
-                        id,
-                        name,
-                        PortConnector::Rj45,
-                        if wan.is_some() {
-                            PortConfig::Router(RouterPortConfig::default())
-                        } else {
-                            PortConfig::Switch(SwitchPortConfig {
-                                mode: SwitchPortMode::Access { vlan: None },
-                            })
-                        },
-                    ));
-                }
-                for port in &ports {
-                    self.ports.get_mut(port).unwrap().side = RackSide::Front;
-                }
-                let wan = ports[0];
-                let interface = RouterInterface::wan("WAN1", wan);
-                if let Some(Port {
-                    config: PortConfig::Router(config),
-                    ..
-                }) = self.ports.get_mut(&wan)
-                {
-                    config.interfaces.push(interface.clone());
-                }
-                (
-                    format!("Cisco ISR C1111-8P #{index:02}"),
-                    DeviceKind::Router(Router {
-                        ports,
-                        interfaces: vec![interface],
+                        interfaces,
                         routes: Vec::new(),
                         domain_routes: Vec::new(),
                         vlans: crate::device::default_router_vlans(),
                         svi_ports: Vec::new(),
-                        routing_enabled: profile.routing_enabled,
-                    }),
-                )
+                        routing_enabled: model.routing_enabled,
+                    })
+                } else {
+                    DeviceKind::Switch(Switch {
+                        model: SwitchModel::parse(&model.id).map_err(SimError::ServerHardware)?,
+                        services: SwitchServices::default(),
+                        ports,
+                        vlans: crate::device::default_router_vlans(),
+                    })
+                };
+                (format!("{} #{index:02}", model.name), kind)
             }
             DeviceTemplate::PatchPanel => {
                 let mut ports = Vec::new();
@@ -1774,6 +1765,8 @@ impl NetworkSim {
             .and_then(|model| optics_catalog().hardware(&model).map(|m| m.price))
             .unwrap_or_else(|| match &device.kind {
                 DeviceKind::Server(server) => server.model().price,
+                DeviceKind::Switch(s) => s.model.spec().price,
+                DeviceKind::Router(r) => r.model().price,
                 _ => device.template().price(),
             });
         self.money += price / 2;
@@ -1894,6 +1887,8 @@ impl NetworkSim {
             PowerEndpoint::Device(id) | PowerEndpoint::DevicePsu { device: id, .. } => {
                 let count = self.devices.get(&id).map_or(1, |d| match &d.kind {
                     DeviceKind::Server(server) => server.model().chassis.psu_bays,
+                    DeviceKind::Switch(s) => s.model.spec().power_inlets.len(),
+                    DeviceKind::Router(r) => r.model().power_inlets.len(),
                     _ => 1,
                 });
                 if usize::from(endpoint.inlet()) >= count {
@@ -1936,10 +1931,9 @@ impl NetworkSim {
     fn inferred_power_cord(&self, endpoint: PowerEndpoint) -> PowerCordKind {
         match endpoint.canonical() {
             PowerEndpoint::Device(id)
-                if self
-                    .devices
-                    .get(&id)
-                    .is_some_and(|d| matches!(d.kind, DeviceKind::Router(_))) =>
+                if self.devices.get(&id).is_some_and(|d| {
+                    d.kind.network_model().is_some_and(|m| m.adapter.is_some())
+                }) =>
             {
                 PowerCordKind::Cisco66WAdapter
             }
@@ -1961,9 +1955,12 @@ impl NetworkSim {
         }
         if let Some(id) = endpoint.device_id() {
             let d = self.devices.get(&id).ok_or(SimError::DeviceNotFound(id))?;
-            let router = matches!(d.kind, DeviceKind::Router(_));
+            let router = d.kind.network_model().is_some_and(|m| m.adapter.is_some());
             if router != matches!(kind, PowerCordKind::Cisco66WAdapter) {
-                return Err(SimError::Power("Cisco routers require the supplied 66 W DC adapter; other devices require an IEC C13/C14 cord".into()));
+                return Err(SimError::Power(
+                    "This device requires its cataloged power connector and supplied adapter"
+                        .into(),
+                ));
             }
         }
         Ok(())
@@ -2159,7 +2156,13 @@ impl NetworkSim {
             .get(&port)
             .ok_or(SimError::PortNotFound(port))?
             .device;
-        let is_wan = matches!(self.devices.get(&device).map(|d| &d.kind), Some(DeviceKind::Router(r)) if r.ports.first() == Some(&port));
+        let is_wan = self.devices.get(&device).is_some_and(|d| {
+            d.ports()
+                .iter()
+                .position(|id| *id == port)
+                .and_then(|i| d.kind.network_model()?.ports.get(i))
+                .is_some_and(|p| p.default_wan)
+        });
         match &mut self.ports.get_mut(&port).expect("checked").config {
             PortConfig::Server(config) => config.ipv4 = None,
             PortConfig::Switch(config) => config.mode = SwitchPortMode::Access { vlan: None },

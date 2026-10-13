@@ -34,3 +34,18 @@ Add regression tests for changed simulation behavior in the matching `crates/sim
 Keep `AGENTS.md` tracked and include any changes to it in commits so future agents have the current repository instructions.
 
 Recent commits use short, imperative subjects (for example, `Fix Linux game package startup under X11`). Keep commits scoped to one coherent change. Pull requests should explain user-visible behavior, list validation commands, and link a related issue when one exists. Include before/after screenshots for UI or sprite changes, and call out new assets, attribution updates, or save-data compatibility effects.
+
+Router and switch models live in `assets/equipment/network_devices.json`.
+All model properties, ports/console names, routing/flex roles, cage modes,
+shared-bay `mode_blocks`, operating power, PSU/adapter ratings, rack height,
+EN/RU item text, prices, artwork and socket rectangles are configured there.
+The shop and texture loader iterate the registry. Add models through JSON and
+assets, never per-model Rust enum variants or rendering/purchase branches.
+Existing `SwitchModel` constants and legacy C1000 migration checks are save/API
+compatibility only. Combo RJ45/SFP sockets share one interface and cable owner.
+See `docs/NETWORK_HARDWARE.md`; configure product-artwork paths and UV crops in
+the catalog JSON. Match the C1000-24T-4G-L artwork: complete straight-on
+documentation-style product panels, edge-to-edge crops without studio padding, case lids or
+sidewalls, and measured socket rectangles for each image. Prefer Cisco documentation or clean
+product catalog artwork; avoid used-hardware camera shots.
+`NetworkSim::link_status` remains responsible for combo/cage and shared-bay physical availability.

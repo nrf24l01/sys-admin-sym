@@ -289,8 +289,10 @@ impl NetworkSim {
         Ok((
             placement.rack,
             x * RACK_FACE_WIDTH_CM,
-            -f32::from(placement.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)
-                + y * RACK_FACE_HEIGHT_CM,
+            -(f32::from(placement.unit) + f32::from(device.rack_units() - 1))
+                * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)
+                + y * (RACK_FACE_HEIGHT_CM * f32::from(device.rack_units())
+                    + RACK_GAP_CM * f32::from(device.rack_units() - 1)),
         ))
     }
 

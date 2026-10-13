@@ -141,6 +141,13 @@ impl DeviceKind {
                 server.model().artwork.rear.uv
             });
         }
+        if let Some(model) = self.network_model() {
+            return Some(if side == RackSide::Front {
+                model.artwork.front.uv
+            } else {
+                model.artwork.rear.uv
+            });
+        }
         self.connector_config()?
             .texture_uvs
             .get(side_name(side))
@@ -156,6 +163,39 @@ impl DeviceKind {
         index: usize,
     ) -> Option<ConnectorSocket> {
         let id = connector.connector_type();
+        if let Some(model) = self.network_model() {
+            if connector.definition().role == ConnectorRole::Inlet {
+                let inlet = model.power_inlets.get(index)?;
+                let expected = match inlet.connector {
+                    crate::PowerInletConnector::IecC14 => ConnectorType::IecC14,
+                    crate::PowerInletConnector::CiscoFourPin => ConnectorType::CiscoFourPin,
+                };
+                if inlet.side != side || expected != id {
+                    return None;
+                }
+                return Some(ConnectorSocket {
+                    connector: id,
+                    index,
+                    side,
+                    rect: inlet.socket.rect,
+                });
+            }
+            let port = model.ports.get(index)?;
+            if port.side != side || port.connector.connector_type() != id {
+                return None;
+            }
+            let rect = if id == ConnectorType::Sfp {
+                port.optical_socket.as_ref().unwrap_or(&port.socket).rect
+            } else {
+                port.socket.rect
+            };
+            return Some(ConnectorSocket {
+                connector: id,
+                index,
+                side,
+                rect,
+            });
+        }
         if let Self::Server(server) = self {
             let rect = if connector.definition().role == ConnectorRole::Inlet {
                 let inlet = server.model().power_inlets.get(index)?;
@@ -236,9 +276,14 @@ impl DeviceKind {
         }
         let ports = self.connector_config()?.ports.get(id.key())?;
         let legacy_index = match self {
-            Self::Switch(sw) if id == ConnectorType::Sfp => {
-                index.checked_sub(sw.model.spec().copper_ports)?
-            }
+            Self::Switch(sw) if id == ConnectorType::Sfp => index.checked_sub(
+                sw.model
+                    .spec()
+                    .ports
+                    .iter()
+                    .filter(|p| p.connector != crate::PortConnector::Sfp)
+                    .count(),
+            )?,
             Self::PatchPanel(_) => index / 2,
             _ => index,
         };

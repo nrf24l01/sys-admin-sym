@@ -28,11 +28,19 @@ pub struct IosStartupConfig {
 impl IosStartupConfig {
     pub(crate) fn normalize_interfaces(&mut self) {
         if let DeviceKind::Switch(switch) = &mut self.kind {
-            let spec = switch.model.spec();
-            if self.ports.iter().any(|p| p.max_speed == LinkSpeed::Gbps10) {
+            let copper_ports = switch
+                .model
+                .spec()
+                .ports
+                .iter()
+                .take_while(|p| p.connector == PortConnector::Rj45)
+                .count();
+            if switch.model == SwitchModel::Catalyst24T4G
+                && self.ports.iter().any(|p| p.max_speed == LinkSpeed::Gbps10)
+            {
                 switch.model = SwitchModel::Catalyst24T4X;
-                for (index, port) in self.ports.iter_mut().enumerate().skip(spec.copper_ports) {
-                    let number = index + 1 - spec.copper_ports;
+                for (index, port) in self.ports.iter_mut().enumerate().skip(copper_ports) {
+                    let number = index + 1 - copper_ports;
                     port.name = format!("Te1/0/{number:02}");
                     if let Some(description) = self
                         .metadata
@@ -93,7 +101,7 @@ const SHOW: &[&str] = &[
     "show startup-config",
 ];
 
-fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
+fn grammar(mode: &IosMode, switch: bool, routing: bool) -> Vec<&'static str> {
     let mut commands = vec!["exit", "help"];
     match mode {
         IosMode::User | IosMode::Privileged => {
@@ -102,7 +110,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                 commands.extend(switching::SHOW.iter().copied());
             }
             commands.push("enable");
-            if !switch {
+            if routing {
                 commands.extend(["ping <address>", "traceroute <address>"]);
             }
             if *mode == IosMode::Privileged {
@@ -131,7 +139,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "interface <interface...>",
                     "interface range <range...>",
                 ]);
-                if !switch {
+                if routing {
                     commands.extend([
                         "ip routing",
                         "no ip routing",
@@ -185,7 +193,7 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                         "switchport trunk native vlan <id>",
                     ]);
                 }
-                if !switch {
+                if routing {
                     commands.extend(["ip address <address> <mask>", "no ip address"]);
                     if matches!(
                         mode,
@@ -203,6 +211,8 @@ fn grammar(mode: &IosMode, switch: bool) -> Vec<&'static str> {
                     "speed 1000",
                     "speed 10000",
                     "speed 25000",
+                    "speed 40000",
+                    "speed 100000",
                     "speed auto",
                 ]);
             }
@@ -311,7 +321,7 @@ impl NetworkSim {
                 self.ios_configs
                     .get(&device)
                     .and_then(|config| config.hostname.as_deref())
-                    .unwrap_or(if matches!(dev.kind, DeviceKind::Switch(_)) {
+                    .unwrap_or(if dev.template() == DeviceTemplate::Switch {
                         "Switch"
                     } else {
                         "Router"
@@ -399,7 +409,7 @@ impl NetworkSim {
             };
             let target = self.devices().find_map(|dev| match &dev.kind {
                 DeviceKind::Server(server) if dev.id != device => server.ports.iter().find(|id| self.port(**id).is_some_and(|p| matches!(&p.config, PortConfig::Server(config) if config.addresses().any(|ip| ip.address == address)))).map(|_| dev.id),
-                DeviceKind::Switch(_) if self.switch_management(dev.id).is_some_and(|config| config.address == address) => Some(dev.id),
+                _ if dev.template()==DeviceTemplate::Switch && self.switch_management(dev.id).is_some_and(|config| config.address == address) => Some(dev.id),
                 DeviceKind::Router(router) if router.interfaces.iter().any(|interface| interface.address == Some(address)) => Some(dev.id),
                 _ => None,
             });
@@ -487,10 +497,13 @@ impl NetworkSim {
         }
         let switch = self
             .device(device)
-            .is_some_and(|d| matches!(d.kind, DeviceKind::Switch(_)));
+            .is_some_and(|d| d.template() == DeviceTemplate::Switch);
+        let routing = self
+            .device(device)
+            .is_some_and(|d| matches!(d.kind, DeviceKind::Router(_)));
         let mode = self.console_modes.get(&device).unwrap_or(&IosMode::User);
         let words: Vec<_> = prefix.split_whitespace().collect();
-        grammar(mode, switch)
+        grammar(mode, switch, routing)
             .into_iter()
             .filter(|pattern| {
                 let tokens: Vec<_> = pattern.split_whitespace().collect();
@@ -510,7 +523,8 @@ impl NetworkSim {
         mode: &mut IosMode,
         input: &str,
     ) -> Result<Vec<String>, String> {
-        let switch = matches!(self.devices[&device].kind, DeviceKind::Switch(_));
+        let switch = self.devices[&device].template() == DeviceTemplate::Switch;
+        let routing = matches!(self.devices[&device].kind, DeviceKind::Router(_));
         if *mode == IosMode::ReloadConfirm {
             if input.is_empty() || input.eq_ignore_ascii_case("yes") {
                 let mut saved = self
@@ -542,6 +556,9 @@ impl NetworkSim {
                 }
                 self.topology_revision += 1;
                 self.routing_revision += 1;
+                self.normalize_combo_connectors();
+                self.refresh_device_loads();
+                self.sync_effective_power();
                 *mode = IosMode::User;
                 return Ok(vec!["Device reloaded from startup-config.".into()]);
             }
@@ -551,7 +568,7 @@ impl NetworkSim {
         if input.is_empty() || input == "!" {
             return Ok(vec![]);
         }
-        let commands = grammar(mode, switch);
+        let commands = grammar(mode, switch, routing);
         if input.ends_with('?') || input.eq_ignore_ascii_case("help") {
             let prefix = input.trim_end_matches('?').trim();
             let words: Vec<_> = if prefix == "help" {
@@ -574,7 +591,7 @@ impl NetworkSim {
         }
         let (command, args) = resolve(input, &commands).map_err(|error| {
             if *mode == IosMode::User
-                && resolve(input, &grammar(&IosMode::Privileged, switch)).is_ok_and(
+                && resolve(input, &grammar(&IosMode::Privileged, switch, routing)).is_ok_and(
                     |(command, _)| {
                         command.starts_with("show running-config")
                             || command == "show startup-config"
@@ -630,7 +647,7 @@ impl NetworkSim {
             }
             "do <command...>" => {
                 let mut exec = IosMode::Privileged;
-                let exec_grammar = grammar(&exec, switch);
+                let exec_grammar = grammar(&exec, switch, routing);
                 let (exec_command, _) = resolve(&args[0], &exec_grammar)?;
                 if !exec_command.starts_with("show ")
                     && !matches!(
@@ -827,25 +844,13 @@ impl NetworkSim {
             return self.ports[&port].name.clone();
         }
         let index = dev.ports().iter().position(|p| *p == port).unwrap_or(0);
-        match dev.kind {
-            DeviceKind::Switch(ref switch) => format!(
-                "{}1/0/{}",
-                if self.ports[&port].max_speed == LinkSpeed::Gbps10 {
-                    "TenGigabitEthernet"
-                } else {
-                    "GigabitEthernet"
-                },
-                if switch.model == SwitchModel::Catalyst24T4X
-                    && index >= switch.model.spec().copper_ports
-                {
-                    index + 1 - switch.model.spec().copper_ports
-                } else {
-                    index + 1
-                }
-            ),
-            DeviceKind::Router(_) if index < 2 => format!("GigabitEthernet0/0/{index}"),
-            DeviceKind::Router(_) => format!("GigabitEthernet0/1/{}", index - 2),
-            _ => self.ports[&port].name.clone(),
+        if let Some(model) = dev.kind.network_model() {
+            model
+                .ports
+                .get(index)
+                .map_or_else(|| self.ports[&port].name.clone(), |p| p.ios_name.clone())
+        } else {
+            self.ports[&port].name.clone()
         }
     }
 
@@ -1006,6 +1011,8 @@ impl NetworkSim {
                     "speed 1000" => LinkSpeed::Gbps1,
                     "speed 10000" => LinkSpeed::Gbps10,
                     "speed 25000" => LinkSpeed::Gbps25,
+                    "speed 40000" => LinkSpeed::Gbps40,
+                    "speed 100000" => LinkSpeed::Gbps100,
                     "speed auto" => self.port(port).unwrap().max_speed,
                     _ => unreachable!(),
                 };
@@ -1199,11 +1206,17 @@ impl NetworkSim {
                 };
                 let mut lines = Vec::new();
                 if command == "show inventory"
-                    && let DeviceKind::Switch(switch) = &dev.kind
+                    && let Some(model) = dev.kind.network_model()
                 {
+                    let copper = model
+                        .ports
+                        .iter()
+                        .filter(|p| p.connector == PortConnector::Rj45)
+                        .count();
+                    let cages = model.ports.iter().filter(|p| p.cage.is_some()).count();
                     lines.push(format!(
-                        "NAME: Chassis, PID: {}, 24 RJ45 / 4 uplinks, non-PoE, fanless",
-                        switch.model.spec().name
+                        "NAME: Chassis, PID: {}, {copper} RJ45 / {cages} uplinks, {}U",
+                        model.name, model.rack_units
                     ));
                 }
                 lines.extend(
@@ -1219,12 +1232,13 @@ impl NetworkSim {
                     format!("Hardware: {}", dev.name),
                     "Supported commands: ?   Configuration guide: docs/IOS_GUIDE.md".into(),
                 ];
-                if let DeviceKind::Switch(switch) = &dev.kind {
-                    let spec = switch.model.spec();
-                    lines.push(format!(
-                        "ARM v7 {} MHz; {} MB DRAM; {} MB flash",
-                        spec.cpu_mhz, spec.dram_mb, spec.flash_mb
-                    ));
+                if let Some(spec) = dev.kind.network_model() {
+                    if spec.cpu_mhz > 0 {
+                        lines.push(format!(
+                            "{} MHz; {} MB DRAM; {} MB flash",
+                            spec.cpu_mhz, spec.dram_mb, spec.flash_mb
+                        ));
+                    }
                     lines.push(format!(
                         "Switching capacity: {} Mbps; forwarding rating: {} kpps",
                         spec.switching_mbps, spec.forwarding_kpps
@@ -1476,7 +1490,7 @@ impl NetworkSim {
             format!(
                 "hostname {}",
                 meta.hostname.unwrap_or(
-                    if matches!(dev.kind, DeviceKind::Switch(_)) {
+                    if dev.template() == DeviceTemplate::Switch {
                         "Switch"
                     } else {
                         "Router"
@@ -1555,7 +1569,7 @@ impl NetworkSim {
                     }
                 }
                 PortConfig::Router(c) => {
-                    if matches!(&dev.kind, DeviceKind::Router(r) if r.ports.iter().position(|p| *p == id).is_some_and(|i| router_network_profile().flex_ports.contains(&i)))
+                    if matches!(&dev.kind, DeviceKind::Router(r) if r.ports.iter().position(|p| *p == id).is_some_and(|i| r.model().ports.get(i).is_some_and(|p| p.flex)))
                     {
                         lines.push(" no switchport".into());
                     }

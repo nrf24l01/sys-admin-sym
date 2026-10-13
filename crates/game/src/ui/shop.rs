@@ -30,8 +30,11 @@ pub(super) fn server_artwork_models(
     use cloud_provider_sim::PurchaseItem;
     let mut models = std::collections::BTreeMap::new();
     for offer in query::filtered(state, sim) {
-        if let PurchaseItem::ServerModel { model_id, .. } = &offer.item {
-            models.insert(model_id.clone(), false);
+        match &offer.item {
+            PurchaseItem::ServerModel { model_id, .. } | PurchaseItem::NetworkDevice(model_id) => {
+                models.insert(model_id.clone(), false);
+            }
+            _ => {}
         }
     }
     let details = state.selected_offer.as_ref().filter(|_| state.details_open);
@@ -39,10 +42,14 @@ pub(super) fn server_artwork_models(
         .into_iter()
         .chain(state.compared.iter().filter(|_| state.comparison_open))
     {
-        if let Some(offer) = catalog::catalog().iter().find(|o| &o.id == id)
-            && let PurchaseItem::ServerModel { model_id, .. } = &offer.item
-        {
-            models.insert(model_id.clone(), true);
+        if let Some(offer) = catalog::catalog().iter().find(|o| &o.id == id) {
+            match &offer.item {
+                PurchaseItem::ServerModel { model_id, .. }
+                | PurchaseItem::NetworkDevice(model_id) => {
+                    models.insert(model_id.clone(), true);
+                }
+                _ => {}
+            }
         }
     }
     models

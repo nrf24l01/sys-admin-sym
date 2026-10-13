@@ -116,6 +116,17 @@ fn rack_attributes(offer: &mut Offer, command: Command) {
             }
         }
     }
+    if let Some(model) = device.kind.network_model()
+        && model.category == NetworkDeviceCategory::Switch
+    {
+        offer.attributes.extend([
+            Attribute::number("switching-capacity", model.switching_mbps),
+            Attribute::number("forwarding-rate", model.forwarding_kpps),
+            Attribute::number("switch-idle-power", model.power.idle_mw),
+            Attribute::number("switch-traffic-power", model.power.peak_mw),
+            Attribute::text("poe", "no"),
+        ]);
+    }
     match &device.kind {
         DeviceKind::Switch(switch) => {
             let spec = switch.model.spec();
@@ -155,16 +166,6 @@ fn rack_attributes(offer: &mut Offer, command: Command) {
 pub(super) fn offers() -> Vec<Offer> {
     let mut offers = Vec::new();
     for (id, section, template) in [
-        (
-            "cisco_isr_c1111",
-            ShopSection::Routers,
-            DeviceTemplate::Router,
-        ),
-        (
-            "cisco_catalyst_c1000",
-            ShopSection::Switches,
-            DeviceTemplate::Switch,
-        ),
         ("apc_smt1500", ShopSection::Ups, DeviceTemplate::Ups),
         ("rack_pdu", ShopSection::Pdu, DeviceTemplate::Pdu),
         (
@@ -204,6 +205,36 @@ pub(super) fn offers() -> Vec<Offer> {
                 Attribute::text("outlet-type", "IEC C13"),
                 Attribute::number("watts", spec.watts),
             ]);
+        }
+        offers.push(offer);
+    }
+    for model in &network_device_catalog().models {
+        let mut offer = Offer::new(
+            &model.shop_id,
+            if model.category == NetworkDeviceCategory::Router {
+                ShopSection::Routers
+            } else {
+                ShopSection::Switches
+            },
+            PurchaseItem::NetworkDevice(model.id.clone()),
+        );
+        offer.display_id = model.id.clone();
+        rack_attributes(
+            &mut offer,
+            Command::BuyNetworkDevice {
+                model_id: model.id.clone(),
+            },
+        );
+        offer.attributes.push(Attribute::text(
+            "type",
+            if model.category == NetworkDeviceCategory::Router {
+                "router"
+            } else {
+                "switch"
+            },
+        ));
+        if model.ports.iter().any(|p| p.cage.is_some()) {
+            offer.guidance.push("shop.guide.modules");
         }
         offers.push(offer);
     }
@@ -276,6 +307,9 @@ pub(super) fn offers() -> Vec<Offer> {
         offers.push(offer);
     }
     for hardware in &optics_catalog().hardware {
+        if matches!(hardware.profile, OpticalHardwareProfile::Switch { .. }) {
+            continue;
+        }
         let section = if matches!(hardware.profile, OpticalHardwareProfile::Switch { .. }) {
             ShopSection::Switches
         } else {

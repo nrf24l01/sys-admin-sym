@@ -18,7 +18,9 @@ impl NetworkSim {
         }
         let path = self.mechanical_path(port);
         if path.is_empty() {
-            let fault = if self.cage_profile(port).is_some() && self.endpoint_module(port).is_none()
+            let fault = if self.cage_profile(port).is_some()
+                && !self.port_is_copper(port)
+                && self.endpoint_module(port).is_none()
             {
                 LinkFault::EmptyCage
             } else {
@@ -31,6 +33,9 @@ impl NetworkSim {
             let Some(p) = self.port(*id) else {
                 return failure(LinkFault::NoCable);
             };
+            if !self.network_mode_available(*id) {
+                return failure(LinkFault::ModeMismatch);
+            }
             if !p.enabled {
                 return failure(LinkFault::Disabled);
             }
@@ -47,7 +52,9 @@ impl NetworkSim {
                     return failure(LinkFault::Unpowered);
                 }
             }
-            if self.cage_profile(*id).is_some() {
+            if self.cage_profile(*id).is_some()
+                && (!self.port_is_copper(*id) || self.endpoint_module(*id).is_some())
+            {
                 let Some(module) = self.endpoint_module(*id) else {
                     return failure(LinkFault::EmptyCage);
                 };

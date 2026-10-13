@@ -14,6 +14,8 @@ pub enum LinkSpeed {
     Gbps1,
     Gbps10,
     Gbps25,
+    Gbps40,
+    Gbps100,
 }
 
 impl LinkSpeed {
@@ -24,6 +26,8 @@ impl LinkSpeed {
             1000 => Some(Self::Gbps1),
             10000 => Some(Self::Gbps10),
             25000 => Some(Self::Gbps25),
+            40000 => Some(Self::Gbps40),
+            100000 => Some(Self::Gbps100),
             _ => None,
         }
     }
@@ -34,6 +38,8 @@ impl LinkSpeed {
             Self::Gbps1 => 1_000,
             Self::Gbps10 => 10_000,
             Self::Gbps25 => 25_000,
+            Self::Gbps40 => 40_000,
+            Self::Gbps100 => 100_000,
         }
     }
 }

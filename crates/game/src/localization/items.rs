@@ -127,6 +127,15 @@ pub(super) fn load(directory: Option<&Path>) -> BTreeMap<String, Item> {
             }
         }
     }
+    for model in &cloud_provider_sim::network_device_catalog().models {
+        let item = Item {
+            id: model.id.clone(),
+            display_name: model.display_name.clone(),
+            desc: model.desc.clone(),
+        };
+        items.insert(model.shop_id.clone(), item.clone());
+        items.insert(model.id.clone(), item);
+    }
     items
 }
 impl Item {

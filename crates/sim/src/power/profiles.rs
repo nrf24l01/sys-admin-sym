@@ -94,7 +94,7 @@ pub struct ServerPowerProfile {
     #[serde(deserialize_with = "percent")]
     pub power_factor_percent: u16,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterPowerProfile {
     #[serde(deserialize_with = "positive")]
@@ -166,11 +166,19 @@ macro_rules! equipment_power {
 pub fn server_power_profile() -> &'static ServerPowerProfile {
     &crate::server_catalog().default_model().power
 }
-equipment_power!(
-    router_power_profile,
-    RouterPowerProfile,
-    "router_config.json"
-);
+pub fn router_power_profile() -> &'static RouterPowerProfile {
+    static PROFILE: OnceLock<RouterPowerProfile> = OnceLock::new();
+    PROFILE.get_or_init(|| {
+        let model = crate::NetworkModelId::default().spec();
+        RouterPowerProfile {
+            load: model.power,
+            adapter: model
+                .adapter
+                .clone()
+                .expect("default router has a DC adapter"),
+        }
+    })
+}
 equipment_power!(ups_power_profile, UpsPowerProfile, "ups_config.json");
 equipment_power!(pdu_power_profile, PduPowerProfile, "pdu_config.json");
 

@@ -108,7 +108,7 @@ impl NetworkSim {
             ProviderCommand::SetSwitchManagement(management) => {
                 if !self
                     .device(management.switch)
-                    .is_some_and(|d| matches!(d.kind, DeviceKind::Switch(_)))
+                    .is_some_and(|d| d.template() == DeviceTemplate::Switch)
                 {
                     return Err(SimError::WrongPortType);
                 }
@@ -269,7 +269,7 @@ impl NetworkSim {
             ProviderCommand::SetSpanningTree { switch, .. }
                 if !self
                     .device(*switch)
-                    .is_some_and(|device| matches!(device.kind, DeviceKind::Switch(_))) =>
+                    .is_some_and(|device| device.template() == DeviceTemplate::Switch) =>
             {
                 return Err(SimError::WrongPortType);
             }
