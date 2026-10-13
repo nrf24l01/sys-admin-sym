@@ -11,6 +11,7 @@ mod persistence;
 mod plugins;
 mod settings;
 mod ui;
+mod wiki;
 
 fn asset_root_for(
     executable: &std::path::Path,

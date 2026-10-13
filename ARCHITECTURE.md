@@ -21,6 +21,14 @@ The shop receives a correlated worker result after the committed snapshot;
 compatibility previews share installation rules with domain commands.
 See [Equipment shop](docs/SHOP.md) for browsing and extension behavior.
 
+`NetworkSim::first_vm_guide` derives onboarding checks from saved hardware,
+physical link status, Linux-selected packet paths and existing hosting readiness.
+Saved paid-service/payment history supplies the durable first-VM sale milestone;
+current prerequisites can regress after a network change. The permanent Wiki
+window scopes checks to chosen physical controller/node roles and renders localized
+Markdown discovered under `assets/wiki`. Articles and command examples remain
+editable runtime assets; Markdown links never execute commands. See [Wiki](docs/WIKI.md).
+
 Bank offers live in `assets/equipment/bank.json`. `Command::Bank` credits loans
 and applies repayments in `sim::bank`; the Bank window only previews contracts
 and sends typed commands. A saved bank clock advances at the hosting calendar rate, including pause and speed, schedules

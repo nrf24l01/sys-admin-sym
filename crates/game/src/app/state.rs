@@ -57,6 +57,7 @@ pub struct UiState {
     pub shop: super::ShopState,
     pub hardware_picker: Option<(DeviceId, cloud_provider_sim::ServerSocket)>,
     pub bank: super::BankWindowState,
+    pub wiki: super::WikiWindowState,
     pub settings: super::SettingsWindowState,
     pub workspace: Workspace,
     pub selected: Selection,

@@ -8,6 +8,37 @@ pub(super) struct HostingNetworkAttachment {
 }
 
 impl NetworkSim {
+    /// Read-only tutorial preview using the same subnet policy and gateway discovery as orders.
+    pub(crate) fn hosting_guide_data_ready(&self, node: DeviceId) -> bool {
+        if !self.hosting.nodes.contains_key(&node) {
+            return false;
+        }
+        let product = HostingProduct {
+            ipv4_ranges: self.provider.pools().iter().map(|p| p.prefix).collect(),
+            ..Default::default()
+        };
+        let ranges = self.hosting_node_product_ranges(node, &product);
+        self.hosting_network_attachments(node, &ranges)
+            .iter()
+            .any(|a| {
+                !a.ranges.is_empty()
+                    && self.port_link_up(a.uplink)
+                    && a.ranges.iter().any(|(range, _)| {
+                        let mapping = self.hosting.nodes[&node]
+                            .networks
+                            .as_ref()
+                            .and_then(|ns| {
+                                ns.iter().find(|n| {
+                                    n.port == a.uplink && n.subnet.contains_prefix(*range)
+                                })
+                            })
+                            .copied();
+                        self.find_node_gateway(node, *range, mapping)
+                            .is_some_and(|(port, _)| port == a.uplink)
+                    })
+            })
+    }
+
     pub(super) fn validate_hosting_node_networks(
         &self,
         node: DeviceId,

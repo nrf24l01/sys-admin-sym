@@ -13,6 +13,16 @@ make run
 make run-release
 ```
 
+## Learn and sell your first VM
+
+Open **Wiki** beside Shop and Bank for a live first-VM checklist and networking
+reference. It guides you from equipment and power through management VLANs,
+addressing, ping, hosting setup, public routes and a published product to your
+first paid customer VM. Lessons include copyable Linux and IOS commands in
+English and Russian. Checks use your actual setup and accept GUI configuration
+as well as commands. The guide remains available after completion.
+See [Wiki authoring and progress](docs/WIKI.md).
+
 ## Use your own terminal
 
 Open **SETTINGS** in the top bar to configure the console host, port, and

@@ -1,4 +1,6 @@
 mod bank;
+mod wiki;
+pub use wiki::WikiWindowState;
 mod messages;
 mod network;
 mod settings;

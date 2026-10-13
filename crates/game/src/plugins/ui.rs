@@ -7,19 +7,22 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<EquipmentImages>()
-            .add_systems(Startup, (setup_camera, load_equipment_images))
-            .add_systems(
-                PreUpdate,
-                filter_unchanged_modifiers
-                    .after(EguiPreUpdateSet::ProcessInput)
-                    .before(EguiPreUpdateSet::BeginPass),
-            )
-            .add_systems(EguiPrimaryContextPass, main_ui)
-            .add_systems(
-                Update,
-                (prepare_equipment_textures, clear_stale_notice).in_set(GameSet::Presentation),
-            );
+        app.insert_resource(crate::wiki::WikiLibrary::load(
+            &crate::asset_root().join("wiki"),
+        ))
+        .init_resource::<EquipmentImages>()
+        .add_systems(Startup, (setup_camera, load_equipment_images))
+        .add_systems(
+            PreUpdate,
+            filter_unchanged_modifiers
+                .after(EguiPreUpdateSet::ProcessInput)
+                .before(EguiPreUpdateSet::BeginPass),
+        )
+        .add_systems(EguiPrimaryContextPass, main_ui)
+        .add_systems(
+            Update,
+            (prepare_equipment_textures, clear_stale_notice).in_set(GameSet::Presentation),
+        );
     }
 }
 

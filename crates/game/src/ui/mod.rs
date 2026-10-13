@@ -29,6 +29,7 @@ mod terminal_renderer;
 mod test_windows;
 mod textures;
 mod upstream;
+mod wiki;
 use cables::{CableScene, CableView, PowerCableView};
 use rack::RackLayout;
 use terminal_renderer::TerminalRenderer;
@@ -384,6 +385,12 @@ impl EquipmentImages {
     }
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct WikiResources<'w> {
+    settings: Res<'w, crate::settings::GameSettings>,
+    library: ResMut<'w, crate::wiki::WikiLibrary>,
+}
+
 pub fn main_ui(
     mut contexts: EguiContexts,
     snapshot: Res<SimSnapshot>,
@@ -391,8 +398,12 @@ pub fn main_ui(
     mut drafts: ResMut<EditorDrafts>,
     mut images: ResMut<EquipmentImages>,
     mut actions: MessageWriter<UiAction>,
-    game_settings: Res<crate::settings::GameSettings>,
+    wiki_resources: WikiResources,
 ) -> Result {
+    let WikiResources {
+        settings: game_settings,
+        library: mut wiki_library,
+    } = wiki_resources;
     let _language = game_settings.localization.enter();
     let ctx = contexts.ctx_mut()?.clone();
     if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
@@ -459,6 +470,14 @@ pub fn main_ui(
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     hosting::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     bank::show(&mut viewport_ui, &snapshot.0, &mut state.bank, &mut actions);
+    wiki::show(
+        &mut viewport_ui,
+        &snapshot.0,
+        &mut state.wiki,
+        &mut wiki_library,
+        &game_settings.language,
+        snapshot.is_changed(),
+    );
     server_hardware::picker(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     let shop_selection = state.selected;
     if state.shop.open {
@@ -509,7 +528,7 @@ fn top_bar(
         .max_size(80.0)
         .resizable(false)
         .show(viewport, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("ui.cloud-provider-room-01"));
                 ui.separator();
                 ui.strong(crate::localization::tr_args(
@@ -561,6 +580,13 @@ fn top_bar(
                     .clicked()
                 {
                     state.bank.open = !state.bank.open;
+                }
+                if ui
+                    .selectable_label(state.wiki.open, tr("wiki.title"))
+                    .on_hover_text(tr("wiki.help"))
+                    .clicked()
+                {
+                    state.wiki.open = !state.wiki.open;
                 }
                 if ui
                     .selectable_label(state.settings.open, tr("ui.settings"))

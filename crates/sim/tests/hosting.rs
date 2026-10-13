@@ -1,5 +1,7 @@
 use cloud_provider_sim::*;
 use std::net::Ipv4Addr;
+#[path = "hosting/first_vm_guide.rs"]
+mod first_vm_guide;
 #[path = "hosting/node_groups.rs"]
 mod node_groups;
 fn ip(s: &str) -> Ipv4Addr {
