@@ -267,3 +267,32 @@ UI language is selectable in **Settings → Language** (English and Russian).
 UI text uses semantic IDs in `assets/locales/*.json`; item names and descriptions
 use language maps in their equipment JSON configs. See
 [the translation guide](docs/LOCALIZATION.md). Terminal text stays unchanged.
+
+## Texture and connector editor
+
+```bash
+cargo run --locked -p texture-mapper
+```
+
+The editor discovers texture-backed equipment and models recursively from asset
+JSON files, including models inside catalogs. It opens with a searchable library;
+click an entry, choose its front or rear view and mapping group, then edit its
+connector boxes. New models appear automatically; **Refresh library** discovers
+files added while the editor is running.
+
+Drag boxes to move them and their corner handles to resize them. Shift-click
+selects multiple boxes; the inspector provides coordinates, connector properties,
+add/delete and horizontal or vertical distribution. Hardware bay, PCIe slot and
+power-inlet counts remain tied to model specifications; their geometry is editable.
+**Fit** restores the fitted view, and zoomed canvases can be scrolled.
+
+Use **Save** or **Ctrl+S** to write mappings back to their source JSON while
+preserving other fields and catalog entries. **Ctrl+Z** undoes edits;
+**Ctrl+Y** or **Ctrl+Shift+Z** redoes them. Switching entries, reloading or closing
+with unsaved changes offers Save, Discard or Cancel. Invalid geometry or server
+port properties produce a save error without overwriting the source file.
+
+Optional startup arguments: `--assets <directory>` chooses another asset library,
+`--config <json>` opens a configuration (or the first textured model in a catalog),
+`--output <json>` redirects that document's saves, and `--texture <asset-path>`
+previews an alternative front texture without changing its configured path.
