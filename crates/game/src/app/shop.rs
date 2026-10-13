@@ -94,6 +94,7 @@ impl ShopSort {
 pub enum ShopTarget {
     Server(DeviceId),
     Port(PortId),
+    Socket(DeviceId, cloud_provider_sim::ServerSocket),
 }
 
 #[derive(Debug, Clone)]

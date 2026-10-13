@@ -110,6 +110,231 @@ fn install(sim: &mut NetworkSim, device: DeviceId, part: &str, slot: Option<usiz
 }
 
 #[test]
+fn explicit_cpu_installation_cannot_skip_a_physical_socket() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let device = buy(&mut sim, "dell_r740", ServerConfiguration::Chassis);
+    sim.execute(Command::BuyServerPart {
+        part_id: "xeon_silver_4210r".into(),
+    })
+    .unwrap();
+    let before = serde_json::to_string(&sim).unwrap();
+    assert!(
+        sim.execute(Command::InstallServerPart {
+            device,
+            part_id: "xeon_silver_4210r".into(),
+            slot: Some(1)
+        })
+        .is_err()
+    );
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+}
+
+#[test]
+fn explicit_cpu_removal_keeps_the_requested_socket_identity() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let device = buy(&mut sim, "dell_r740", ServerConfiguration::Chassis);
+    install(&mut sim, device, "xeon_silver_4210r", Some(0));
+    install(&mut sim, device, "xeon_silver_4210r", Some(1));
+    let before = serde_json::to_string(&sim).unwrap();
+    assert!(
+        sim.execute(Command::RemoveServerPart {
+            device,
+            part_id: "xeon_silver_4210r".into(),
+            slot: Some(0)
+        })
+        .is_err()
+    );
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+    sim.execute(Command::RemoveServerPart {
+        device,
+        part_id: "xeon_silver_4210r".into(),
+        slot: Some(1),
+    })
+    .unwrap();
+    let before = serde_json::to_string(&sim).unwrap();
+    assert!(
+        sim.execute(Command::RemoveServerPart {
+            device,
+            part_id: "xeon_silver_4210r".into(),
+            slot: Some(1),
+        })
+        .is_err()
+    );
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+    sim.execute(Command::RemoveServerPart {
+        device,
+        part_id: "xeon_silver_4210r".into(),
+        slot: None,
+    })
+    .unwrap();
+    assert_eq!(sim.server_socket_item(device, ServerSocket::Cpu(0)), None);
+}
+
+#[test]
+fn explicit_cpu_removal_requires_its_dimm_and_pcie_slots_to_be_empty() {
+    for pcie in [false, true] {
+        let mut sim = NetworkSim::new();
+        sim.money = 100_000;
+        let device = buy(&mut sim, "dell_r740", ServerConfiguration::Chassis);
+        install(&mut sim, device, "xeon_silver_4210r", Some(0));
+        install(&mut sim, device, "xeon_silver_4210r", Some(1));
+        if pcie {
+            let index = server_catalog()
+                .model("dell_r740")
+                .unwrap()
+                .chassis
+                .pcie_slots
+                .iter()
+                .position(|slot| slot.cpu_socket == 1)
+                .unwrap();
+            install(&mut sim, device, "intel_i350_t4", Some(index));
+        } else {
+            install(&mut sim, device, "ddr4_rdimm_16gb_2933", Some(12));
+        }
+        let before = serde_json::to_string(&sim).unwrap();
+        assert!(
+            sim.execute(Command::RemoveServerPart {
+                device,
+                part_id: "xeon_silver_4210r".into(),
+                slot: Some(1)
+            })
+            .is_err()
+        );
+        assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+    }
+}
+
+#[test]
+fn socket_shop_compatibility_validates_replacements_without_mutation() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let device = buy(&mut sim, "dell_r740", ServerConfiguration::FullPack);
+    let before = serde_json::to_string(&sim).unwrap();
+    for (socket, item) in [
+        (ServerSocket::Cpu(0), "xeon_silver_4210r"),
+        (ServerSocket::Dimm(0), "ddr4_rdimm_16gb_2933"),
+        (ServerSocket::Pcie(0), "intel_i350_t4"),
+        (ServerSocket::Drive(0), "enterprise_ssd_960gb"),
+    ] {
+        assert!(sim.server_socket_item(device, socket).is_some());
+        sim.server_socket_compatibility(device, socket, item)
+            .unwrap();
+    }
+    for (socket, item) in [
+        (ServerSocket::Cpu(0), "xeon_silver_4310"),
+        (ServerSocket::Dimm(0), "ddr5_ecc_16gb"),
+        (ServerSocket::Pcie(0), "ddr4_rdimm_16gb_2933"),
+        (ServerSocket::Drive(0), "intel_i350_t4"),
+        (ServerSocket::Cpu(2), "xeon_silver_4210r"),
+        (ServerSocket::Dimm(99), "ddr4_rdimm_16gb_2933"),
+        (ServerSocket::Pcie(99), "intel_i350_t4"),
+        (ServerSocket::Drive(99), "enterprise_ssd_960gb"),
+    ] {
+        assert!(
+            sim.server_socket_compatibility(device, socket, item)
+                .is_err()
+        );
+    }
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+}
+
+#[test]
+fn empty_socket_shop_compatibility_requires_its_cpu() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let device = buy(&mut sim, "dell_r740", ServerConfiguration::Chassis);
+    assert!(
+        sim.server_socket_compatibility(device, ServerSocket::Cpu(1), "xeon_silver_4210r")
+            .is_err()
+    );
+    assert!(
+        sim.server_socket_compatibility(device, ServerSocket::Dimm(0), "ddr4_rdimm_16gb_2933")
+            .is_err()
+    );
+    assert!(
+        sim.server_socket_compatibility(device, ServerSocket::Pcie(0), "intel_i350_t4")
+            .is_err()
+    );
+    install(&mut sim, device, "xeon_silver_4210r", Some(0));
+    sim.server_socket_compatibility(device, ServerSocket::Dimm(0), "ddr4_rdimm_16gb_2933")
+        .unwrap();
+    sim.server_socket_compatibility(device, ServerSocket::Pcie(0), "intel_i350_t4")
+        .unwrap();
+    assert!(
+        sim.server_socket_compatibility(device, ServerSocket::Dimm(12), "ddr4_rdimm_16gb_2933")
+            .is_err()
+    );
+    let cpu_two_pcie = server_catalog()
+        .model("dell_r740")
+        .unwrap()
+        .chassis
+        .pcie_slots
+        .iter()
+        .position(|slot| slot.cpu_socket == 1)
+        .unwrap();
+    assert!(
+        sim.server_socket_compatibility(device, ServerSocket::Pcie(cpu_two_pcie), "intel_i350_t4")
+            .is_err()
+    );
+    assert_eq!(sim.server_socket_item(device, ServerSocket::Dimm(0)), None);
+    assert_eq!(
+        sim.server_socket_item(device, ServerSocket::Cpu(0)),
+        Some("xeon_silver_4210r")
+    );
+}
+
+#[test]
+fn drive_socket_compatibility_ignores_unrelated_dimm_population_errors() {
+    let mut sim = NetworkSim::new();
+    sim.money = 100_000;
+    let device = buy(&mut sim, "dell_r740", ServerConfiguration::Chassis);
+    install(&mut sim, device, "xeon_silver_4210r", Some(0));
+    install(&mut sim, device, "ddr4_rdimm_16gb_2933", Some(0));
+    install(&mut sim, device, "ddr4_rdimm_16gb_2933", Some(6));
+    sim.execute(Command::RemoveServerPart {
+        device,
+        part_id: "ddr4_rdimm_16gb_2933".into(),
+        slot: Some(0),
+    })
+    .unwrap();
+    let DeviceKind::Server(server) = &sim.device(device).unwrap().kind else {
+        panic!()
+    };
+    assert!(
+        server
+            .hardware
+            .as_ref()
+            .unwrap()
+            .validate_for_model(server.model(), server_catalog())
+            .is_err()
+    );
+    let before = serde_json::to_string(&sim).unwrap();
+    sim.server_socket_compatibility(device, ServerSocket::Drive(0), "enterprise_ssd_960gb")
+        .unwrap();
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+    sim.execute(Command::BuyDrive {
+        drive_id: "enterprise_ssd_960gb".into(),
+    })
+    .unwrap();
+    sim.execute(Command::InstallDrive {
+        device,
+        drive_id: "enterprise_ssd_960gb".into(),
+        bay: Some(0),
+    })
+    .unwrap();
+    let before = serde_json::to_string(&sim).unwrap();
+    sim.server_socket_compatibility(device, ServerSocket::Drive(0), "enterprise_ssd_960gb")
+        .unwrap();
+    assert_eq!(serde_json::to_string(&sim).unwrap(), before);
+    assert_eq!(
+        sim.server_socket_item(device, ServerSocket::Drive(0)),
+        Some("enterprise_ssd_960gb")
+    );
+}
+
+#[test]
 fn cpu_two_dimm_requires_cpu_two_and_prevents_its_removal() {
     let mut sim = NetworkSim::new();
     sim.money = 100_000;

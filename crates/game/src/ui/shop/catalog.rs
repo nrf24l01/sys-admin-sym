@@ -220,6 +220,10 @@ impl Offer {
         target: ShopTarget,
     ) -> Option<Result<(), SimError>> {
         match (&self.item, target) {
+            (
+                PurchaseItem::ServerPart(id) | PurchaseItem::Drive(id),
+                ShopTarget::Socket(device, socket),
+            ) => Some(sim.server_socket_compatibility(device, socket, id)),
             (PurchaseItem::ServerPart(id), ShopTarget::Server(device)) => Some(
                 sim.server_part_installation_slot(device, id, None)
                     .map(|_| ()),

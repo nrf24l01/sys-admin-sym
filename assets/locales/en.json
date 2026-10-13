@@ -23,7 +23,7 @@
     "cable.auto-length": "Automatic length",
     "cable.extra-percent": "Extra allowance",
     "cable.extra-length": "Extra length",
-    "cable.extra-help": "Added to the route minimum, which already includes 5% installation slack on the port legs. The total copper lead must fit within 100 m. Defaults are saved with this game; existing leads keep their cut length.",
+    "cable.extra-help": "Added once to the measured route minimum, which has no hidden percentage reserve. The total copper lead must fit within 100 m. Defaults are saved with this game; existing leads keep their cut length.",
     "cable.minimum-preset": "Minimum",
     "cable.service-preset": "Service loop",
     "cable.service-preset-help": "Add 10% of the route minimum plus 0.50 m for servicing.",
@@ -855,7 +855,6 @@
     "hosting.network-owned-ranges": "Owned ranges",
     "hosting.network-add": "Add VM subnet rule",
     "hosting.network-apply": "Apply VM network rules",
-    "shop.summary.pcie-generation": "PCIe Gen {0}",
     "shop.spec.switching-capacity": "Switching capacity",
     "shop.spec.forwarding-rate": "Forwarding rate",
     "shop.spec.switch-idle-power": "Idle power (datasheet)",
@@ -941,6 +940,13 @@
     "bank.error-term": "This loan term is unavailable. Choose another term.",
     "bank.error-inactive": "This loan is no longer active. The bank balance has updated.",
     "bank.error-repayment": "A repayment must be positive and cannot exceed the remaining debt.",
-    "bank.error-capacity": "The bank cannot issue this loan because the account limit was reached."
+    "bank.error-capacity": "The bank cannot issue this loan because the account limit was reached.",
+    "hardware.cpu-sockets": "CPU sockets",
+    "hardware.select-socket": "Click to select hardware from inventory or shop",
+    "hardware.socket-inventory": "Compatible hardware in inventory",
+    "hardware.no-compatible-inventory": "No compatible hardware in inventory.",
+    "hardware.browse-compatible-shop": "Shop for compatible hardware",
+    "hardware.remove-first": "Remove the installed item before installing a replacement.",
+    "hardware.remove-later-cpu": "Remove the CPU in the next socket first."
   }
 }

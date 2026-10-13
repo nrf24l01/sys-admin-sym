@@ -55,6 +55,7 @@ pub struct UiState {
     pub range_uplink: Option<PortId>,
     pub range_loaded_for: Option<cloud_provider_sim::Ipv4Prefix>,
     pub shop: super::ShopState,
+    pub hardware_picker: Option<(DeviceId, cloud_provider_sim::ServerSocket)>,
     pub bank: super::BankWindowState,
     pub settings: super::SettingsWindowState,
     pub workspace: Workspace,

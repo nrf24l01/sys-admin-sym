@@ -6,9 +6,9 @@ percentage, a fixed length in meters, or both. The **Service loop** preset adds
 10% plus 0.50 m; **Minimum** clears both. These are game presets, not installation
 standards.
 
-The routed minimum already includes the existing 5% installation allowance on
-the two port legs. Spans between fixing points use their measured distance. The
-extra percentage applies to that whole minimum, rounds up to a centimeter, and
+The minimum is the measured socket-to-socket path, including selected rack or
+ceiling anchors. Spans between fixing points use their measured distance. The
+extra percentage applies once to that minimum, rounds up to a centimeter, and
 the fixed extra length is then added. A 2.00 m minimum with 10% and 0.50 m extra
 produces a 2.70 m cut. Copper leads cannot exceed the simulation's 100 m limit.
 

@@ -41,6 +41,25 @@ requires removing that CPU's DIMMs/cards; devices on the other socket stay intac
 Individual DIMMs can be installed while assembling a required pair. Unsupported
 population counts prevent boot until the required population is complete.
 
+## Installing hardware
+
+Click a CPU socket in the server inspector to open its inventory picker. DIMM,
+PCIe and drive sections expose the same controls for each physical slot or bay.
+The picker groups compatible owned items by model and count. Install uses that
+specific socket; remove an occupied item before installing its replacement.
+Power off before changing CPUs, memory or PCIe cards.
+
+The shop shortcut opens the corresponding component section, clears old filters,
+and enables compatibility for the selected socket. CPU socket, supported memory
+classes and drive interface appear as filters. Compatibility also checks CPU
+pairing, model limits and slot ownership. Occupied sockets remain valid shopping
+targets for replacements. Install CPU 1 before CPU 2, and remove CPU 2 first;
+remove a CPU's DIMMs and PCIe cards before removing that CPU.
+
+Empty drive bays show recessed cages, rails and rear connectors. Carriers,
+handles, drive badges and status LEDs appear only for installed drives in the
+rack, placement preview and shop configuration artwork.
+
 ## Adding another server
 
 Run from the repository root:

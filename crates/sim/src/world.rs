@@ -1545,12 +1545,16 @@ impl NetworkSim {
         } else {
             None
         };
-        if matches!(part.kind, ServerPartKind::Cpu { .. }) {
-            let index = hardware
-                .cpus
-                .iter()
-                .rposition(|id| id == part_id)
+        let cpu_index = if matches!(part.kind, ServerPartKind::Cpu { .. }) {
+            let index = slot
+                .or_else(|| hardware.cpus.iter().rposition(|id| id == part_id))
+                .filter(|&index| hardware.cpus.get(index).is_some_and(|id| id == part_id))
                 .ok_or_else(|| SimError::ServerHardware("CPU is not installed".into()))?;
+            if slot.is_some() && index + 1 != hardware.cpus.len() {
+                return Err(SimError::ServerHardware(
+                    "remove the following CPU before removing this CPU".into(),
+                ));
+            }
             if hardware.pcie.iter().enumerate().any(|(slot, part)| {
                 part.is_some()
                     && server
@@ -1582,7 +1586,10 @@ impl NetworkSim {
                     index + 1
                 )));
             }
-        }
+            Some(index)
+        } else {
+            None
+        };
         let ports = pci_slot
             .map(|i| hardware.card_ports[i].clone())
             .unwrap_or_default();
@@ -1622,6 +1629,7 @@ impl NetworkSim {
         };
         if let Some(list) = list {
             let index = ram_index
+                .or(cpu_index)
                 .or_else(|| list.iter().rposition(|p| p == part_id))
                 .ok_or_else(|| SimError::ServerHardware("part is not installed".into()))?;
             list.remove(index);

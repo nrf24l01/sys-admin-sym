@@ -249,11 +249,11 @@ fn automatic_length_accounts_for_rack_distance_and_custom_length_is_exact() {
         sim.device(a).unwrap().ports()[0],
         sim.device(b).unwrap().ports()[0],
     );
-    // Direct leads get 5% installation slack; routed leads use their measured path.
-    assert_eq!(sim.minimum_cable_length(a, b).unwrap(), 58);
-    assert_eq!(sim.quote_cable(a, b, None).unwrap().length_cm, 58);
+    // Minimum is the measured socket distance. Allowances are separate.
+    assert_eq!(sim.minimum_cable_length(a, b).unwrap(), 55);
+    assert_eq!(sim.quote_cable(a, b, None).unwrap().length_cm, 55);
     assert_eq!(sim.quote_cable(a, b, Some(200)).unwrap().length_cm, 200);
-    assert!(sim.quote_cable(a, b, Some(57)).is_err());
+    assert!(sim.quote_cable(a, b, Some(54)).is_err());
 }
 
 fn settings(sim: &mut NetworkSim, settings: CableSettings) {
@@ -267,6 +267,44 @@ fn rack_anchor(unit: u8) -> CableRoutePoint {
         side: RackSide::Rear,
         offset_cm: 0,
     }
+}
+
+#[test]
+fn automatic_percentage_is_the_only_requested_excess_over_the_measured_run() {
+    let mut sim = NetworkSim::new();
+    let switch = installed(&mut sim, DeviceTemplate::Switch, 1);
+    let server = installed(&mut sim, DeviceTemplate::Server, 32);
+    let a = sim.device(switch).unwrap().ports()[0];
+    let b = sim.device(server).unwrap().ports()[0];
+    let port_position = |device: DeviceId, port: PortId| {
+        let data = sim.device(device).unwrap();
+        let index = data
+            .ports()
+            .iter()
+            .position(|candidate| *candidate == port)
+            .unwrap();
+        let (x, y) = data.kind.port_position_normalized(index);
+        let placement = data.rack.unwrap();
+        (
+            f32::from(placement.unit) * (RACK_FACE_HEIGHT_CM + RACK_GAP_CM)
+                - y * RACK_FACE_HEIGHT_CM,
+            x * RACK_FACE_WIDTH_CM,
+        )
+    };
+    let pa = port_position(switch, a);
+    let pb = port_position(server, b);
+    let measured_cm = (pa.0 - pb.0).hypot(pa.1 - pb.1);
+    let minimum = measured_cm.ceil() as u32;
+    assert_eq!(sim.minimum_cable_length(a, b).unwrap(), minimum);
+    settings(
+        &mut sim,
+        CableSettings {
+            extra_percent: 2,
+            ..Default::default()
+        },
+    );
+    let quote = sim.quote_cable(a, b, None).unwrap();
+    assert_eq!(quote.length_cm, minimum + (minimum * 2).div_ceil(100));
 }
 
 #[test]

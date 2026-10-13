@@ -153,7 +153,7 @@ The room layout and manager positions are predefined.
    the other face through the side rails. Select a cable on either face to add
    routing anchors. Ethernet and power routes hide sections behind the rack
    rather than drawing them across the visible equipment. Automatic cuts
-   use the straight distance between sockets plus 5% slack, rounded up to a cm.
+   use the measured distance between sockets, rounded up to a cm. Percentage and fixed allowances are added separately.
    Longer reusable leads can be selected explicitly in the shop. Switch link
    Port LEDs use separate link/status and activity indicators. Link/status shows
    the negotiated connection speed; activity reflects simulated

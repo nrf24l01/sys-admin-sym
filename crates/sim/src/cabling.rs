@@ -134,8 +134,8 @@ impl NetworkSim {
         Ok(())
     }
 
-    /// Straight socket-to-socket distance plus 5% installation slack, rounded
-    /// up to a cm. Routed connections use `minimum_routed_cable_length` instead.
+    /// Straight socket-to-socket distance, rounded up to a cm. Automatic
+    /// percentage and fixed allowances are applied when quoting a new lead.
     pub fn minimum_cable_length(&self, a: PortId, b: PortId) -> Result<u32, SimError> {
         let placements = [self.port_position(a)?, self.port_position(b)?];
         let cm = if placements[0].0 == placements[1].0 {
@@ -143,11 +143,12 @@ impl NetworkSim {
         } else {
             self.room_distance(placements[0], placements[1])?
         };
-        Ok((cm * 1.05).ceil() as u32)
+        Ok(cm.ceil() as u32)
     }
 
-    /// Routed leads follow their selected fixing points. The port legs receive
-    /// 5% installation slack; spans between anchors remain exact.
+    /// Routed leads follow their selected fixing points. The measured run from
+    /// each port through its anchors is the minimum; automatic allowances are
+    /// applied separately when quoting a new lead.
     pub fn minimum_routed_cable_length(
         &self,
         a: PortId,
@@ -184,7 +185,7 @@ impl NetworkSim {
         }
         points.push(endpoints[1]);
         let mut total = 0.0;
-        for (index, pair) in points.windows(2).enumerate() {
+        for pair in points.windows(2) {
             let previous = pair[0];
             let next = pair[1];
             let segment = if previous.0 == next.0 {
@@ -192,11 +193,7 @@ impl NetworkSim {
             } else {
                 self.room_distance(previous, next)?
             };
-            total += if index == 0 || index + 1 == points.len() - 1 {
-                segment * 1.05
-            } else {
-                segment
-            };
+            total += segment;
         }
         Ok(total.ceil() as u32)
     }

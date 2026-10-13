@@ -453,6 +453,7 @@ pub fn main_ui(
     ranges::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     hosting::show(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     bank::show(&mut viewport_ui, &snapshot.0, &mut state.bank, &mut actions);
+    server_hardware::picker(&mut viewport_ui, &snapshot.0, &mut state, &mut actions);
     let shop_selection = state.selected;
     if state.shop.open {
         let shop_textures = images.shop_texture_ids(
@@ -779,7 +780,7 @@ fn device_inspector(
     if let DeviceKind::Server(server) = &device.kind
         && let Some(hardware) = &server.hardware
     {
-        server_hardware::server_hardware_inspector(ui, sim, id, hardware, actions);
+        server_hardware::server_hardware_inspector(ui, sim, id, hardware, state);
     }
     let actual_powered = device.powered
         || match device.kind {
@@ -3983,16 +3984,21 @@ mod tests {
         .unwrap();
         let populated = sim.device(id).unwrap().kind.clone();
         let panel = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 60.0));
-        let shape_count = |kind: &DeviceKind| {
-            let ctx = egui::Context::default();
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-                paint_server_drives(ui.painter(), panel, kind)
-            });
-            let count = output.shapes.len();
-            output.textures_delta.clear();
-            count
-        };
-        assert!(shape_count(&populated) > shape_count(&empty));
+        let carrier_count =
+            |kind: &DeviceKind| {
+                let ctx = egui::Context::default();
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    paint_server_drives(ui.painter(), panel, kind)
+                });
+                let count = output.shapes.iter().filter(|shape| matches!(
+                &shape.shape,
+                egui::Shape::Rect(rect) if rect.fill == egui::Color32::from_rgb(43, 48, 52)
+            )).count();
+                output.textures_delta.clear();
+                count
+            };
+        assert_eq!(carrier_count(&empty), 0);
+        assert_eq!(carrier_count(&populated), 1);
     }
 
     #[test]

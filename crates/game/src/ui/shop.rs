@@ -2,7 +2,7 @@
 mod artwork;
 mod catalog;
 mod details;
-mod filters;
+pub(super) mod filters;
 mod layout;
 mod navigation;
 #[cfg(test)]

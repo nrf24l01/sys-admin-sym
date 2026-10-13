@@ -197,14 +197,14 @@ fn sort_label(sort: ShopSort) -> String {
     })
 }
 
-pub(super) fn compatibility_target(
+pub(in crate::ui) fn compatibility_target(
     ui: &mut egui::Ui,
     state: &mut ShopState,
     sim: &NetworkSim,
     selected: Selection,
 ) {
     if state.target.is_some_and(|target| match target {
-        ShopTarget::Server(id) => sim.device(id).is_none(),
+        ShopTarget::Server(id) | ShopTarget::Socket(id, _) => sim.device(id).is_none(),
         ShopTarget::Port(id) => sim.port(id).is_none(),
     }) {
         state.target = None;
@@ -260,6 +260,19 @@ pub(super) fn compatibility_target(
                 ));
             }
         }
+    }
+    if let Some(target @ ShopTarget::Socket(device, socket)) = state.target
+        && state.section == Some(crate::ui::server_hardware::section(socket))
+        && let Some(device) = sim.device(device)
+    {
+        targets.push((
+            target,
+            format!(
+                "{} · {}",
+                crate::localization::device_name(device),
+                crate::ui::server_hardware::socket_name(sim, device.id, socket)
+            ),
+        ));
     }
     if state
         .target

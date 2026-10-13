@@ -1,11 +1,13 @@
 use super::*;
+mod picker;
+pub(super) use picker::picker;
 
 pub(super) fn server_hardware_inspector(
     ui: &mut egui::Ui,
     sim: &NetworkSim,
     device: DeviceId,
     hardware: &cloud_provider_sim::ServerHardware,
-    actions: &mut MessageWriter<UiAction>,
+    state: &mut UiState,
 ) {
     use cloud_provider_sim::{PciCard, ServerPartKind, server_catalog};
     let catalog = server_catalog();
@@ -14,7 +16,7 @@ pub(super) fn server_hardware_inspector(
     };
     let model = server.model();
     let chassis = &model.chassis;
-    let parts_editable = !sim.device(device).unwrap().powered || chassis.parts_hot_swappable;
+
     ui.separator();
     ui.strong(tr("ui.server-hardware"));
     ui.label(crate::localization::tr_args(
@@ -56,40 +58,6 @@ pub(super) fn server_hardware_inspector(
             );
         }
     }
-    let dimm_indices = hardware.dimm_slot_indices_for_model(model);
-    egui::CollapsingHeader::new(tr("hardware.dimm-slots")).show(ui, |ui| {
-        for (index, slot) in chassis.memory.slots.iter().enumerate() {
-            let installed = dimm_indices
-                .iter()
-                .position(|i| *i == index)
-                .and_then(|i| hardware.ram.get(i));
-            ui.horizontal_wrapped(|ui| {
-                ui.label(crate::localization::tr_args(
-                    "hardware.dimm-slot",
-                    &[
-                        slot.name.clone(),
-                        (slot.cpu_socket + 1).to_string(),
-                        (slot.channel + 1).to_string(),
-                    ],
-                ));
-                if let Some(id) = installed {
-                    ui.label(crate::localization::item_name(id, id));
-                    if ui
-                        .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                        .clicked()
-                    {
-                        actions.write(UiAction::RemoveServerPart {
-                            device,
-                            part_id: id.clone(),
-                            slot: Some(index),
-                        });
-                    }
-                } else {
-                    ui.weak(tr("ui.empty"));
-                }
-            });
-        }
-    });
     let cpu_lanes: u16 = hardware
         .cpus
         .iter()
@@ -129,182 +97,106 @@ pub(super) fn server_hardware_inspector(
     } else {
         ui.weak(tr("ui.install-a-cpu-and-ram-to-complete"));
     }
-    for (index, slot) in chassis.pcie_slots.iter().enumerate() {
-        let installed = hardware.pcie.get(index).and_then(Option::as_deref);
-        ui.horizontal(|ui| {
-            ui.label(crate::localization::tr_args(
-                "ui.x-gen",
-                &[
-                    (slot.name).to_string(),
-                    (slot.lanes).to_string(),
-                    (slot.generation).to_string(),
-                ],
-            ));
-            if let Some(id) = installed {
-                let name = catalog
-                    .parts
-                    .iter()
-                    .find(|part| part.id == id)
-                    .map_or(id, |part| part.name.as_str());
-                ui.label(crate::localization::item_name(id, name));
-                if let Some(generation) = hardware.pcie_link_generation_for_model(model, index) {
-                    ui.weak(crate::localization::tr_args(
-                        "hardware.pcie-negotiated",
-                        &[generation.to_string()],
-                    ));
-                }
-                if ui
-                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                    .clicked()
-                {
-                    actions.write(UiAction::RemoveServerPart {
-                        device,
-                        part_id: id.into(),
-                        slot: Some(index),
-                    });
-                }
-            } else {
-                ui.weak(tr("ui.empty"));
-                for part in &catalog.parts {
-                    let ServerPartKind::PciCard { .. } = &part.kind else {
-                        continue;
-                    };
-                    if sim.server_parts.get(&part.id).copied().unwrap_or(0) > 0
-                        && sim
-                            .server_part_installation_slot(device, &part.id, Some(index))
-                            .is_ok()
-                        && ui
-                            .add_enabled(
-                                parts_editable,
-                                egui::Button::new(crate::localization::tr_args(
-                                    "hardware.install-item",
-                                    &[crate::localization::item_name(&part.id, &part.name)],
-                                )),
-                            )
-                            .clicked()
-                    {
-                        actions.write(UiAction::InstallServerPart {
-                            device,
-                            part_id: part.id.clone(),
-                            slot: Some(index),
-                        });
-                    }
-                }
-            }
-        });
-    }
-    for part in &catalog.parts {
-        let owned = sim.server_parts.get(&part.id).copied().unwrap_or(0);
-        let installed = match &part.kind {
-            ServerPartKind::Cpu { .. } => hardware.cpus.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::Ram { .. } => hardware.ram.iter().filter(|id| *id == &part.id).count(),
-            ServerPartKind::PowerSupply { .. } => hardware
-                .power_supplies
-                .iter()
-                .filter(|id| *id == &part.id)
-                .count(),
-            ServerPartKind::PciCard { .. } => hardware
-                .pcie
-                .iter()
-                .filter(|id| id.as_deref() == Some(part.id.as_str()))
-                .count(),
-        };
-        ui.horizontal(|ui| {
-            ui.label(crate::localization::tr_args(
-                "ui.inventory-installed",
-                &[
-                    crate::localization::item_name(&part.id, &part.name),
-                    (owned).to_string(),
-                    (installed).to_string(),
-                ],
-            ));
-            let compatibility = sim.server_part_installation_slot(device, &part.id, None);
-            if ui
-                .add_enabled(
-                    owned > 0 && parts_editable && compatibility.is_ok(),
-                    egui::Button::new(tr("ui.install")),
-                )
-                .on_disabled_hover_text(if !parts_editable {
-                    tr("hardware.power-off-parts")
-                } else {
-                    compatibility
-                        .err()
-                        .map(|error| error.to_string())
-                        .unwrap_or_else(|| tr("ui.empty"))
-                })
-                .clicked()
-            {
-                actions.write(UiAction::InstallServerPart {
-                    device,
-                    part_id: part.id.clone(),
-                    slot: None,
-                });
-            }
-            if installed > 0
-                && !matches!(part.kind, ServerPartKind::PciCard { .. })
-                && ui
-                    .add_enabled(parts_editable, egui::Button::new(tr("ui.remove")))
-                    .clicked()
-            {
-                actions.write(UiAction::RemoveServerPart {
-                    device,
-                    part_id: part.id.clone(),
-                    slot: None,
-                });
-            }
-        });
-    }
     ui.separator();
-    ui.strong(tr("ui.drive-bays"));
-    ui.weak(tr("ui.buy-drives-in-compute-storage-drives-then"));
-    for (bay, slot) in chassis.drive_bays.iter().enumerate() {
+    ui.strong(tr("hardware.cpu-sockets"));
+    ui.horizontal_wrapped(|ui| {
+        for index in 0..chassis.cpu_sockets {
+            socket_tile(ui, sim, device, ServerSocket::Cpu(index), state);
+        }
+    });
+    egui::CollapsingHeader::new(tr("hardware.dimm-slots")).show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label(crate::localization::tr_args(
-                "hardware.slot",
-                &[(slot.name).to_string(), (slot.interface).to_string()],
-            ));
-            if let Some(id) = hardware.drives.get(bay).and_then(Option::as_deref) {
-                if let Some(drive) = cloud_provider_sim::drive_catalog()
-                    .drives
-                    .iter()
-                    .find(|d| d.id == id)
-                {
-                    ui.label(crate::localization::tr_args(
-                        "ui.read-mb-s-iops-write-mb-s",
-                        &[
-                            crate::localization::item_name(&drive.id, &drive.name),
-                            (drive.read_mb_s).to_string(),
-                            (drive.read_iops).to_string(),
-                            (drive.write_mb_s).to_string(),
-                            (drive.write_iops).to_string(),
-                        ],
-                    ));
-                } else {
-                    ui.label(id);
-                }
-                if ui.button(tr("ui.remove-drive")).clicked() {
-                    actions.write(UiAction::RemoveDrive { device, bay });
-                }
-            } else {
-                ui.weak(tr("ui.empty"));
-                for drive in &cloud_provider_sim::drive_catalog().drives {
-                    if drive.interface == slot.interface
-                        && sim.drive_inventory.get(&drive.id).copied().unwrap_or(0) > 0
-                        && ui
-                            .button(crate::localization::tr_args(
-                                "hardware.install-item",
-                                &[crate::localization::item_name(&drive.id, &drive.name)],
-                            ))
-                            .clicked()
-                    {
-                        actions.write(UiAction::InstallDrive {
-                            device,
-                            drive_id: drive.id.clone(),
-                            bay: Some(bay),
-                        });
-                    }
-                }
+            for index in 0..chassis.dimm_slots {
+                socket_tile(ui, sim, device, ServerSocket::Dimm(index), state);
             }
         });
+    });
+    egui::CollapsingHeader::new("PCIe").show(ui, |ui| {
+        for index in 0..chassis.pcie_slots.len() {
+            socket_tile(ui, sim, device, ServerSocket::Pcie(index), state);
+        }
+    });
+    egui::CollapsingHeader::new(tr("ui.drive-bays")).show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for index in 0..chassis.drive_bays.len() {
+                socket_tile(ui, sim, device, ServerSocket::Drive(index), state);
+            }
+        });
+    });
+}
+
+pub(super) fn section(socket: ServerSocket) -> ShopSection {
+    match socket {
+        ServerSocket::Cpu(_) => ShopSection::Cpu,
+        ServerSocket::Dimm(_) => ShopSection::Ram,
+        ServerSocket::Pcie(_) => ShopSection::PciCards,
+        ServerSocket::Drive(_) => ShopSection::Storage,
+    }
+}
+
+pub(super) fn socket_name(sim: &NetworkSim, device: DeviceId, socket: ServerSocket) -> String {
+    let Some(device) = sim.device(device) else {
+        return String::new();
+    };
+    let DeviceKind::Server(server) = &device.kind else {
+        return String::new();
+    };
+    let chassis = &server.model().chassis;
+    match socket {
+        ServerSocket::Cpu(index) => format!("CPU {} · {}", index + 1, chassis.cpu_socket),
+        ServerSocket::Dimm(index) => {
+            chassis
+                .memory
+                .slots
+                .get(index)
+                .map_or_else(String::new, |slot| {
+                    format!(
+                        "{} · CPU {} · {}",
+                        slot.name,
+                        slot.cpu_socket + 1,
+                        chassis.memory_type
+                    )
+                })
+        }
+        ServerSocket::Pcie(index) => {
+            chassis
+                .pcie_slots
+                .get(index)
+                .map_or_else(String::new, |slot| {
+                    format!(
+                        "{} · x{} · Gen{} · CPU {}",
+                        slot.name,
+                        slot.width,
+                        slot.generation,
+                        slot.cpu_socket + 1
+                    )
+                })
+        }
+        ServerSocket::Drive(index) => chassis
+            .drive_bays
+            .get(index)
+            .map_or_else(String::new, |slot| {
+                format!("{} · {}", slot.name, slot.interface)
+            }),
+    }
+}
+
+fn socket_tile(
+    ui: &mut egui::Ui,
+    sim: &NetworkSim,
+    device: DeviceId,
+    socket: ServerSocket,
+    state: &mut UiState,
+) {
+    let name = socket_name(sim, device, socket);
+    let installed = sim.server_socket_item(device, socket);
+    let item = installed
+        .map(|id| crate::localization::item_name(id, id))
+        .unwrap_or_else(|| tr("ui.empty"));
+    let response = ui
+        .add(egui::Button::new(format!("{name}\n{item}")).min_size(egui::vec2(145.0, 48.0)))
+        .on_hover_text(tr("hardware.select-socket"));
+    if response.clicked() {
+        state.hardware_picker = Some((device, socket));
     }
 }

@@ -35,6 +35,11 @@ impl NetworkSim {
         let chassis = &model.chassis;
         let selected_slot = match &part.kind {
             ServerPartKind::Cpu { socket, .. } => {
+                if slot.is_some_and(|index| index != hardware.cpus.len()) {
+                    return Err(SimError::ServerHardware(
+                        "CPU installation must target the next empty socket".into(),
+                    ));
+                }
                 if socket != &chassis.cpu_socket || hardware.cpus.len() >= chassis.cpu_sockets {
                     return Err(SimError::ServerHardware(
                         "CPU socket is incompatible or full".into(),

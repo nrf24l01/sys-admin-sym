@@ -122,8 +122,8 @@ Ethernet and power adapters supply cable identities, projected paths, lengths,
 selection state, and connector artwork to one generic `CableLayer`. The parent
 owns slack allocation, rope simulation, dragging, hit testing, connector placement,
 and jacket/highlight rendering. Visible sections share the available cable length
-proportionally. Copper route minima include 5% installation slack on the port
-legs; saved extra allowances are added when cutting a new lead. Finished optical
+proportionally. Copper route minima use the measured socket-to-socket or routed path. Saved
+percentage and fixed allowances are added once when cutting a new lead. Finished optical
 assemblies keep their catalog lengths.
 
 `PortConnector` records the socket independently from VLAN/IP configuration.

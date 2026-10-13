@@ -5,8 +5,10 @@ mod catalog_validation;
 mod limits;
 mod models;
 mod purchase;
+mod sockets;
 pub use limits::*;
 pub use models::*;
+pub use sockets::ServerSocket;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerCatalog {
