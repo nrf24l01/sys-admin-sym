@@ -13,6 +13,7 @@ pub enum ConnectorFamily {
 #[serde(rename_all = "snake_case")]
 pub enum ConnectorRole {
     Data,
+    Module,
     Inlet,
     Outlet,
     Anchor,
@@ -26,6 +27,15 @@ pub struct ConnectorDefinition {
     pub mates_with: Vec<ConnectorType>,
     /// Socket size relative to its equipment face, used for dynamic NIC ports.
     pub default_size: [f32; 2],
+    #[serde(default)]
+    pub module: Option<ModuleConnectorDefinition>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModuleConnectorDefinition {
+    pub label: String,
+    pub accepts_modules: Vec<ConnectorType>,
+    pub default_profile: crate::CageProfile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,6 +119,10 @@ impl ConnectorCatalog {
         let expected = [
             ConnectorType::Rj45,
             ConnectorType::Sfp,
+            ConnectorType::SfpPlus,
+            ConnectorType::Sfp28,
+            ConnectorType::QsfpPlus,
+            ConnectorType::Qsfp28,
             ConnectorType::Lc,
             ConnectorType::IecC14,
             ConnectorType::IecC13,
@@ -121,6 +135,27 @@ impl ConnectorCatalog {
             }
         }
         for d in &self.types {
+            if let Some(module) = &d.module {
+                if d.role != ConnectorRole::Module
+                    || d.family != ConnectorFamily::Network
+                    || module.label.trim().is_empty()
+                    || module.default_profile.kind.connector_type() != d.id
+                    || module.default_profile.modes.is_empty()
+                    || module.default_profile.max_power_mw == 0
+                    || !module.accepts_modules.contains(&d.id)
+                    || module
+                        .accepts_modules
+                        .iter()
+                        .any(|id| id.module_kind().is_none())
+                {
+                    return Err(format!("invalid module connector {:?}", d.id));
+                }
+            } else if d.id.module_kind().is_some() || d.role == ConnectorRole::Module {
+                return Err(format!(
+                    "missing module connector definition for {:?}",
+                    d.id
+                ));
+            }
             if d.default_size
                 .iter()
                 .any(|v| !v.is_finite() || *v <= 0.0 || *v > 1.0)

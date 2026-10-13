@@ -1,4 +1,4 @@
-use super::{CableAssemblyModel, TransceiverModel};
+use super::{CableAssemblyModel, ModuleConnection, TransceiverModel};
 use crate::{LocalizedText, SwitchModel};
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -26,13 +26,30 @@ pub struct OpticsCatalog {
 pub fn optics_catalog() -> &'static OpticsCatalog {
     static CATALOG: OnceLock<OpticsCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        crate::equipment_config::equipment_catalog(
+        let catalog: OpticsCatalog = crate::equipment_config::equipment_catalog(
             "optics.json",
             include_str!("../../../../assets/equipment/optics.json"),
-        )
+        );
+        catalog
+            .validate()
+            .unwrap_or_else(|error| panic!("invalid optics.json: {error}"));
+        catalog
     })
 }
 impl OpticsCatalog {
+    pub fn validate(&self) -> Result<(), String> {
+        for cable in &self.cables {
+            if let Some(id) = cable.medium.direct_connect_model() {
+                let module = self
+                    .module(id)
+                    .ok_or_else(|| format!("unknown cable end {id} for {}", cable.id))?;
+                if module.connection() != ModuleConnection::DirectConnect {
+                    return Err(format!("{} requires a direct-connect module end", cable.id));
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn hardware(&self, id: &str) -> Option<&OpticalHardwareModel> {
         self.hardware.iter().find(|m| m.id == id)
     }

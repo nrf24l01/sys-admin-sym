@@ -366,13 +366,7 @@ pub(super) fn catalog() -> &'static [Offer] {
 }
 
 fn cage_name(cage: CageKind) -> &'static str {
-    match cage {
-        CageKind::Sfp => "SFP",
-        CageKind::SfpPlus => "SFP+",
-        CageKind::Sfp28 => "SFP28",
-        CageKind::QsfpPlus => "QSFP+",
-        CageKind::Qsfp28 => "QSFP28",
-    }
+    &cage.module_definition().label
 }
 fn fiber_name(fiber: FiberClass) -> &'static str {
     match fiber {

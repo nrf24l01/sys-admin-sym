@@ -2,8 +2,8 @@ use crate::app::CableVisibility;
 use crate::localization::tr;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Vec2};
 use cloud_provider_sim::{
-    CableRoutePoint, Connector, ConnectorType, LinkId, NetworkSim, OutletId, PortId,
-    connector_catalog,
+    CableAssemblyModel, CableRoutePoint, CageKind, Connector, ConnectorType, LinkId, NetworkSim,
+    OutletId, PortId, connector_catalog,
 };
 use std::collections::HashMap;
 
@@ -608,9 +608,24 @@ pub(super) fn creation_anchor(
 pub(super) enum ConnectorKind {
     Rj45,
     Optical { strands: u8 },
-    Attached { active: bool },
+    Attached { active: bool, cage: CageKind },
     Iec,
     CiscoFourPin,
+}
+
+impl ConnectorKind {
+    fn from_assembly(model: &CableAssemblyModel) -> Option<Self> {
+        match model.medium {
+            cloud_provider_sim::AssemblyMedium::Fiber { strands, .. } => {
+                Some(Self::Optical { strands })
+            }
+            cloud_provider_sim::AssemblyMedium::Dac { .. }
+            | cloud_provider_sim::AssemblyMedium::Aoc { .. } => Some(Self::Attached {
+                active: matches!(model.medium, cloud_provider_sim::AssemblyMedium::Aoc { .. }),
+                cage: model.direct_connect_module()?.cage,
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -624,7 +639,7 @@ impl Connector for CableConnector {
         match self.kind {
             ConnectorKind::Rj45 => ConnectorType::Rj45,
             ConnectorKind::Optical { .. } => ConnectorType::Lc,
-            ConnectorKind::Attached { .. } => ConnectorType::Sfp,
+            ConnectorKind::Attached { cage, .. } => cage.connector_type(),
             ConnectorKind::Iec => ConnectorType::IecC14,
             ConnectorKind::CiscoFourPin => ConnectorType::CiscoFourPin,
         }
@@ -637,8 +652,8 @@ impl CableConnector {
         match self.kind {
             ConnectorKind::Optical { strands: 1 } => Some(OpticalSprite::SimplexPlug),
             ConnectorKind::Optical { .. } => Some(OpticalSprite::DuplexPlug),
-            ConnectorKind::Attached { active: false } => Some(OpticalSprite::DacPlug),
-            ConnectorKind::Attached { active: true } => Some(OpticalSprite::AocPlug),
+            ConnectorKind::Attached { active: false, .. } => Some(OpticalSprite::DacPlug),
+            ConnectorKind::Attached { active: true, .. } => Some(OpticalSprite::AocPlug),
             _ => None,
         }
     }
@@ -894,10 +909,10 @@ impl<Id: Copy + Eq + std::hash::Hash> CableLayer<(Id, usize)> {
             };
             let diameter_cm = match cable.connectors.first().map(|c| c.kind) {
                 Some(ConnectorKind::Optical { strands: 1 }) => 0.25,
-                Some(ConnectorKind::Optical { .. } | ConnectorKind::Attached { active: true }) => {
-                    0.35
-                }
-                Some(ConnectorKind::Attached { active: false }) => 0.65,
+                Some(
+                    ConnectorKind::Optical { .. } | ConnectorKind::Attached { active: true, .. },
+                ) => 0.35,
+                Some(ConnectorKind::Attached { active: false, .. }) => 0.65,
                 _ => 0.55,
             };
             let width = (view.pixels_per_cm * diameter_cm).clamp(2.5, 7.5);
@@ -1001,18 +1016,8 @@ impl CableScene {
                                     .and_then(|c| {
                                         cloud_provider_sim::optics_catalog().cable(&c.model_id)
                                     })
-                                    .map_or(ConnectorKind::Rj45, |model| match model.medium {
-                                        cloud_provider_sim::AssemblyMedium::Fiber {
-                                            strands,
-                                            ..
-                                        } => ConnectorKind::Optical { strands },
-                                        cloud_provider_sim::AssemblyMedium::Dac { .. } => {
-                                            ConnectorKind::Attached { active: false }
-                                        }
-                                        cloud_provider_sim::AssemblyMedium::Aoc { .. } => {
-                                            ConnectorKind::Attached { active: true }
-                                        }
-                                    }),
+                                    .and_then(ConnectorKind::from_assembly)
+                                    .unwrap_or(ConnectorKind::Rj45),
                             })
                         })
                         .collect(),
@@ -1252,14 +1257,38 @@ mod tests {
     }
 
     #[test]
+    fn attached_cable_connectors_use_the_module_family_for_mating() {
+        let socket = Rect::from_center_size(egui::pos2(100.0, 40.0), Vec2::new(24.0, 16.0));
+        for id in ["dac_10g_3m", "aoc_10g_3m"] {
+            let model = cloud_provider_sim::optics_catalog().cable(id).unwrap();
+            let connector = CableConnector {
+                socket,
+                kind: ConnectorKind::from_assembly(model).unwrap(),
+            };
+            assert!(
+                !CageKind::Sfp.can_mate(&connector),
+                "a 1G SFP cage rejects a 10G attached module"
+            );
+            assert!(CageKind::SfpPlus.can_mate(&connector));
+            assert!(!CageKind::Qsfp28.can_mate(&connector));
+        }
+    }
+
+    #[test]
     fn optical_connectors_use_distinct_atlas_faces_and_preserve_aspect_ratio() {
         let socket = Rect::from_center_size(egui::pos2(100.0, 40.0), Vec2::new(24.0, 16.0));
         let mut faces = vec![];
         for kind in [
             ConnectorKind::Optical { strands: 1 },
             ConnectorKind::Optical { strands: 2 },
-            ConnectorKind::Attached { active: false },
-            ConnectorKind::Attached { active: true },
+            ConnectorKind::Attached {
+                active: false,
+                cage: CageKind::SfpPlus,
+            },
+            ConnectorKind::Attached {
+                active: true,
+                cage: CageKind::SfpPlus,
+            },
         ] {
             let connector = CableConnector { socket, kind };
             let uv = connector.optical_sprite().unwrap().uv();

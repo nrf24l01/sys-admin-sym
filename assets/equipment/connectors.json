@@ -15,14 +15,166 @@
     {
       "id": "sfp",
       "family": "network",
-      "role": "data",
+      "role": "module",
       "mates_with": [
         "sfp"
       ],
       "default_size": [
         0.034,
         0.36
-      ]
+      ],
+      "module": {
+        "label": "SFP",
+        "accepts_modules": [
+          "sfp"
+        ],
+        "default_profile": {
+          "kind": "sfp",
+          "modes": [
+            {
+              "speed": "Gbps1",
+              "lanes": 1,
+              "fec": "none"
+            }
+          ],
+          "max_power_mw": 2000
+        }
+      }
+    },
+    {
+      "id": "sfp-plus",
+      "family": "network",
+      "role": "module",
+      "mates_with": [
+        "sfp-plus"
+      ],
+      "default_size": [
+        0.034,
+        0.36
+      ],
+      "module": {
+        "label": "SFP+",
+        "accepts_modules": [
+          "sfp",
+          "sfp-plus"
+        ],
+        "default_profile": {
+          "kind": "sfp_plus",
+          "modes": [
+            {
+              "speed": "Gbps1",
+              "lanes": 1,
+              "fec": "none"
+            },
+            {
+              "speed": "Gbps10",
+              "lanes": 1,
+              "fec": "none"
+            }
+          ],
+          "max_power_mw": 2000
+        }
+      }
+    },
+    {
+      "id": "sfp28",
+      "family": "network",
+      "role": "module",
+      "mates_with": [
+        "sfp28"
+      ],
+      "default_size": [
+        0.034,
+        0.36
+      ],
+      "module": {
+        "label": "SFP28",
+        "accepts_modules": [
+          "sfp",
+          "sfp-plus",
+          "sfp28"
+        ],
+        "default_profile": {
+          "kind": "sfp28",
+          "modes": [
+            {
+              "speed": "Gbps1",
+              "lanes": 1,
+              "fec": "none"
+            },
+            {
+              "speed": "Gbps25",
+              "lanes": 1,
+              "fec": "none"
+            }
+          ],
+          "max_power_mw": 2000
+        }
+      }
+    },
+    {
+      "id": "qsfp-plus",
+      "family": "network",
+      "role": "module",
+      "mates_with": [
+        "qsfp-plus"
+      ],
+      "default_size": [
+        0.055,
+        0.38
+      ],
+      "module": {
+        "label": "QSFP+",
+        "accepts_modules": [
+          "qsfp-plus"
+        ],
+        "default_profile": {
+          "kind": "qsfp_plus",
+          "modes": [
+            {
+              "speed": "Gbps40",
+              "lanes": 4,
+              "fec": "none"
+            }
+          ],
+          "max_power_mw": 4000
+        }
+      }
+    },
+    {
+      "id": "qsfp28",
+      "family": "network",
+      "role": "module",
+      "mates_with": [
+        "qsfp28"
+      ],
+      "default_size": [
+        0.055,
+        0.38
+      ],
+      "module": {
+        "label": "QSFP28",
+        "accepts_modules": [
+          "qsfp-plus",
+          "qsfp28"
+        ],
+        "default_profile": {
+          "kind": "qsfp28",
+          "modes": [
+            {
+              "speed": "Gbps40",
+              "lanes": 4,
+              "fec": "none"
+            },
+            {
+              "speed": "Gbps100",
+              "lanes": 4,
+              "fec": "rs"
+            }
+          ],
+          "max_power_mw": 5000
+        }
+      }
     },
     {
       "id": "lc",

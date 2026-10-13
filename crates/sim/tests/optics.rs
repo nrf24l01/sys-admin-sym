@@ -286,6 +286,16 @@ fn dac_and_aoc_are_whole_assemblies_and_never_consume_rj45_materials() {
         let stock = sim.cable_inventory().clone();
         let watts = sim.power.device_status(a).unwrap().load.watts;
         let assembly = cable(&mut sim, ap, bp, model);
+        assert!(
+            sim.optics.transceivers.is_empty(),
+            "cable ends never become separate owned modules"
+        );
+        for port in [ap, bp] {
+            let end = sim.endpoint_module(port).unwrap();
+            let connector: &dyn ModuleConnector = end;
+            assert_eq!(connector.cage_kind(), CageKind::SfpPlus);
+            assert_eq!(end.connection(), ModuleConnection::DirectConnect);
+        }
         assert_eq!(sim.port_link_speed(ap), Some(LinkSpeed::Gbps10));
         assert!(sim.power.device_status(a).unwrap().load.watts > watts);
         let id = sim.link_for_port(ap).unwrap().id;
@@ -297,6 +307,8 @@ fn dac_and_aoc_are_whole_assemblies_and_never_consume_rj45_materials() {
         );
         sim.execute(Command::Disconnect { link: id }).unwrap();
         assert!(sim.optics.assemblies[&assembly].link.is_none());
+        assert!(sim.endpoint_module(ap).is_none());
+        assert!(sim.endpoint_module(bp).is_none());
         assert_eq!(sim.cable_inventory(), &stock);
         assert_eq!(sim.power.device_status(a).unwrap().load.watts, watts);
         optics(
@@ -310,6 +322,41 @@ fn dac_and_aoc_are_whole_assemblies_and_never_consume_rj45_materials() {
         );
         assert!(sim.port_link_up(ap));
     }
+}
+
+#[test]
+fn attached_end_models_cannot_be_bought_or_installed_as_separate_modules() {
+    let (mut sim, _, _, port, _) = pair();
+    for model in ["dac_10g_end", "aoc_10g_end"] {
+        let money = sim.money;
+        assert_eq!(
+            sim.execute(Command::Optics(OpticsCommand::BuyTransceiver {
+                model: model.into(),
+            })),
+            Err(SimError::Optics(OpticsError::AttachedCable))
+        );
+        assert_eq!(sim.money, money);
+        assert!(sim.optics.transceivers.is_empty());
+        assert_eq!(
+            sim.transceiver_model_supported_at_port(model, port),
+            Err(OpticsError::AttachedCable)
+        );
+    }
+}
+
+#[test]
+fn cable_catalog_rejects_removable_modules_as_permanently_attached_ends() {
+    let mut catalog: OpticsCatalog =
+        serde_json::from_str(include_str!("../../../assets/equipment/optics.json")).unwrap();
+    catalog
+        .cables
+        .iter_mut()
+        .find(|c| c.id == "dac_10g_3m")
+        .unwrap()
+        .medium = AssemblyMedium::Dac {
+        transceiver: "sfpplus_10g_sr".into(),
+    };
+    assert!(catalog.validate().is_err());
 }
 
 #[test]

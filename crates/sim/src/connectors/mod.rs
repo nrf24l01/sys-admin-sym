@@ -1,8 +1,10 @@
 //! Common physical connector interface, independent of transport and presentation.
 mod catalog;
 mod equipment;
+mod module;
 pub use catalog::*;
 pub use equipment::*;
+pub use module::*;
 
 use crate::{Port, PortConnector, PowerInlet, PowerInletConnector, RackSide};
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,14 @@ pub enum ConnectorType {
     Rj45,
     #[serde(rename = "sfp")]
     Sfp,
+    #[serde(rename = "sfp-plus")]
+    SfpPlus,
+    #[serde(rename = "sfp28")]
+    Sfp28,
+    #[serde(rename = "qsfp-plus")]
+    QsfpPlus,
+    #[serde(rename = "qsfp28")]
+    Qsfp28,
     #[serde(rename = "lc")]
     Lc,
     #[serde(rename = "c14")]
@@ -32,6 +42,10 @@ impl ConnectorType {
         match self {
             Self::Rj45 => "rj-45",
             Self::Sfp => "sfp",
+            Self::SfpPlus => "sfp-plus",
+            Self::Sfp28 => "sfp28",
+            Self::QsfpPlus => "qsfp-plus",
+            Self::Qsfp28 => "qsfp28",
             Self::Lc => "lc",
             Self::IecC14 => "c14",
             Self::IecC13 => "c13",
@@ -44,13 +58,22 @@ impl ConnectorType {
 pub trait Connector {
     fn connector_type(&self) -> ConnectorType;
 
+    fn module_kind(&self) -> Option<crate::CageKind> {
+        self.connector_type().module_kind()
+    }
+
     fn definition(&self) -> &'static ConnectorDefinition {
         connector_catalog().definition(self.connector_type())
     }
 
     /// Physical mating only. Optical modules, power ratings and link capabilities
     /// are validated by their own simulation subsystems.
+    /// For module connectors, `self` is the host cage and `other` the inserted
+    /// module; JSON family acceptance is intentionally directional.
     fn can_mate(&self, other: &dyn Connector) -> bool {
+        if let Some(module) = &self.definition().module {
+            return module.accepts_modules.contains(&other.connector_type());
+        }
         self.definition()
             .mates_with
             .contains(&other.connector_type())
@@ -70,6 +93,11 @@ impl Connector for PortConnector {
             Self::Lc => ConnectorType::Lc,
         }
     }
+    // Saved port media is a legacy category; the equipment profile supplies
+    // the actual SFP/QSFP family of its module cage.
+    fn module_kind(&self) -> Option<crate::CageKind> {
+        None
+    }
 }
 impl Connector for PowerInletConnector {
     fn connector_type(&self) -> ConnectorType {
@@ -82,6 +110,9 @@ impl Connector for PowerInletConnector {
 impl Connector for Port {
     fn connector_type(&self) -> ConnectorType {
         self.connector.connector_type()
+    }
+    fn module_kind(&self) -> Option<crate::CageKind> {
+        self.connector.module_kind()
     }
 }
 impl Connector for PowerInlet {

@@ -163,8 +163,35 @@ impl DeviceKind {
         index: usize,
     ) -> Option<ConnectorSocket> {
         let id = connector.connector_type();
+        let profile = if id.module_kind().is_some() {
+            let profile = self.module_connector_profile(index)?;
+            if connector.module_kind().is_some() && !profile.can_mate(connector) {
+                return None;
+            }
+            Some(profile)
+        } else {
+            None
+        };
+        let geometry_id = if profile.is_some() {
+            ConnectorType::Sfp
+        } else {
+            id
+        };
+        let mut socket = self.connector_socket_geometry(geometry_id, side, index)?;
+        if let Some(profile) = profile {
+            socket.connector = profile.connector_type();
+        }
+        Some(socket)
+    }
+
+    fn connector_socket_geometry(
+        &self,
+        id: ConnectorType,
+        side: RackSide,
+        index: usize,
+    ) -> Option<ConnectorSocket> {
         if let Some(model) = self.network_model() {
-            if connector.definition().role == ConnectorRole::Inlet {
+            if id.definition().role == ConnectorRole::Inlet {
                 let inlet = model.power_inlets.get(index)?;
                 let expected = match inlet.connector {
                     crate::PowerInletConnector::IecC14 => ConnectorType::IecC14,
@@ -181,7 +208,10 @@ impl DeviceKind {
                 });
             }
             let port = model.ports.get(index)?;
-            if port.side != side || port.connector.connector_type() != id {
+            if port.side != side
+                || (port.connector.connector_type() != id
+                    && !(id == ConnectorType::Sfp && port.cage.is_some()))
+            {
                 return None;
             }
             let rect = if id == ConnectorType::Sfp {
@@ -197,7 +227,7 @@ impl DeviceKind {
             });
         }
         if let Self::Server(server) = self {
-            let rect = if connector.definition().role == ConnectorRole::Inlet {
+            let rect = if id.definition().role == ConnectorRole::Inlet {
                 let inlet = server.model().power_inlets.get(index)?;
                 if inlet.side() != side || inlet.connector.unwrap_or(ConnectorType::IecC14) != id {
                     return None;
@@ -205,7 +235,11 @@ impl DeviceKind {
                 inlet.rect
             } else if index < server.model().onboard_ports.len() {
                 let port = &server.model().onboard_ports[index].socket;
-                if port.side() != side || port.connector.unwrap_or(ConnectorType::Rj45) != id {
+                let port_id = port.connector.unwrap_or(ConnectorType::Rj45);
+                if port.side() != side
+                    || (port_id != id
+                        && !(id == ConnectorType::Sfp && port_id.module_kind().is_some()))
+                {
                     return None;
                 }
                 port.rect
@@ -256,7 +290,10 @@ impl DeviceKind {
                 } else {
                     // Legacy external card catalogs may omit their local socket layout.
                     let (x, y) = slot.port_position(card_index, ports.len());
-                    let [width, height] = connector.definition().default_size;
+                    let [width, height] = self.module_connector_profile(index).map_or_else(
+                        || id.definition().default_size,
+                        |profile| profile.definition().default_size,
+                    );
                     let width = width.min((r - l) / (ports.len() + 1) as f32);
                     let height = height.min(b - t);
                     [

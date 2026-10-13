@@ -34,6 +34,12 @@ shows spare items; a selected port lists only usable installation choices.
 Disconnecting returns the same finished cable and never creates bulk RJ45 stock.
 Removing a NIC returns its modules and attached cables to inventory.
 
+In the domain model, all SFP/QSFP families implement `ModuleConnector`, which
+extends the common `Connector` interface. DAC/AOC remain cable assemblies;
+their ends reuse this module interface with `ModuleConnection::DirectConnect`.
+Family labels, accepted module families and default cage profiles are configured
+in `connectors.json`. Each equipment model supplies its actual host limits.
+
 ## Image socket maps
 
 Switch RJ45 and SFP cages use the full rectangles in `switch_config.json` (4G)
@@ -55,6 +61,8 @@ and geometry resolver; see [Physical connectors](CONNECTORS.md).
 | 1G copper SFP | Ordinary RJ45 lead | 1G on current hosts | 100 m |
 | 10G SR, 850 nm | OM3 / OM4 duplex LC | 10G | 300 m / 400 m |
 | 10G LR, 1310 nm | OS2 duplex LC | 10G | 10 km |
+| 40G QSFP+ LR4 | OS2 duplex LC | 40G, four lanes | 10 km |
+| 100G QSFP28 LR4 | OS2 duplex LC | 100G, four lanes, RS FEC | 10 km |
 | 1G BiDi U/D, complementary 1310/1490 nm | OS2 simplex LC | 1G | 10 km |
 | 10G DAC | Attached copper assembly | 10G | Purchased 1/3/5 m |
 | 10G AOC | Attached active optical assembly | 10G | Purchased 3/10/30 m |
@@ -129,8 +137,9 @@ with unique stable IDs; preserve existing IDs/lengths for save compatibility.
 Model instances and ownership use saved IDs independent of interface config.
 Older saves default to an empty optics inventory and preserve copper wiring.
 
-SFP28 and 25G rates, lane counts and FEC are schema foundations; this catalog
-ships only 1G/10G equipment. New physical families, QSFP/breakout, MPO,
+The network device catalog includes SFP28 and QSFP hosts up to 100G.
+QSFP+ and QSFP28 LR4 modules use a simplified aggregate duplex LC optical budget.
+Breakout, MPO,
 WDM muxes, vendor EEPROM locks, detailed DDM temperature/voltage/bias,
 thermal throttling, per-lane errors and measured throughput need additional
 domain behavior. They are not exposed as working equipment yet.

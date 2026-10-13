@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn offers() -> Vec<Offer> {
     let mut offers = Vec::new();
     for module in &optics_catalog().modules {
-        if matches!(module.medium, ModuleMedium::DirectAttach) {
+        if module.connection() == ModuleConnection::DirectConnect {
             continue;
         }
         let mut offer = Offer::new(

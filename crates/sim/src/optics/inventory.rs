@@ -4,10 +4,11 @@ use crate::*;
 impl NetworkSim {
     pub fn cage_profile(&self, port: PortId) -> Option<CageProfile> {
         let p = self.port(port)?;
-        if let Some(model) = self.device(p.device).and_then(|d| d.kind.network_model()) {
-            let device = self.device(p.device)?;
-            if let Some(index) = device.ports().iter().position(|id| *id == port) {
-                return model.ports.get(index)?.cage.clone();
+        let device = self.device(p.device)?;
+        if let Some(index) = device.ports().iter().position(|id| *id == port) {
+            let profile = device.kind.module_connector_profile(index);
+            if profile.is_some() || device.kind.network_model().is_some() {
+                return profile;
             }
         }
         (p.connector == PortConnector::Sfp).then(|| {
@@ -35,12 +36,9 @@ impl NetworkSim {
             return optics_catalog().module(&module.model_id);
         }
         let assembly = self.connected_assembly(self.link_for_port(port)?.id)?;
-        match &optics_catalog().cable(&assembly.model_id)?.medium {
-            AssemblyMedium::Dac { transceiver } | AssemblyMedium::Aoc { transceiver } => {
-                optics_catalog().module(transceiver)
-            }
-            AssemblyMedium::Fiber { .. } => None,
-        }
+        optics_catalog()
+            .cable(&assembly.model_id)?
+            .direct_connect_module()
     }
     pub fn port_is_copper(&self, port: PortId) -> bool {
         self.port(port)
@@ -91,11 +89,10 @@ impl NetworkSim {
                             && spec.length_cm <= reach.max_length_cm))
                 })
             }
-            AssemblyMedium::Dac { transceiver } | AssemblyMedium::Aoc { transceiver } => {
+            AssemblyMedium::Dac { .. } | AssemblyMedium::Aoc { .. } => {
                 self.endpoint_module(port).is_none()
                     && self.cage_profile(port).is_some_and(|cage| {
-                        optics_catalog()
-                            .module(transceiver)
+                        spec.direct_connect_module()
                             .is_some_and(|module| cage.supports(module))
                     })
             }
@@ -114,6 +111,9 @@ impl NetworkSim {
         let spec = optics_catalog()
             .module(model)
             .ok_or(OpticsError::UnknownModel)?;
+        if spec.connection() == ModuleConnection::DirectConnect {
+            return Err(OpticsError::AttachedCable);
+        }
         if !cage.supports(spec) {
             return Err(OpticsError::IncompatibleHost);
         }
@@ -217,7 +217,7 @@ impl NetworkSim {
                 let spec = optics_catalog()
                     .module(&model)
                     .ok_or(OpticsError::UnknownModel)?;
-                if matches!(spec.medium, ModuleMedium::DirectAttach) {
+                if spec.connection() == ModuleConnection::DirectConnect {
                     return Err(OpticsError::AttachedCable.into());
                 }
                 self.spend_optics(spec.price)?;
@@ -399,12 +399,12 @@ impl NetworkSim {
                         }
                     }
                 }
-                AssemblyMedium::Dac { transceiver } | AssemblyMedium::Aoc { transceiver } => {
+                AssemblyMedium::Dac { .. } | AssemblyMedium::Aoc { .. } => {
                     if self.installed_transceiver(port).is_some() {
                         return Err(OpticsError::CageOccupied.into());
                     }
-                    let module = optics_catalog()
-                        .module(transceiver)
+                    let module = spec
+                        .direct_connect_module()
                         .ok_or(OpticsError::UnknownModel)?;
                     if !self
                         .cage_profile(port)

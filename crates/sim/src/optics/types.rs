@@ -1,3 +1,4 @@
+use crate::ModuleConnector;
 use crate::{CableColor, CableRoutePoint, DeviceId, LinkId, LinkSpeed, LocalizedText, PortId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -18,13 +19,7 @@ pub enum CageKind {
 }
 impl CageKind {
     pub fn accepts(self, module: Self) -> bool {
-        self == module
-            || matches!(
-                (self, module),
-                (Self::SfpPlus | Self::Sfp28, Self::Sfp)
-                    | (Self::Sfp28, Self::SfpPlus)
-                    | (Self::Qsfp28, Self::QsfpPlus)
-            )
+        self.accepts_module(&module)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -57,28 +52,17 @@ impl CageProfile {
         Self::for_speed(LinkSpeed::Gbps1)
     }
     pub fn for_speed(speed: LinkSpeed) -> Self {
-        Self {
-            kind: match speed {
-                LinkSpeed::Gbps25 => CageKind::Sfp28,
-                LinkSpeed::Gbps10 => CageKind::SfpPlus,
-                _ => CageKind::Sfp,
-            },
-            modes: [LinkSpeed::Gbps1, speed]
-                .into_iter()
-                .enumerate()
-                .filter(|(index, rate)| *index == 0 || *rate != LinkSpeed::Gbps1)
-                .map(|(_, rate)| rate)
-                .map(|speed| EthernetMode {
-                    speed,
-                    lanes: 1,
-                    fec: Fec::None,
-                })
-                .collect(),
-            max_power_mw: 2000,
-        }
+        let kind = match speed {
+            LinkSpeed::Gbps100 => CageKind::Qsfp28,
+            LinkSpeed::Gbps40 => CageKind::QsfpPlus,
+            LinkSpeed::Gbps25 => CageKind::Sfp28,
+            LinkSpeed::Gbps10 => CageKind::SfpPlus,
+            _ => CageKind::Sfp,
+        };
+        kind.module_definition().default_profile.clone()
     }
     pub fn supports(&self, module: &TransceiverModel) -> bool {
-        self.kind.accepts(module.cage)
+        self.accepts_module(module)
             && module.power.peak_mw <= self.max_power_mw
             && module.modes.iter().any(|mode| self.modes.contains(mode))
     }
@@ -124,6 +108,21 @@ pub struct TransceiverModel {
     #[serde(flatten)]
     pub medium: ModuleMedium,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleConnection {
+    Removable,
+    DirectConnect,
+}
+impl TransceiverModel {
+    pub fn connection(&self) -> ModuleConnection {
+        if matches!(self.medium, ModuleMedium::DirectAttach) {
+            ModuleConnection::DirectConnect
+        } else {
+            ModuleConnection::Removable
+        }
+    }
+}
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssemblyMedium {
@@ -139,6 +138,14 @@ pub enum AssemblyMedium {
         transceiver: String,
     },
 }
+impl AssemblyMedium {
+    pub fn direct_connect_model(&self) -> Option<&str> {
+        match self {
+            Self::Dac { transceiver } | Self::Aoc { transceiver } => Some(transceiver),
+            Self::Fiber { .. } => None,
+        }
+    }
+}
 #[derive(Debug, Clone, Deserialize)]
 pub struct CableAssemblyModel {
     pub id: String,
@@ -149,6 +156,14 @@ pub struct CableAssemblyModel {
     pub color: CableColor,
     #[serde(flatten)]
     pub medium: AssemblyMedium,
+}
+impl CableAssemblyModel {
+    /// DAC/AOC cable ends reuse the module model without separate inventory.
+    pub fn direct_connect_module(&self) -> Option<&'static TransceiverModel> {
+        super::optics_catalog()
+            .module(self.medium.direct_connect_model()?)
+            .filter(|module| module.connection() == ModuleConnection::DirectConnect)
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransceiverInstance {
