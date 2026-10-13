@@ -34,6 +34,9 @@ pub struct Link {
     pub enabled: bool,
     #[serde(default = "legacy_cable_length")]
     pub length_cm: u32,
+    /// Exact cut length. Old saves and catalog assemblies retain whole cm.
+    #[serde(default)]
+    pub length_mm: Option<u32>,
     #[serde(default = "legacy_auto_length")]
     pub auto_length: bool,
     #[serde(default)]
@@ -51,6 +54,10 @@ fn legacy_cable_length() -> u32 {
 }
 
 impl Link {
+    pub fn physical_length_mm(&self) -> u32 {
+        self.length_mm
+            .unwrap_or_else(|| self.length_cm.saturating_mul(10))
+    }
     pub fn other(&self, port: PortId) -> Option<PortId> {
         if self.a == port {
             Some(self.b)
@@ -75,6 +82,7 @@ mod tests {
             b: PortId(3),
             enabled: true,
             length_cm: 100,
+            length_mm: None,
             auto_length: false,
             color: CableColor::White,
             route: vec![],
@@ -100,6 +108,7 @@ mod tests {
             b: PortId(5),
             enabled: true,
             length_cm: 80,
+            length_mm: None,
             auto_length: false,
             color: CableColor::Blue,
             route: vec![CableRoutePoint {

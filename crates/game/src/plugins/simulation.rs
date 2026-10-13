@@ -400,11 +400,11 @@ fn translate_ui_actions(
                 }
                 if let Some(first) = state.pending_cable {
                     if first != *port {
-                        let length_cm = state.cable_length_cm;
-                        match snapshot.0.quote_routed_colored_cable(
+                        let length_mm = state.cable_length_mm;
+                        match snapshot.0.quote_millimeter_cable(
                             first,
                             *port,
-                            length_cm,
+                            length_mm,
                             state.cable_color,
                             &state.pending_cable_route,
                         ) {
@@ -422,13 +422,13 @@ fn translate_ui_actions(
                                 let route = std::mem::take(&mut state.pending_cable_route);
                                 state.pending_cable = None;
                                 state.pending_assembly = None;
-                                Some(Command::ConnectRoutedColoredCable {
+                                Some(Command::ConnectMillimeterCable {
                                     a: first,
                                     b: *port,
-                                    length_cm: if length_cm.is_none() {
+                                    length_mm: if length_mm.is_none() {
                                         None
                                     } else {
-                                        Some(quote.length_cm)
+                                        Some(quote.length_mm)
                                     },
                                     color: state.cable_color,
                                     route,

@@ -1,50 +1,50 @@
-use cloud_provider_sim::{DeviceKind, PortConnector, RackSide};
-use serde::Deserialize;
-use std::sync::OnceLock;
+//! Thin egui projection of the simulation's common connector/socket interface.
+use bevy_egui::egui;
+use cloud_provider_sim::{Connector, ConnectorSocket, DeviceKind, PortConnector, RackSide};
 
-/// Data driven equipment artwork and socket map. The array order within a
-/// connector group is the device port order, so a new asset needs no Rust
-/// changes when its socket rectangles are measured.
-#[derive(Debug, Deserialize)]
-struct EquipmentConfig {
-    #[serde(rename = "type")]
-    kind: String,
-    #[allow(dead_code)]
-    texture: String,
-    ports: std::collections::HashMap<String, Vec<PortRect>>,
+pub(super) fn connector_sprite_uv(name: &str) -> egui::Rect {
+    let [l, t, r, b] = cloud_provider_sim::connector_catalog().sprite(name).uv;
+    egui::Rect::from_min_max(egui::pos2(l, t), egui::pos2(r, b))
 }
 
-#[derive(Debug, Deserialize)]
-struct PortRect {
-    left_down: [f32; 2],
-    right_up: [f32; 2],
-    #[allow(dead_code)]
-    speed: Option<String>,
-    side: String,
+fn panel_rect(socket: ConnectorSocket, panel: egui::Rect) -> egui::Rect {
+    let [l, t, r, b] = socket.rect;
+    egui::Rect::from_min_max(
+        egui::pos2(
+            panel.left() + panel.width() * l,
+            panel.top() + panel.height() * t,
+        ),
+        egui::pos2(
+            panel.left() + panel.width() * r,
+            panel.top() + panel.height() * b,
+        ),
+    )
 }
 
-fn configs() -> &'static Vec<EquipmentConfig> {
-    static CONFIGS: OnceLock<Vec<EquipmentConfig>> = OnceLock::new();
-    CONFIGS.get_or_init(|| {
-        [
-            include_str!("../../../../assets/equipment/switch_config.json"),
-            include_str!("../../../../assets/equipment/ups_config.json"),
-            include_str!("../../../../assets/equipment/server_config.json"),
-            include_str!("../../../../assets/equipment/router_config.json"),
-            include_str!("../../../../assets/equipment/patch_panel_config.json"),
-            include_str!("../../../../assets/equipment/pdu_config.json"),
-            include_str!("../../../../assets/equipment/cable_manager_config.json"),
-        ]
-        .into_iter()
-        .filter_map(|json| match serde_json::from_str(json) {
-            Ok(config) => Some(config),
-            Err(error) => {
-                eprintln!("Ignoring invalid equipment config: {error}");
-                None
-            }
-        })
-        .collect()
-    })
+pub(super) fn equipment_socket_rect(
+    kind: &DeviceKind,
+    connector: &dyn Connector,
+    side: RackSide,
+    index: usize,
+    panel: egui::Rect,
+) -> Option<egui::Rect> {
+    kind.connector_socket(connector, side, index)
+        .map(|socket| panel_rect(socket, panel))
+}
+
+pub(super) fn equipment_face_uv(kind: &DeviceKind, side: RackSide) -> Option<egui::Rect> {
+    let [l, t, r, b] = kind.connector_face_uv(side)?;
+    Some(egui::Rect::from_min_max(egui::pos2(l, t), egui::pos2(r, b)))
+}
+
+pub(super) fn equipment_port_rect(
+    kind: &DeviceKind,
+    connector: PortConnector,
+    side: RackSide,
+    index: usize,
+    panel: egui::Rect,
+) -> Option<egui::Rect> {
+    equipment_socket_rect(kind, &connector, side, index, panel)
 }
 
 pub(super) fn equipment_port_position(
@@ -53,158 +53,37 @@ pub(super) fn equipment_port_position(
     side: RackSide,
     index: usize,
 ) -> Option<(f32, f32)> {
-    if let Some(model) = kind.network_model() {
-        let port = model.ports.get(index)?;
-        return (port.side == side).then(|| port.position(connector));
-    }
-    if let DeviceKind::Server(server) = kind {
-        return (side == RackSide::Rear && connector == PortConnector::Rj45)
-            .then(|| server.model().port_position(index))
-            .flatten();
-    }
-    let type_name = match kind {
-        DeviceKind::Switch(_) => "switch",
-        DeviceKind::Ups(_) => "ups",
-        DeviceKind::Server(_) => "server",
-        DeviceKind::Router(_) => "router",
-        DeviceKind::PatchPanel(_) => "patch_panel",
-        DeviceKind::Pdu(_) => "pdu",
-        DeviceKind::CableManager(_) => "cable_manager",
-    };
-    let connector_name = match connector {
-        PortConnector::Rj45 | PortConnector::Lc => "rj-45",
-        PortConnector::Sfp => "sfp",
-    };
-    let side_name = match side {
-        RackSide::Front => "front",
-        RackSide::Rear => "back",
-    };
-    let group_index = match kind {
-        DeviceKind::Switch(_) if matches!(connector, PortConnector::Sfp) => {
-            index.saturating_sub(24)
-        }
-        DeviceKind::PatchPanel(_) => index / 2,
-        _ => index,
-    };
-    configs()
-        .iter()
-        .find(|config| config.kind == type_name)
-        .and_then(|config| config.ports.get(connector_name))
-        .and_then(|ports| {
-            ports
-                .iter()
-                .filter(|port| port.side == side_name)
-                .nth(group_index)
-        })
-        .map(|port| {
-            (
-                (port.left_down[0] + port.right_up[0]) * 0.5,
-                (port.left_down[1] + port.right_up[1]) * 0.5,
-            )
-        })
+    kind.connector_socket(&connector, side, index)
+        .map(|socket| socket.center())
 }
 
-pub(super) fn equipment_power_port_position(
+#[cfg(test)]
+fn equipment_power_port_position(
     kind: &DeviceKind,
     connector: &str,
     index: usize,
 ) -> Option<(f32, f32)> {
-    if let Some(model) = kind.network_model() {
-        let p = model.power_inlets.get(index)?;
-        return ((connector == "c14")
-            == (p.connector == cloud_provider_sim::PowerInletConnector::IecC14))
-            .then(|| p.socket.center());
-    }
-    if let DeviceKind::Server(server) = kind {
-        return (connector == "c14")
-            .then(|| server.model().power_inlet_position(index))
-            .flatten();
-    }
-    let type_name = match kind {
-        DeviceKind::Ups(_) => "ups",
-        DeviceKind::Pdu(_) => "pdu",
-        DeviceKind::Server(_) => "server",
-        DeviceKind::Switch(_) => "switch",
-        DeviceKind::Router(_) => "router",
-        _ => return None,
-    };
-    configs()
-        .iter()
-        .find(|config| config.kind == type_name)
-        .and_then(|config| config.ports.get(connector))
-        .and_then(|ports| ports.get(index))
-        .map(|port| {
-            (
-                (port.left_down[0] + port.right_up[0]) * 0.5,
-                (port.left_down[1] + port.right_up[1]) * 0.5,
-            )
-        })
+    let socket = kind.power_connector_socket(index)?;
+    (socket.connector.key() == connector).then(|| socket.center())
 }
 
+#[cfg(test)]
 pub(super) fn equipment_power_port_rect(
     kind: &DeviceKind,
     connector: &str,
     index: usize,
-    panel: bevy_egui::egui::Rect,
-) -> Option<bevy_egui::egui::Rect> {
-    if let Some(model) = kind.network_model() {
-        let p = model.power_inlets.get(index)?;
-        if (connector == "c14") != (p.connector == cloud_provider_sim::PowerInletConnector::IecC14)
-        {
-            return None;
-        }
-        let [l, t, r, b] = p.socket.rect;
-        return Some(bevy_egui::egui::Rect::from_min_max(
-            bevy_egui::egui::pos2(
-                panel.left() + panel.width() * l,
-                panel.top() + panel.height() * t,
-            ),
-            bevy_egui::egui::pos2(
-                panel.left() + panel.width() * r,
-                panel.top() + panel.height() * b,
-            ),
-        ));
-    }
-    if let DeviceKind::Server(server) = kind {
-        if connector != "c14" {
-            return None;
-        }
-        let [l, t, r, b] = server.model().power_inlets.get(index)?.rect;
-        return Some(bevy_egui::egui::Rect::from_min_max(
-            bevy_egui::egui::pos2(
-                panel.left() + panel.width() * l,
-                panel.top() + panel.height() * t,
-            ),
-            bevy_egui::egui::pos2(
-                panel.left() + panel.width() * r,
-                panel.top() + panel.height() * b,
-            ),
-        ));
-    }
-    let type_name = match kind {
-        DeviceKind::Ups(_) => "ups",
-        DeviceKind::Pdu(_) => "pdu",
-        DeviceKind::Server(_) => "server",
-        DeviceKind::Switch(_) => "switch",
-        DeviceKind::Router(_) => "router",
-        _ => return None,
-    };
-    let port = configs()
-        .iter()
-        .find(|c| c.kind == type_name)?
-        .ports
-        .get(connector)?
-        .get(index)?;
-    let position = |p: [f32; 2]| {
-        bevy_egui::egui::pos2(
-            panel.left() + panel.width() * p[0],
-            panel.top() + panel.height() * p[1],
-        )
-    };
-    Some(bevy_egui::egui::Rect::from_two_pos(
-        position(port.left_down),
-        position(port.right_up),
-    ))
+    panel: egui::Rect,
+) -> Option<egui::Rect> {
+    let connector: cloud_provider_sim::ConnectorType =
+        serde_json::from_value(serde_json::Value::String(connector.into())).ok()?;
+    [RackSide::Front, RackSide::Rear]
+        .into_iter()
+        .find_map(|side| equipment_socket_rect(kind, &connector, side, index, panel))
+}
+
+#[cfg(test)]
+fn configs() -> &'static [cloud_provider_sim::EquipmentSocketConfig] {
+    cloud_provider_sim::equipment_socket_configs()
 }
 
 #[cfg(test)]

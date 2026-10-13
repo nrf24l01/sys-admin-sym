@@ -38,6 +38,70 @@ fn buy(sim: &mut NetworkSim, supply: CableSupply) {
 }
 
 #[test]
+fn fractional_allowance_survives_save_disconnect_and_exact_inventory_reuse() {
+    let mut sim = NetworkSim::new();
+    let (a, b) = endpoints(&mut sim);
+    buy(&mut sim, CableSupply::CableBox305m);
+    buy(&mut sim, CableSupply::Rj45Pack20);
+    settings(
+        &mut sim,
+        CableSettings {
+            extra_percent: 2,
+            ..Default::default()
+        },
+    );
+    let minimum_mm = sim.minimum_cable_length_mm(a, b).unwrap();
+    let quote = sim.quote_cable(a, b, None).unwrap();
+    assert_eq!(quote.length_mm, minimum_mm + (minimum_mm * 2).div_ceil(100));
+    assert_eq!(quote.length_cm, quote.length_mm.div_ceil(10));
+    sim.execute(Command::ConnectMillimeterCable {
+        a,
+        b,
+        length_mm: None,
+        color: CableColor::Red,
+        route: vec![],
+    })
+    .unwrap();
+    let encoded = ron::to_string(&sim).unwrap();
+    let mut loaded: NetworkSim = ron::from_str(&encoded).unwrap();
+    loaded.rebuild_indexes();
+    let link = loaded.link_for_port(a).unwrap().clone();
+    assert_eq!(link.physical_length_mm(), quote.length_mm);
+    loaded
+        .execute(Command::Disconnect { link: link.id })
+        .unwrap();
+    let encoded = ron::to_string(&loaded).unwrap();
+    let mut loaded: NetworkSim = ron::from_str(&encoded).unwrap();
+    loaded.rebuild_indexes();
+    assert_eq!(
+        loaded.cable_inventory().patch_cable_length_mm(0),
+        Some(quote.length_mm)
+    );
+    let before = loaded.cable_inventory().clone();
+    let reuse = loaded
+        .quote_millimeter_cable(a, b, Some(quote.length_mm), CableColor::Red, &[])
+        .unwrap();
+    assert!(reuse.reused);
+    loaded
+        .execute(Command::ConnectMillimeterCable {
+            a,
+            b,
+            length_mm: Some(quote.length_mm),
+            color: CableColor::Red,
+            route: vec![],
+        })
+        .unwrap();
+    assert_eq!(
+        loaded.link_for_port(a).unwrap().physical_length_mm(),
+        quote.length_mm
+    );
+    assert_eq!(loaded.cable_inventory().cable_cm, before.cable_cm);
+    assert_eq!(loaded.cable_inventory().connectors, before.connectors);
+    assert!(loaded.cable_inventory().patch_cables_cm.is_empty());
+    assert!(loaded.cable_inventory().patch_cable_lengths_mm.is_empty());
+}
+
+#[test]
 fn colored_leads_are_saved_and_reused_only_with_matching_jacket() {
     let mut sim = NetworkSim::new();
     let (a, b) = endpoints(&mut sim);
@@ -304,7 +368,9 @@ fn automatic_percentage_is_the_only_requested_excess_over_the_measured_run() {
         },
     );
     let quote = sim.quote_cable(a, b, None).unwrap();
-    assert_eq!(quote.length_cm, minimum + (minimum * 2).div_ceil(100));
+    let minimum_mm = (measured_cm * 10.0).ceil() as u32;
+    assert_eq!(quote.length_mm, minimum_mm + (minimum_mm * 2).div_ceil(100));
+    assert_eq!(quote.length_cm, quote.length_mm.div_ceil(10));
 }
 
 #[test]
@@ -322,11 +388,15 @@ fn automatic_allowance_uses_the_full_route_and_consumes_the_quoted_materials() {
         },
     );
     let route = vec![rack_anchor(20), rack_anchor(10)];
-    let minimum = sim.minimum_routed_cable_length(a, b, &route).unwrap();
+    let minimum_mm = sim.minimum_routed_cable_length_mm(a, b, &route).unwrap();
     let quote = sim
         .quote_routed_colored_cable(a, b, None, CableColor::Blue, &route)
         .unwrap();
-    assert_eq!(quote.length_cm, minimum + (minimum * 10).div_ceil(100) + 50);
+    assert_eq!(
+        quote.length_mm,
+        minimum_mm + (minimum_mm * 10).div_ceil(100) + 500
+    );
+    assert_eq!(quote.length_cm, quote.length_mm.div_ceil(10));
     assert!(!quote.reused);
     let before = sim.cable_inventory().clone();
     // Quoting and choosing route anchors never consume materials.

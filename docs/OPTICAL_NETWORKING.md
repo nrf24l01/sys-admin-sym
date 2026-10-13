@@ -34,6 +34,18 @@ shows spare items; a selected port lists only usable installation choices.
 Disconnecting returns the same finished cable and never creates bulk RJ45 stock.
 Removing a NIC returns its modules and attached cables to inventory.
 
+## Image socket maps
+
+Switch RJ45 and SFP cages use the full rectangles in `switch_config.json` (4G)
+and `switch_4x_config.json` (4X) for click areas, connector artwork and cable
+endpoints. `model` selects the hardware catalog ID; `texture_uvs` defines each
+face crop in source-image coordinates. Port rectangles are normalized to that
+cropped face, and SFP entries follow the uplink order. Open the matching config
+in the texture mapper to adjust the rectangles; it uses the same crop and
+preserves the model metadata. Server NIC cages use the card's JSON socket rectangles within the server model's
+mapped PCIe slot. Network and power sockets share the same connector interface
+and geometry resolver; see [Physical connectors](CONNECTORS.md).
+
 ## Initial catalog
 
 | Module | Cable | Mode | Nominal channel reach |

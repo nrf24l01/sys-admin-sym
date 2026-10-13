@@ -26,7 +26,8 @@
           0.88
         ],
         "speed": "1G",
-        "side": "front"
+        "side": "front",
+        "index": 24
       },
       {
         "left_down": [
@@ -38,7 +39,8 @@
           0.88
         ],
         "speed": "1G",
-        "side": "front"
+        "side": "front",
+        "index": 25
       },
       {
         "left_down": [
@@ -50,7 +52,8 @@
           0.88
         ],
         "speed": "1G",
-        "side": "front"
+        "side": "front",
+        "index": 26
       },
       {
         "left_down": [
@@ -62,7 +65,8 @@
           0.88
         ],
         "speed": "1G",
-        "side": "front"
+        "side": "front",
+        "index": 27
       }
     ],
     "c14": [
@@ -75,7 +79,8 @@
           0.13272178,
           0.7269057
         ],
-        "side": "back"
+        "side": "back",
+        "index": 0
       }
     ],
     "rj-45": [
@@ -89,7 +94,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 0
       },
       {
         "left_down": [
@@ -101,7 +107,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 1
       },
       {
         "left_down": [
@@ -113,7 +120,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 2
       },
       {
         "left_down": [
@@ -125,7 +133,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 3
       },
       {
         "left_down": [
@@ -137,7 +146,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 4
       },
       {
         "left_down": [
@@ -149,7 +159,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 5
       },
       {
         "left_down": [
@@ -161,7 +172,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 6
       },
       {
         "left_down": [
@@ -173,7 +185,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 7
       },
       {
         "left_down": [
@@ -185,7 +198,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 8
       },
       {
         "left_down": [
@@ -197,7 +211,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 9
       },
       {
         "left_down": [
@@ -209,7 +224,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 10
       },
       {
         "left_down": [
@@ -221,7 +237,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 11
       },
       {
         "left_down": [
@@ -233,7 +250,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 12
       },
       {
         "left_down": [
@@ -245,7 +263,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 13
       },
       {
         "left_down": [
@@ -257,7 +276,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 14
       },
       {
         "left_down": [
@@ -269,7 +289,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 15
       },
       {
         "left_down": [
@@ -281,7 +302,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 16
       },
       {
         "left_down": [
@@ -293,7 +315,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 17
       },
       {
         "left_down": [
@@ -305,7 +328,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 18
       },
       {
         "left_down": [
@@ -317,7 +341,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 19
       },
       {
         "left_down": [
@@ -329,7 +354,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 20
       },
       {
         "left_down": [
@@ -341,7 +367,8 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 21
       },
       {
         "left_down": [
@@ -353,7 +380,8 @@
           0.505
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 22
       },
       {
         "left_down": [
@@ -365,8 +393,24 @@
           0.795
         ],
         "speed": "10M/100M/1G",
-        "side": "front"
+        "side": "front",
+        "index": 23
       }
+    ]
+  },
+  "model": "c1000_24t_4g_l",
+  "texture_uvs": {
+    "front": [
+      0,
+      0.3153153153153153,
+      1,
+      0.6516516516516516
+    ],
+    "back": [
+      0.002,
+      0.45,
+      0.997,
+      0.755
     ]
   }
 }

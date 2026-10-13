@@ -40,6 +40,13 @@ pub enum Command {
         color: crate::CableColor,
         route: Vec<CableRoutePoint>,
     },
+    ConnectMillimeterCable {
+        a: PortId,
+        b: PortId,
+        length_mm: Option<u32>,
+        color: crate::CableColor,
+        route: Vec<CableRoutePoint>,
+    },
     BuyDevice {
         kind: DeviceTemplate,
     },

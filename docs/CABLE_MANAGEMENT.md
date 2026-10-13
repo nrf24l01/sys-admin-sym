@@ -8,9 +8,17 @@ standards.
 
 The minimum is the measured socket-to-socket path, including selected rack or
 ceiling anchors. Spans between fixing points use their measured distance. The
-extra percentage applies once to that minimum, rounds up to a centimeter, and
+extra percentage applies once to that minimum, rounds up to a millimeter, and
 the fixed extra length is then added. A 2.00 m minimum with 10% and 0.50 m extra
 produces a 2.70 m cut. Copper leads cannot exceed the simulation's 100 m limit.
+Finished leads retain their exact millimeter length through saving and reuse.
+Bulk stock is charged in whole centimeters; a partial-centimeter offcut is spent
+when cutting a new lead. A 5 cm minimum at 2% gives a 5.1 cm lead, while 10%
+gives 5.5 cm. The rendered curve cannot stretch beyond its cut length.
+When part of a route is hidden behind the rack, its share of the reserve remains
+hidden too; visible spans keep the same allowance percentage. Fixed rack anchors
+separate the cable into sections with their own length budgets, so reserve cannot
+move from a short port section into the span between the left and right rails.
 
 Manual cuts use exactly the entered length and ignore the automatic defaults.
 Hover a destination port to preview the cut length, two RJ45 plugs, or a free

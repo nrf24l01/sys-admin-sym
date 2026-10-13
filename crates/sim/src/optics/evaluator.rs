@@ -115,12 +115,15 @@ impl NetworkSim {
             return failure(LinkFault::Disabled);
         }
         if segments.iter().any(|link| {
-            self.minimum_routed_cable_length(link.a, link.b, &link.route)
-                .is_ok_and(|minimum| minimum > link.length_cm)
+            self.minimum_routed_cable_length_mm(link.a, link.b, &link.route)
+                .is_ok_and(|minimum| minimum > link.physical_length_mm())
         }) {
             return failure(LinkFault::CableTooShort);
         }
-        let length: u64 = segments.iter().map(|link| u64::from(link.length_cm)).sum();
+        let length: u64 = segments
+            .iter()
+            .map(|link| u64::from(link.physical_length_mm()))
+            .sum();
         let assemblies: Vec<_> = segments
             .iter()
             .map(|link| self.connected_assembly(link.id))
@@ -134,7 +137,7 @@ impl NetworkSim {
             {
                 return failure(LinkFault::ConnectorMismatch);
             }
-            if length > 10_000 {
+            if length > 100_000 {
                 return failure(LinkFault::TooLong);
             }
             return LinkStatus {
@@ -233,7 +236,7 @@ impl NetworkSim {
             ) else {
                 return failure(LinkFault::FiberMismatch);
             };
-            if length > u64::from(l.max_length_cm.min(r.max_length_cm)) {
+            if length > u64::from(l.max_length_cm.min(r.max_length_cm)) * 10 {
                 return failure(LinkFault::TooLong);
             }
             loss += u64::from(link.length_cm)

@@ -328,19 +328,17 @@ impl NetworkSim {
         // front/rear assignments and rebuilding missing reciprocal pairs.
         let port_devices: Vec<_> = self.ports.iter().map(|(id, p)| (*id, p.device)).collect();
         for (id, device) in port_devices {
-            let side = match self.devices.get(&device).map(|d| &d.kind) {
-                Some(DeviceKind::Server(_)) => RackSide::Rear,
-                Some(kind @ (DeviceKind::Switch(_) | DeviceKind::Router(_))) => {
-                    let d = &self.devices[&device];
-                    d.ports()
-                        .iter()
-                        .position(|p| *p == id)
-                        .and_then(|i| kind.network_model()?.ports.get(i))
-                        .map_or(self.ports[&id].side, |p| p.side)
-                }
-                Some(DeviceKind::PatchPanel(_)) => self.ports[&id].side,
-                _ => RackSide::Rear,
-            };
+            let side = self
+                .devices
+                .get(&device)
+                .and_then(|device| {
+                    let index = device.ports().iter().position(|p| *p == id)?;
+                    device
+                        .kind
+                        .find_connector_socket(&self.ports[&id], index)
+                        .map(|socket| socket.side)
+                })
+                .unwrap_or(self.ports[&id].side);
             self.ports.get_mut(&id).unwrap().side = side;
         }
         let panel_ports: Vec<Vec<PortId>> = self
@@ -387,6 +385,9 @@ impl NetworkSim {
             // Trim legacy automatic leads; offcuts do not return to the spool.
             if let Some(link) = self.links.get_mut(&id) {
                 link.length_cm = link.length_cm.min(cm);
+                if let Some(length) = &mut link.length_mm {
+                    *length = (*length).min(cm.saturating_mul(10));
+                }
             }
         }
         for (id, link) in &self.links {
@@ -739,6 +740,18 @@ impl NetworkSim {
                 let id = self.connect_quoted(a, b, quote)?;
                 let link = self.links.get_mut(&id).expect("new link exists");
                 link.route = route;
+                vec![SimEvent::LinkCreated(id)]
+            }
+            Command::ConnectMillimeterCable {
+                a,
+                b,
+                length_mm,
+                color,
+                route,
+            } => {
+                let quote = self.quote_millimeter_cable(a, b, length_mm, color, &route)?;
+                let id = self.connect_quoted(a, b, quote)?;
+                self.links.get_mut(&id).expect("new link exists").route = route;
                 vec![SimEvent::LinkCreated(id)]
             }
             Command::BuyDevice { kind } => {
@@ -1283,6 +1296,13 @@ impl NetworkSim {
                 }),
             ),
         };
+        for (index, port_id) in kind.ports().iter().enumerate() {
+            if let Some(port) = self.ports.get_mut(port_id)
+                && let Some(socket) = kind.find_connector_socket(port, index)
+            {
+                port.side = socket.side;
+            }
+        }
         self.devices.insert(
             id,
             Device {
@@ -2000,6 +2020,7 @@ impl NetworkSim {
                 b,
                 enabled: true,
                 length_cm: quote.length_cm,
+                length_mm: Some(quote.length_mm),
                 // A finished lead has a physical cut length. Only legacy leads
                 // are eligible for the automatic-length migration on load.
                 auto_length: false,
@@ -2021,18 +2042,24 @@ impl NetworkSim {
         }
         self.normalize_patch_cable_colors();
         self.cable_inventory.patch_cables_cm.push(link.length_cm);
+        self.cable_inventory
+            .patch_cable_lengths_mm
+            .push(link.physical_length_mm());
         self.cable_inventory.patch_cable_colors.push(link.color);
         let mut leads: Vec<_> = self
             .cable_inventory
             .patch_cables_cm
             .iter()
             .copied()
+            .zip(self.cable_inventory.patch_cable_lengths_mm.iter().copied())
             .zip(self.cable_inventory.patch_cable_colors.iter().copied())
+            .map(|((cm, mm), color)| (cm, mm, color))
             .collect();
-        leads.sort_unstable_by_key(|(length, _)| *length);
-        self.cable_inventory.patch_cables_cm = leads.iter().map(|(length, _)| *length).collect();
+        leads.sort_unstable_by_key(|(_, mm, _)| *mm);
+        self.cable_inventory.patch_cables_cm = leads.iter().map(|(cm, _, _)| *cm).collect();
+        self.cable_inventory.patch_cable_lengths_mm = leads.iter().map(|(_, mm, _)| *mm).collect();
         self.cable_inventory.patch_cable_colors =
-            leads.into_iter().map(|(_, color)| color).collect();
+            leads.into_iter().map(|(_, _, color)| color).collect();
         Ok(())
     }
 
@@ -2596,6 +2623,7 @@ mod route_tests {
                 b: PortId(2),
                 enabled: true,
                 length_cm: 1,
+                length_mm: None,
                 auto_length: false,
                 color: CableColor::White,
                 route: vec![],

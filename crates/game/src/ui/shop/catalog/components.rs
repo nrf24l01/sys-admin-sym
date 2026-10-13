@@ -47,6 +47,7 @@ pub(super) fn offers() -> Vec<Offer> {
                         generation,
                         width,
                         cage,
+                        ..
                     },
             } => {
                 let mut attributes = vec![

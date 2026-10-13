@@ -78,6 +78,7 @@ The older reference assets below are retained for reference.
 ## `switch_4x_front.jpg`
 
 - Model represented: Cisco Catalyst C1000-24T-4X-L; dedicated front photograph.
+- Front crop and RJ45/SFP+ socket rectangles: `switch_4x_config.json`, measured relative to the photographed face.
 - Source: SCT Systems model-specific product listing.
 - Page: https://www.sct-systems.com/catalog/product_info.php?products_id=4228
 - Original image: https://www.sct-systems.com/catalog/images/Cisco-Catalyst-C1000-24T-4X-Switch.jpg
