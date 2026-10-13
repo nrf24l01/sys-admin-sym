@@ -13,13 +13,17 @@ pub enum CageKind {
     Sfp,
     SfpPlus,
     Sfp28,
+    QsfpPlus,
+    Qsfp28,
 }
 impl CageKind {
     pub fn accepts(self, module: Self) -> bool {
         self == module
             || matches!(
                 (self, module),
-                (Self::SfpPlus | Self::Sfp28, Self::Sfp) | (Self::Sfp28, Self::SfpPlus)
+                (Self::SfpPlus | Self::Sfp28, Self::Sfp)
+                    | (Self::Sfp28, Self::SfpPlus)
+                    | (Self::Qsfp28, Self::QsfpPlus)
             )
     }
 }

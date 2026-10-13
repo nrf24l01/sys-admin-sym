@@ -24,6 +24,16 @@ pub struct Group {
     pub rect_pointer: String,
     pub legacy: bool,
 }
+impl Group {
+    pub fn key(&self) -> String {
+        format!("{}:{}", self.pointer, self.rect_pointer)
+    }
+    pub fn fixed_count(&self) -> bool {
+        self.pointer.starts_with("/chassis/")
+            || self.pointer == "/power_inlets"
+            || (!self.legacy && self.pointer == "/ports")
+    }
+}
 pub struct Document {
     pub path: PathBuf,
     pub output: PathBuf,
@@ -253,6 +263,33 @@ pub fn groups(model: &Value, side: &str) -> Vec<Group> {
             });
         }
     }
+    if let Some(ports) = model.get("ports").and_then(Value::as_array) {
+        for (label, rect_pointer) in [
+            ("ports", "/socket/rect"),
+            ("combo optical sockets", "/optical_socket/rect"),
+        ] {
+            if rect_pointer == "/socket/rect"
+                || ports.iter().any(|p| p.pointer(rect_pointer).is_some())
+            {
+                result.push(Group {
+                    label: label.into(),
+                    pointer: "/ports".into(),
+                    rect_pointer: rect_pointer.into(),
+                    legacy: false,
+                });
+            }
+        }
+    }
+    if let Some(inlets) = model.get("power_inlets").and_then(Value::as_array)
+        && inlets.iter().any(|p| p.get("socket").is_some())
+    {
+        result.push(Group {
+            label: "power_inlets".into(),
+            pointer: "/power_inlets".into(),
+            rect_pointer: "/socket/rect".into(),
+            legacy: false,
+        });
+    }
     // These are schema fields, not a list of equipment or models.
     for (pointer, rect, face) in [
         ("/onboard_ports", "/socket/rect", "rear"),
@@ -260,7 +297,10 @@ pub fn groups(model: &Value, side: &str) -> Vec<Group> {
         ("/chassis/drive_bays", "/face_rect", "front"),
         ("/chassis/pcie_slots", "/face_rect", "rear"),
     ] {
-        if side == face && model.pointer(pointer).is_some_and(Value::is_array) {
+        if side == face
+            && model.pointer(pointer).is_some_and(Value::is_array)
+            && !(pointer == "/power_inlets" && result.iter().any(|g| g.pointer == pointer))
+        {
             result.push(Group {
                 label: pointer.rsplit('/').next().unwrap().into(),
                 pointer: pointer.into(),
@@ -307,7 +347,15 @@ pub fn visible_indices(model: &Value, group: &Group, side: &str) -> Vec<usize> {
         .into_iter()
         .flatten()
         .enumerate()
-        .filter(|(_, port)| !group.legacy || port["side"].as_str().unwrap_or("front") == side)
+        .filter(|(_, port)| {
+            port["side"]
+                .as_str()
+                .map_or(!group.legacy || side == "front", |face| {
+                    face.eq_ignore_ascii_case(side)
+                        || (face.eq_ignore_ascii_case("rear") && side == "back")
+                        || (face == "back" && side == "rear")
+                })
+        })
         .filter_map(|(i, _)| bounds(model, group, i).map(|_| i))
         .collect()
 }
@@ -377,7 +425,12 @@ fn validate_mapping(model: &Value) -> Result<(), String> {
     {
         for group in groups(model, side) {
             if let Some(array) = model.pointer(&group.pointer).and_then(Value::as_array) {
-                for index in 0..array.len() {
+                for (index, port) in array.iter().enumerate() {
+                    if group.rect_pointer == "/optical_socket/rect"
+                        && port.get("optical_socket").is_none_or(Value::is_null)
+                    {
+                        continue;
+                    }
                     if bounds(model, &group, index).is_none() {
                         return Err(format!(
                             "{} connector {} has invalid geometry; undo or reload before saving",

@@ -111,10 +111,9 @@ impl NetworkSim {
                         }
                     }
                 }
-                if let DeviceKind::Switch(switch) = &dev.kind {
+                if let Some(services) = self.switch_services(dev.id) {
                     names.extend(
-                        switch
-                            .services
+                        services
                             .etherchannel
                             .members
                             .values()

@@ -3,12 +3,12 @@
     {
       "id": "sfp_1g_sx",
       "display_name": {
-        "en": "1G SFP SX · 850 nm · duplex LC",
-        "ru": "1G SFP SX · 850 нм · дуплекс LC"
+        "en": "1G SFP SX \u00b7 850 nm \u00b7 duplex LC",
+        "ru": "1G SFP SX \u00b7 850 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "1G SFP SX · 850 nm · duplex LC · hot-swappable Ethernet module",
-        "ru": "1G SFP SX · 850 нм · дуплекс LC · сменный Ethernet-модуль"
+        "en": "1G SFP SX \u00b7 850 nm \u00b7 duplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "1G SFP SX \u00b7 850 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp",
       "modes": [
@@ -47,12 +47,12 @@
     {
       "id": "sfp_1g_lx10",
       "display_name": {
-        "en": "1G SFP LX10 · 1310 nm · duplex LC",
-        "ru": "1G SFP LX10 · 1310 нм · дуплекс LC"
+        "en": "1G SFP LX10 \u00b7 1310 nm \u00b7 duplex LC",
+        "ru": "1G SFP LX10 \u00b7 1310 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "1G SFP LX10 · 1310 nm · duplex LC · hot-swappable Ethernet module",
-        "ru": "1G SFP LX10 · 1310 нм · дуплекс LC · сменный Ethernet-модуль"
+        "en": "1G SFP LX10 \u00b7 1310 nm \u00b7 duplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "1G SFP LX10 \u00b7 1310 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp",
       "modes": [
@@ -86,12 +86,12 @@
     {
       "id": "sfp_1g_copper",
       "display_name": {
-        "en": "1G SFP copper · RJ45",
-        "ru": "1G SFP медный · RJ45"
+        "en": "1G SFP copper \u00b7 RJ45",
+        "ru": "1G SFP \u043c\u0435\u0434\u043d\u044b\u0439 \u00b7 RJ45"
       },
       "desc": {
-        "en": "1G SFP copper · RJ45 · hot-swappable Ethernet module",
-        "ru": "1G SFP медный · RJ45 · сменный Ethernet-модуль"
+        "en": "1G SFP copper \u00b7 RJ45 \u00b7 hot-swappable Ethernet module",
+        "ru": "1G SFP \u043c\u0435\u0434\u043d\u044b\u0439 \u00b7 RJ45 \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp",
       "modes": [
@@ -122,12 +122,12 @@
     {
       "id": "sfpplus_10g_sr",
       "display_name": {
-        "en": "10G SFP+ SR · 850 nm · duplex LC",
-        "ru": "10G SFP+ SR · 850 нм · дуплекс LC"
+        "en": "10G SFP+ SR \u00b7 850 nm \u00b7 duplex LC",
+        "ru": "10G SFP+ SR \u00b7 850 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "10G SFP+ SR · 850 nm · duplex LC · hot-swappable Ethernet module",
-        "ru": "10G SFP+ SR · 850 нм · дуплекс LC · сменный Ethernet-модуль"
+        "en": "10G SFP+ SR \u00b7 850 nm \u00b7 duplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "10G SFP+ SR \u00b7 850 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp_plus",
       "modes": [
@@ -166,12 +166,12 @@
     {
       "id": "sfpplus_10g_lr",
       "display_name": {
-        "en": "10G SFP+ LR · 1310 nm · duplex LC",
-        "ru": "10G SFP+ LR · 1310 нм · дуплекс LC"
+        "en": "10G SFP+ LR \u00b7 1310 nm \u00b7 duplex LC",
+        "ru": "10G SFP+ LR \u00b7 1310 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "10G SFP+ LR · 1310 nm · duplex LC · hot-swappable Ethernet module",
-        "ru": "10G SFP+ LR · 1310 нм · дуплекс LC · сменный Ethernet-модуль"
+        "en": "10G SFP+ LR \u00b7 1310 nm \u00b7 duplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "10G SFP+ LR \u00b7 1310 \u043d\u043c \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp_plus",
       "modes": [
@@ -205,12 +205,12 @@
     {
       "id": "sfp_1g_bidi_u",
       "display_name": {
-        "en": "1G SFP BX10-U · simplex LC",
-        "ru": "1G SFP BX10-U · симплекс LC"
+        "en": "1G SFP BX10-U \u00b7 simplex LC",
+        "ru": "1G SFP BX10-U \u00b7 \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "1G SFP BX10-U · simplex LC · hot-swappable Ethernet module",
-        "ru": "1G SFP BX10-U · симплекс LC · сменный Ethernet-модуль"
+        "en": "1G SFP BX10-U \u00b7 simplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "1G SFP BX10-U \u00b7 \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp",
       "modes": [
@@ -244,12 +244,12 @@
     {
       "id": "sfp_1g_bidi_d",
       "display_name": {
-        "en": "1G SFP BX10-D · simplex LC",
-        "ru": "1G SFP BX10-D · симплекс LC"
+        "en": "1G SFP BX10-D \u00b7 simplex LC",
+        "ru": "1G SFP BX10-D \u00b7 \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 LC"
       },
       "desc": {
-        "en": "1G SFP BX10-D · simplex LC · hot-swappable Ethernet module",
-        "ru": "1G SFP BX10-D · симплекс LC · сменный Ethernet-модуль"
+        "en": "1G SFP BX10-D \u00b7 simplex LC \u00b7 hot-swappable Ethernet module",
+        "ru": "1G SFP BX10-D \u00b7 \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 LC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp",
       "modes": [
@@ -284,11 +284,11 @@
       "id": "dac_10g_end",
       "display_name": {
         "en": "10G DAC attached end",
-        "ru": "Встроенный разъём 10G DAC"
+        "ru": "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0440\u0430\u0437\u044a\u0451\u043c 10G DAC"
       },
       "desc": {
-        "en": "10G DAC attached end · hot-swappable Ethernet module",
-        "ru": "Встроенный разъём 10G DAC · сменный Ethernet-модуль"
+        "en": "10G DAC attached end \u00b7 hot-swappable Ethernet module",
+        "ru": "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0440\u0430\u0437\u044a\u0451\u043c 10G DAC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp_plus",
       "modes": [
@@ -310,11 +310,11 @@
       "id": "aoc_10g_end",
       "display_name": {
         "en": "10G AOC attached end",
-        "ru": "Встроенный разъём 10G AOC"
+        "ru": "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0440\u0430\u0437\u044a\u0451\u043c 10G AOC"
       },
       "desc": {
-        "en": "10G AOC attached end · hot-swappable Ethernet module",
-        "ru": "Встроенный разъём 10G AOC · сменный Ethernet-модуль"
+        "en": "10G AOC attached end \u00b7 hot-swappable Ethernet module",
+        "ru": "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0440\u0430\u0437\u044a\u0451\u043c 10G AOC \u00b7 \u0441\u043c\u0435\u043d\u043d\u044b\u0439 Ethernet-\u043c\u043e\u0434\u0443\u043b\u044c"
       },
       "cage": "sfp_plus",
       "modes": [
@@ -331,18 +331,96 @@
         "idle_mw": 1500,
         "peak_mw": 1500
       }
+    },
+    {
+      "id": "qsfp40_lr4",
+      "display_name": {
+        "en": "40G QSFP+ LR4 \u00b7 duplex LC",
+        "ru": "40G QSFP+ LR4 \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
+      },
+      "desc": {
+        "en": "40G QSFP+ LR4 \u00b7 1310 nm \u00b7 OS2 10 km \u00b7 simplified aggregate LR4 optical budget",
+        "ru": "40G QSFP+ LR4 \u00b7 1310 \u043d\u043c \u00b7 OS2 10 \u043a\u043c \u00b7 \u0443\u043f\u0440\u043e\u0449\u0451\u043d\u043d\u044b\u0439 \u0441\u0443\u043c\u043c\u0430\u0440\u043d\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0431\u044e\u0434\u0436\u0435\u0442 LR4"
+      },
+      "cage": "qsfp_plus",
+      "modes": [
+        {
+          "speed": "Gbps40",
+          "lanes": 4,
+          "fec": "none"
+        }
+      ],
+      "dom": true,
+      "price": 180,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 1310,
+      "rx_nm": 1310,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -14400,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ],
+      "power": {
+        "idle_mw": 3500,
+        "peak_mw": 3500
+      }
+    },
+    {
+      "id": "qsfp100_lr4",
+      "display_name": {
+        "en": "100G QSFP28 LR4 \u00b7 duplex LC",
+        "ru": "100G QSFP28 LR4 \u00b7 \u0434\u0443\u043f\u043b\u0435\u043a\u0441 LC"
+      },
+      "desc": {
+        "en": "100G QSFP28 LR4 \u00b7 1310 nm \u00b7 OS2 10 km \u00b7 simplified aggregate LR4 optical budget",
+        "ru": "100G QSFP28 LR4 \u00b7 1310 \u043d\u043c \u00b7 OS2 10 \u043a\u043c \u00b7 \u0443\u043f\u0440\u043e\u0449\u0451\u043d\u043d\u044b\u0439 \u0441\u0443\u043c\u043c\u0430\u0440\u043d\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0431\u044e\u0434\u0436\u0435\u0442 LR4"
+      },
+      "cage": "qsfp28",
+      "modes": [
+        {
+          "speed": "Gbps100",
+          "lanes": 4,
+          "fec": "rs"
+        }
+      ],
+      "dom": true,
+      "price": 300,
+      "kind": "optical",
+      "strands": 2,
+      "tx_nm": 1310,
+      "rx_nm": 1310,
+      "tx_mdbm": -3000,
+      "sensitivity_mdbm": -14400,
+      "overload_mdbm": 0,
+      "reaches": [
+        {
+          "fiber": "os2",
+          "max_length_cm": 1000000,
+          "attenuation_mdb_per_km": 400
+        }
+      ],
+      "power": {
+        "idle_mw": 4500,
+        "peak_mw": 4500
+      }
     }
   ],
   "cables": [
     {
       "id": "fiber_om3_2_3m",
       "display_name": {
-        "en": "OM3 LC–LC duplex · 3 m",
-        "ru": "OM3 LC–LC дуплекс · 3 м"
+        "en": "OM3 LC\u2013LC duplex \u00b7 3 m",
+        "ru": "OM3 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 10,
       "length_cm": 300,
@@ -355,12 +433,12 @@
     {
       "id": "fiber_om3_2_30m",
       "display_name": {
-        "en": "OM3 LC–LC duplex · 30 m",
-        "ru": "OM3 LC–LC дуплекс · 30 м"
+        "en": "OM3 LC\u2013LC duplex \u00b7 30 m",
+        "ru": "OM3 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 30 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 16,
       "length_cm": 3000,
@@ -373,12 +451,12 @@
     {
       "id": "fiber_om3_2_100m",
       "display_name": {
-        "en": "OM3 LC–LC duplex · 100 m",
-        "ru": "OM3 LC–LC дуплекс · 100 м"
+        "en": "OM3 LC\u2013LC duplex \u00b7 100 m",
+        "ru": "OM3 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 100 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 30,
       "length_cm": 10000,
@@ -391,12 +469,12 @@
     {
       "id": "fiber_om4_2_3m",
       "display_name": {
-        "en": "OM4 LC–LC duplex · 3 m",
-        "ru": "OM4 LC–LC дуплекс · 3 м"
+        "en": "OM4 LC\u2013LC duplex \u00b7 3 m",
+        "ru": "OM4 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 10,
       "length_cm": 300,
@@ -409,12 +487,12 @@
     {
       "id": "fiber_om4_2_30m",
       "display_name": {
-        "en": "OM4 LC–LC duplex · 30 m",
-        "ru": "OM4 LC–LC дуплекс · 30 м"
+        "en": "OM4 LC\u2013LC duplex \u00b7 30 m",
+        "ru": "OM4 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 30 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 16,
       "length_cm": 3000,
@@ -427,12 +505,12 @@
     {
       "id": "fiber_om4_2_100m",
       "display_name": {
-        "en": "OM4 LC–LC duplex · 100 m",
-        "ru": "OM4 LC–LC дуплекс · 100 м"
+        "en": "OM4 LC\u2013LC duplex \u00b7 100 m",
+        "ru": "OM4 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 100 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 30,
       "length_cm": 10000,
@@ -445,12 +523,12 @@
     {
       "id": "fiber_os2_1_3m",
       "display_name": {
-        "en": "OS2 LC–LC simplex · 3 m",
-        "ru": "OS2 LC–LC симплекс · 3 м"
+        "en": "OS2 LC\u2013LC simplex \u00b7 3 m",
+        "ru": "OS2 LC\u2013LC \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 10,
       "length_cm": 300,
@@ -463,12 +541,12 @@
     {
       "id": "fiber_os2_1_30m",
       "display_name": {
-        "en": "OS2 LC–LC simplex · 30 m",
-        "ru": "OS2 LC–LC симплекс · 30 м"
+        "en": "OS2 LC\u2013LC simplex \u00b7 30 m",
+        "ru": "OS2 LC\u2013LC \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 \u00b7 30 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 16,
       "length_cm": 3000,
@@ -481,12 +559,12 @@
     {
       "id": "fiber_os2_1_100m",
       "display_name": {
-        "en": "OS2 LC–LC simplex · 100 m",
-        "ru": "OS2 LC–LC симплекс · 100 м"
+        "en": "OS2 LC\u2013LC simplex \u00b7 100 m",
+        "ru": "OS2 LC\u2013LC \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 \u00b7 100 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 30,
       "length_cm": 10000,
@@ -499,12 +577,12 @@
     {
       "id": "fiber_os2_1_1000m",
       "display_name": {
-        "en": "OS2 LC–LC simplex · 1000 m",
-        "ru": "OS2 LC–LC симплекс · 1000 м"
+        "en": "OS2 LC\u2013LC simplex \u00b7 1000 m",
+        "ru": "OS2 LC\u2013LC \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 \u00b7 1000 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 210,
       "length_cm": 100000,
@@ -517,12 +595,12 @@
     {
       "id": "fiber_os2_1_10000m",
       "display_name": {
-        "en": "OS2 LC–LC simplex · 10000 m",
-        "ru": "OS2 LC–LC симплекс · 10000 м"
+        "en": "OS2 LC\u2013LC simplex \u00b7 10000 m",
+        "ru": "OS2 LC\u2013LC \u0441\u0438\u043c\u043f\u043b\u0435\u043a\u0441 \u00b7 10000 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 2010,
       "length_cm": 1000000,
@@ -535,12 +613,12 @@
     {
       "id": "fiber_os2_2_3m",
       "display_name": {
-        "en": "OS2 LC–LC duplex · 3 m",
-        "ru": "OS2 LC–LC дуплекс · 3 м"
+        "en": "OS2 LC\u2013LC duplex \u00b7 3 m",
+        "ru": "OS2 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 10,
       "length_cm": 300,
@@ -553,12 +631,12 @@
     {
       "id": "fiber_os2_2_30m",
       "display_name": {
-        "en": "OS2 LC–LC duplex · 30 m",
-        "ru": "OS2 LC–LC дуплекс · 30 м"
+        "en": "OS2 LC\u2013LC duplex \u00b7 30 m",
+        "ru": "OS2 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 30 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 16,
       "length_cm": 3000,
@@ -571,12 +649,12 @@
     {
       "id": "fiber_os2_2_100m",
       "display_name": {
-        "en": "OS2 LC–LC duplex · 100 m",
-        "ru": "OS2 LC–LC дуплекс · 100 м"
+        "en": "OS2 LC\u2013LC duplex \u00b7 100 m",
+        "ru": "OS2 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 100 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 30,
       "length_cm": 10000,
@@ -589,12 +667,12 @@
     {
       "id": "fiber_os2_2_1000m",
       "display_name": {
-        "en": "OS2 LC–LC duplex · 1000 m",
-        "ru": "OS2 LC–LC дуплекс · 1000 м"
+        "en": "OS2 LC\u2013LC duplex \u00b7 1000 m",
+        "ru": "OS2 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 1000 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 210,
       "length_cm": 100000,
@@ -607,12 +685,12 @@
     {
       "id": "fiber_os2_2_10000m",
       "display_name": {
-        "en": "OS2 LC–LC duplex · 10000 m",
-        "ru": "OS2 LC–LC дуплекс · 10000 м"
+        "en": "OS2 LC\u2013LC duplex \u00b7 10000 m",
+        "ru": "OS2 LC\u2013LC \u0434\u0443\u043f\u043b\u0435\u043a\u0441 \u00b7 10000 \u043c"
       },
       "desc": {
         "en": "Finished fiber cable; detachable from its transceivers.",
-        "ru": "Готовый оптический кабель; отсоединяется от трансиверов."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0439 \u043e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043a\u0430\u0431\u0435\u043b\u044c; \u043e\u0442\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442 \u0442\u0440\u0430\u043d\u0441\u0438\u0432\u0435\u0440\u043e\u0432."
       },
       "price": 2010,
       "length_cm": 1000000,
@@ -625,12 +703,12 @@
     {
       "id": "dac_10g_1m",
       "display_name": {
-        "en": "10G SFP+ DAC · 1 m",
-        "ru": "10G SFP+ DAC · 1 м"
+        "en": "10G SFP+ DAC \u00b7 1 m",
+        "ru": "10G SFP+ DAC \u00b7 1 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 22,
       "length_cm": 100,
@@ -641,12 +719,12 @@
     {
       "id": "dac_10g_3m",
       "display_name": {
-        "en": "10G SFP+ DAC · 3 m",
-        "ru": "10G SFP+ DAC · 3 м"
+        "en": "10G SFP+ DAC \u00b7 3 m",
+        "ru": "10G SFP+ DAC \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 26,
       "length_cm": 300,
@@ -657,12 +735,12 @@
     {
       "id": "dac_10g_5m",
       "display_name": {
-        "en": "10G SFP+ DAC · 5 m",
-        "ru": "10G SFP+ DAC · 5 м"
+        "en": "10G SFP+ DAC \u00b7 5 m",
+        "ru": "10G SFP+ DAC \u00b7 5 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 30,
       "length_cm": 500,
@@ -673,12 +751,12 @@
     {
       "id": "aoc_10g_3m",
       "display_name": {
-        "en": "10G SFP+ AOC · 3 m",
-        "ru": "10G SFP+ AOC · 3 м"
+        "en": "10G SFP+ AOC \u00b7 3 m",
+        "ru": "10G SFP+ AOC \u00b7 3 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 26,
       "length_cm": 300,
@@ -689,12 +767,12 @@
     {
       "id": "aoc_10g_10m",
       "display_name": {
-        "en": "10G SFP+ AOC · 10 m",
-        "ru": "10G SFP+ AOC · 10 м"
+        "en": "10G SFP+ AOC \u00b7 10 m",
+        "ru": "10G SFP+ AOC \u00b7 10 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 40,
       "length_cm": 1000,
@@ -705,12 +783,12 @@
     {
       "id": "aoc_10g_30m",
       "display_name": {
-        "en": "10G SFP+ AOC · 30 m",
-        "ru": "10G SFP+ AOC · 30 м"
+        "en": "10G SFP+ AOC \u00b7 30 m",
+        "ru": "10G SFP+ AOC \u00b7 30 \u043c"
       },
       "desc": {
         "en": "Fixed assembly with permanently attached ends; no separate modules required.",
-        "ru": "Готовая сборка с несъёмными разъёмами; отдельные модули не нужны."
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u0430\u044f \u0441\u0431\u043e\u0440\u043a\u0430 \u0441 \u043d\u0435\u0441\u044a\u0451\u043c\u043d\u044b\u043c\u0438 \u0440\u0430\u0437\u044a\u0451\u043c\u0430\u043c\u0438; \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435 \u043d\u0443\u0436\u043d\u044b."
       },
       "price": 80,
       "length_cm": 3000,
@@ -727,8 +805,8 @@
         "ru": "Cisco Catalyst C1000-24T-4X-L"
       },
       "desc": {
-        "en": "24 × 1G RJ45 + 4 × 1/10G SFP+ cages",
-        "ru": "24 × 1G RJ45 + 4 × слота SFP+ 1/10G"
+        "en": "24 \u00d7 1G RJ45 + 4 \u00d7 1/10G SFP+ cages",
+        "ru": "24 \u00d7 1G RJ45 + 4 \u00d7 \u0441\u043b\u043e\u0442\u0430 SFP+ 1/10G"
       },
       "price": 900,
       "kind": "switch",
@@ -738,11 +816,11 @@
       "id": "fiber_panel",
       "display_name": {
         "en": "24-port LC fiber patch panel",
-        "ru": "Оптическая патч-панель LC на 24 порта"
+        "ru": "\u041e\u043f\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043f\u0430\u0442\u0447-\u043f\u0430\u043d\u0435\u043b\u044c LC \u043d\u0430 24 \u043f\u043e\u0440\u0442\u0430"
       },
       "desc": {
         "en": "24 passive duplex LC front/rear adapters; no regeneration or speed negotiation.",
-        "ru": "24 пассивных дуплексных адаптера LC; без регенерации сигнала и согласования скорости."
+        "ru": "24 \u043f\u0430\u0441\u0441\u0438\u0432\u043d\u044b\u0445 \u0434\u0443\u043f\u043b\u0435\u043a\u0441\u043d\u044b\u0445 \u0430\u0434\u0430\u043f\u0442\u0435\u0440\u0430 LC; \u0431\u0435\u0437 \u0440\u0435\u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438 \u0441\u0438\u0433\u043d\u0430\u043b\u0430 \u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f \u0441\u043a\u043e\u0440\u043e\u0441\u0442\u0438."
       },
       "price": 200,
       "kind": "fiber_panel"

@@ -157,8 +157,35 @@ fn repository_equipment_and_server_models_are_editable_and_valid() {
 fn default_group_has_connectors_on_the_visible_face() {
     let model = json!({"ports":{
         "c14":[{"side":"back","left_down":[0.1,0.2],"right_up":[0.3,0.4]}],
-        "rj-45":[{"side":"front","left_down":[0.1,0.2],"right_up":[0.3,0.4]}]
+        "rj-45":[{"left_down":[0.1,0.2],"right_up":[0.3,0.4]}]
     }});
     assert_eq!(groups(&model, "front")[0].label, "rj-45");
     assert_eq!(groups(&model, "back")[0].label, "c14");
+}
+
+#[test]
+fn network_socket_groups_follow_faces_and_keep_combo_rectangles_distinct() {
+    let mut model = json!({"ports":[
+        {"name":"Gi0","side":"Front","socket":{"rect":[0.1,0.2,0.2,0.4]},"optical_socket":{"rect":[0.3,0.2,0.4,0.4]}},
+        {"name":"Gi1","side":"Rear","socket":{"rect":[0.5,0.2,0.6,0.4]},"optical_socket":null}
+    ],"power_inlets":[{"side":"Rear","socket":{"rect":[0.7,0.2,0.8,0.4]}}]});
+    validate_mapping(&model).unwrap();
+    let front = groups(&model, "front");
+    let normal = front
+        .iter()
+        .find(|g| g.pointer == "/ports" && g.rect_pointer == "/socket/rect")
+        .expect("network ports are editable");
+    let optical = front
+        .iter()
+        .find(|g| g.rect_pointer == "/optical_socket/rect")
+        .expect("combo geometry is editable");
+    assert_eq!(visible_indices(&model, normal, "front"), vec![0]);
+    assert_eq!(visible_indices(&model, normal, "rear"), vec![1]);
+    assert_eq!(visible_indices(&model, optical, "front"), vec![0]);
+    set_bounds(&mut model, optical, 0, [0.31, 0.2, 0.41, 0.4]);
+    assert_eq!(bounds(&model, normal, 0), Some([0.1, 0.2, 0.2, 0.4]));
+    let rear = groups(&model, "rear");
+    let power = rear.iter().find(|g| g.pointer == "/power_inlets").unwrap();
+    assert_eq!(visible_indices(&model, power, "front"), Vec::<usize>::new());
+    assert_eq!(visible_indices(&model, power, "rear"), vec![0]);
 }

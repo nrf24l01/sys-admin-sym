@@ -27,6 +27,8 @@ impl Device {
     pub fn rack_units(&self) -> u8 {
         if let DeviceKind::Server(server) = &self.kind {
             server.model().rack_units
+        } else if let Some(model) = self.kind.network_model() {
+            model.rack_units
         } else {
             self.template().rack_units()
         }
@@ -47,7 +49,7 @@ impl Device {
         match self.kind {
             DeviceKind::Server(_) => DeviceTemplate::Server,
             DeviceKind::Switch(_) => DeviceTemplate::Switch,
-            DeviceKind::Router(_) => DeviceTemplate::Router,
+            DeviceKind::Router(ref r) => r.model().category.template(),
             DeviceKind::PatchPanel(_) => DeviceTemplate::PatchPanel,
             DeviceKind::CableManager(_) => DeviceTemplate::CableManager,
             DeviceKind::Ups(_) => DeviceTemplate::Ups,
@@ -85,14 +87,29 @@ pub const RACK_FACE_HEIGHT_CM: f32 = 4.445;
 pub const RACK_GAP_CM: f32 = 0.5;
 
 impl DeviceKind {
+    pub fn network_model(&self) -> Option<&'static crate::NetworkDeviceModel> {
+        match self {
+            Self::Switch(s) => Some(s.model.spec()),
+            Self::Router(r) => Some(r.model()),
+            _ => None,
+        }
+    }
+    pub fn power_inlet_at(&self, index: usize) -> Option<PowerInlet> {
+        if let Some(model) = self.network_model() {
+            let p = model.power_inlets.get(index)?;
+            Some(PowerInlet {
+                connector: p.connector,
+                side: p.side,
+                position: p.socket.center(),
+            })
+        } else {
+            self.power_inlet()
+        }
+    }
     /// Authoritative physical power inlet metadata shared by simulation and UI.
     pub fn power_inlet(&self) -> Option<PowerInlet> {
         match self {
-            Self::Router(_) => Some(PowerInlet {
-                connector: PowerInletConnector::CiscoFourPin,
-                side: crate::RackSide::Front,
-                position: (0.146, 0.63),
-            }),
+            Self::Router(r) => r.model().power_inlet(),
             Self::Server(server) => Some(PowerInlet {
                 connector: PowerInletConnector::IecC14,
                 side: crate::RackSide::Rear,
@@ -101,11 +118,7 @@ impl DeviceKind {
                     .power_inlet_position(0)
                     .unwrap_or((0.945, 0.52)),
             }),
-            Self::Switch(_) => Some(PowerInlet {
-                connector: PowerInletConnector::IecC14,
-                side: crate::RackSide::Rear,
-                position: (0.094, 0.42),
-            }),
+            Self::Switch(s) => s.model.spec().power_inlet(),
             Self::Ups(_) => Some(PowerInlet {
                 connector: PowerInletConnector::IecC14,
                 side: crate::RackSide::Rear,
@@ -122,11 +135,12 @@ impl DeviceKind {
     /// Socket centers on the equipment face, shared by cable cuts and rendering.
     pub fn port_position_normalized(&self, index: usize) -> (f32, f32) {
         match self {
-            Self::Switch(_) if index < 24 => (
-                0.342 + (index / 12) as f32 * 0.263 + ((index % 12) / 2) as f32 * 0.0336,
-                0.37 + (index % 2) as f32 * 0.29,
-            ),
-            Self::Switch(_) => (0.833 + (index - 24) as f32 * 0.040, 0.69),
+            Self::Switch(s) => s
+                .model
+                .spec()
+                .ports
+                .get(index)
+                .map_or((0.5, 0.5), |p| p.socket.center()),
             Self::Server(server) => {
                 if let Some(hardware) = &server.hardware
                     && let Some(port) = server.ports.get(index)
@@ -141,14 +155,11 @@ impl DeviceKind {
                 }
                 server.model().port_position(index).unwrap_or((0.5, 0.5))
             }
-            Self::Router(_) if index < 2 => (0.432 + index as f32 * 0.065, 0.63),
-            Self::Router(_) => {
-                let lan = index - 2;
-                (
-                    0.201 + (lan % 4) as f32 * 0.0465,
-                    0.32 + (lan / 4) as f32 * 0.32,
-                )
-            }
+            Self::Router(r) => r
+                .model()
+                .ports
+                .get(index)
+                .map_or((0.5, 0.5), |p| p.socket.center()),
             Self::PatchPanel(_) => {
                 let slot = (index / 2).min(23);
                 (
@@ -192,6 +203,10 @@ pub struct Switch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Router {
+    #[serde(default)]
+    pub model: crate::NetworkModelId,
+    #[serde(default)]
+    pub services: crate::SwitchServices,
     pub ports: Vec<PortId>,
     pub interfaces: Vec<RouterInterface>,
     pub routes: Vec<Route>,
@@ -203,6 +218,12 @@ pub struct Router {
     pub svi_ports: Vec<PortId>,
     #[serde(default = "routing_enabled_default")]
     pub routing_enabled: bool,
+}
+
+impl Router {
+    pub fn model(&self) -> &'static crate::NetworkDeviceModel {
+        self.model.spec()
+    }
 }
 
 pub(crate) fn default_router_vlans() -> Vec<Vlan> {
@@ -240,7 +261,8 @@ impl DeviceTemplate {
     pub fn price(self) -> i64 {
         match self {
             Self::Server => crate::server_catalog().default_model().price,
-            Self::Switch | Self::Router => 500,
+            Self::Switch => crate::SwitchModel::default().spec().price,
+            Self::Router => crate::NetworkModelId::default().spec().price,
             Self::PatchPanel => 150,
             Self::CableManager => 75,
             Self::Ups => 1_200,

@@ -53,6 +53,10 @@ pub(super) fn equipment_port_position(
     side: RackSide,
     index: usize,
 ) -> Option<(f32, f32)> {
+    if let Some(model) = kind.network_model() {
+        let port = model.ports.get(index)?;
+        return (port.side == side).then(|| port.position(connector));
+    }
     if let DeviceKind::Server(server) = kind {
         return (side == RackSide::Rear && connector == PortConnector::Rj45)
             .then(|| server.model().port_position(index))
@@ -75,34 +79,6 @@ pub(super) fn equipment_port_position(
         RackSide::Front => "front",
         RackSide::Rear => "back",
     };
-    if matches!(kind, DeviceKind::Switch(sw) if sw.model == cloud_provider_sim::SwitchModel::Catalyst24T4X)
-        && side == RackSide::Front
-        && connector == PortConnector::Rj45
-        && index < 24
-    {
-        let column = index / 2;
-        let x = if column < 6 {
-            180.0 + column as f32 * 16.0
-        } else {
-            309.0 + (column - 6) as f32 * 16.0
-        };
-        let y = if index.is_multiple_of(2) {
-            221.0
-        } else {
-            235.0
-        };
-        return Some(((x - 8.0) / 487.0, (y - 203.0) / 48.0));
-    }
-    if matches!(kind, DeviceKind::Switch(sw) if sw.model == cloud_provider_sim::SwitchModel::Catalyst24T4X)
-        && side == RackSide::Front
-        && connector == PortConnector::Sfp
-        && (24..28).contains(&index)
-    {
-        return Some((
-            (416.0 + (index - 24) as f32 * 19.0 - 8.0) / 487.0,
-            (239.0 - 203.0) / 48.0,
-        ));
-    }
     let group_index = match kind {
         DeviceKind::Switch(_) if matches!(connector, PortConnector::Sfp) => {
             index.saturating_sub(24)
@@ -133,6 +109,12 @@ pub(super) fn equipment_power_port_position(
     connector: &str,
     index: usize,
 ) -> Option<(f32, f32)> {
+    if let Some(model) = kind.network_model() {
+        let p = model.power_inlets.get(index)?;
+        return ((connector == "c14")
+            == (p.connector == cloud_provider_sim::PowerInletConnector::IecC14))
+            .then(|| p.socket.center());
+    }
     if let DeviceKind::Server(server) = kind {
         return (connector == "c14")
             .then(|| server.model().power_inlet_position(index))
@@ -165,6 +147,24 @@ pub(super) fn equipment_power_port_rect(
     index: usize,
     panel: bevy_egui::egui::Rect,
 ) -> Option<bevy_egui::egui::Rect> {
+    if let Some(model) = kind.network_model() {
+        let p = model.power_inlets.get(index)?;
+        if (connector == "c14") != (p.connector == cloud_provider_sim::PowerInletConnector::IecC14)
+        {
+            return None;
+        }
+        let [l, t, r, b] = p.socket.rect;
+        return Some(bevy_egui::egui::Rect::from_min_max(
+            bevy_egui::egui::pos2(
+                panel.left() + panel.width() * l,
+                panel.top() + panel.height() * t,
+            ),
+            bevy_egui::egui::pos2(
+                panel.left() + panel.width() * r,
+                panel.top() + panel.height() * b,
+            ),
+        ));
+    }
     if let DeviceKind::Server(server) = kind {
         if connector != "c14" {
             return None;
@@ -210,6 +210,54 @@ pub(super) fn equipment_power_port_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_network_models_use_catalog_socket_and_power_geometry() {
+        use cloud_provider_sim::*;
+        for model in &network_device_catalog().models {
+            let mut sim = NetworkSim::new();
+            sim.money = 1_000_000;
+            let id = sim
+                .execute(Command::BuyNetworkDevice {
+                    model_id: model.id.clone(),
+                })
+                .unwrap()
+                .into_iter()
+                .find_map(|e| match e {
+                    SimEvent::DeviceAdded(id) => Some(id),
+                    _ => None,
+                })
+                .unwrap();
+            let kind = &sim.device(id).unwrap().kind;
+            for (index, port) in model.ports.iter().enumerate() {
+                assert_eq!(
+                    equipment_port_position(kind, port.connector, port.side, index),
+                    Some(port.socket.center())
+                );
+                assert_eq!(
+                    equipment_port_position(
+                        kind,
+                        port.connector,
+                        if port.side == RackSide::Front {
+                            RackSide::Rear
+                        } else {
+                            RackSide::Front
+                        },
+                        index
+                    ),
+                    None
+                );
+            }
+            for (index, inlet) in model.power_inlets.iter().enumerate() {
+                if inlet.connector == PowerInletConnector::IecC14 {
+                    assert_eq!(
+                        equipment_power_port_position(kind, "c14", index),
+                        Some(inlet.socket.center())
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn bundled_switch_map_is_readable() {

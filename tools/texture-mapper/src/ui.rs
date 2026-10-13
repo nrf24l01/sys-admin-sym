@@ -239,7 +239,7 @@ pub(super) fn ui(
         u.horizontal(|u|for face in &faces {
             if u.selectable_label(s.side == face.side,&face.side).clicked() {
                 s.side = face.side.clone(); s.selected.clear();
-                s.group = groups(s.doc.as_ref().unwrap().model(),&s.side).first().map(|g|g.pointer.clone()).unwrap_or_default();
+                s.group = groups(s.doc.as_ref().unwrap().model(),&s.side).first().map(|g|g.key()).unwrap_or_default();
             }
         });
         let groups = groups(s.doc.as_ref().unwrap().model(),&s.side);
@@ -247,14 +247,14 @@ pub(super) fn ui(
         u.label("Port type");
         egui::ScrollArea::vertical().id_salt("mapping_groups").max_height(145.).show(u, |u| {
             for group in &groups {
-                if u.selectable_label(s.group == group.pointer, &group.label).clicked() {
-                    s.group.clone_from(&group.pointer);
+                if u.selectable_label(s.group == group.key(), &group.label).clicked() {
+                    s.group=group.key();
                     s.selected.clear();
                 }
             }
         });
         let Some(group) = s.active_group() else {return;};
-        let hardware = group.pointer.starts_with("/chassis/") || group.pointer == "/power_inlets";
+        let hardware = group.fixed_count();
         u.horizontal(|u| {
             if u.add_enabled(!hardware,egui::Button::new("Add connector")).clicked(){s.add();}
             if u.add_enabled(!hardware && !s.selected.is_empty(),egui::Button::new("Delete")).clicked(){s.delete();}
@@ -398,7 +398,7 @@ pub(super) fn ui(
                 );
                 let hit = u.interact(
                     rect,
-                    u.id().with(("port", &group.pointer, i)),
+                    u.id().with(("port", group.key(), i)),
                     egui::Sense::click_and_drag(),
                 );
                 let mut resizing = false;
@@ -407,7 +407,7 @@ pub(super) fn ui(
                         u.painter().circle_filled(point, 5., color);
                         let hit = u.interact(
                             egui::Rect::from_center_size(point, egui::vec2(14., 14.)),
-                            u.id().with(("resize", &group.pointer, i, corner)),
+                            u.id().with(("resize", group.key(), i, corner)),
                             egui::Sense::drag(),
                         );
                         if hit.drag_started() {

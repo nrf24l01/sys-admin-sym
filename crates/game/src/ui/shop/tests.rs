@@ -131,7 +131,20 @@ fn category_changes_deactivate_irrelevant_filters_and_restore_section_facets() {
     assert_eq!(query::filtered(&state, &sim).len(), 2);
     state.select(ShopCategory::Network, Some(ShopSection::Switches));
     assert!(state.facets["ports"].contains("24"));
-    assert_eq!(query::filtered(&state, &sim).len(), 2);
+    let expected = network_device_catalog()
+        .models
+        .iter()
+        .filter(|m| {
+            m.category == NetworkDeviceCategory::Switch
+                && m.rack_units == 1
+                && m.ports
+                    .iter()
+                    .filter(|p| p.connector == PortConnector::Rj45)
+                    .count()
+                    == 24
+        })
+        .count();
+    assert_eq!(query::filtered(&state, &sim).len(), expected);
     state.select_all();
     assert_eq!(
         query::filtered(&state, &sim).len(),
@@ -702,8 +715,9 @@ fn virtual_product_rows_skip_offscreen_cards_and_keep_scrolling_interactive() {
 #[test]
 fn catalyst_artwork_and_catalog_specs_are_model_specific() {
     let mut textures = artwork::test_textures();
-    textures.switch = egui::TextureId::User(40);
-    textures.switch_10g = egui::TextureId::User(41);
+    let network = std::sync::Arc::make_mut(&mut textures.network);
+    network.get_mut("c1000_24t_4g_l").unwrap().thumbnail = egui::TextureId::User(40);
+    network.get_mut("c1000_24t_4x_l").unwrap().thumbnail = egui::TextureId::User(41);
     let g = offer("cisco_catalyst_c1000");
     let x = offer("switch_10g");
     let g_art = artwork::artwork(g, &textures).unwrap();
@@ -729,6 +743,30 @@ fn catalyst_artwork_and_catalog_specs_are_model_specific() {
                 .unwrap()
                 .number,
             Some(power)
+        );
+    }
+}
+
+#[test]
+fn every_network_model_has_one_localized_offer_matching_domain_hardware_and_artwork() {
+    for model in &network_device_catalog().models {
+        let o = offer(&model.shop_id);
+        assert_eq!(o.item, PurchaseItem::NetworkDevice(model.id.clone()));
+        assert_eq!(o.price(), model.price);
+        assert_eq!(o.numeric("rack"), u64::from(model.rack_units));
+        assert_eq!(
+            o.section,
+            if model.category == NetworkDeviceCategory::Router {
+                ShopSection::Routers
+            } else {
+                ShopSection::Switches
+            }
+        );
+        assert!(o.search_text().contains(&model.name.to_lowercase()));
+        assert!(
+            artwork::artwork(o, &artwork::test_textures())
+                .unwrap()
+                .ready
         );
     }
 }

@@ -10,8 +10,10 @@ pub fn device_name(device: &Device) -> String {
             };
             (server.model.as_str(), server.model().chassis.model.as_str())
         }
-        DeviceTemplate::Switch => ("cisco_catalyst_c1000", "Cisco Catalyst C1000-24T-4G-L"),
-        DeviceTemplate::Router => ("cisco_isr_c1111", "Cisco ISR C1111-8P"),
+        DeviceTemplate::Switch | DeviceTemplate::Router => {
+            let model = device.kind.network_model().unwrap();
+            (model.id.as_str(), model.name.as_str())
+        }
         DeviceTemplate::PatchPanel => ("patch_panel", "24-port Patch Panel"),
         DeviceTemplate::CableManager => ("cable_manager", "1U Horizontal Cable Manager"),
         DeviceTemplate::Ups => ("apc_smt1500", "APC Smart-UPS SMT1500RMI2U"),

@@ -232,6 +232,42 @@ pub struct DevicePower {
     /// Server loads are DC demand; PSU losses are computed separately per live feed.
     #[serde(default)]
     pub psus: Option<DevicePsus>,
+    #[serde(default)]
+    pub adapter: Option<AdapterPowerProfile>,
+}
+impl DevicePower {
+    pub fn cord_allows_load(&self, kind: PowerCordKind) -> bool {
+        if kind == PowerCordKind::Cisco66WAdapter {
+            self.adapter.as_ref().map_or_else(
+                || kind.allows_load(self.load),
+                |a| {
+                    self.load.watts <= a.output_watts
+                        && u64::from(self.load.watts) * 1000
+                            <= u64::from(a.output_volts) * u64::from(a.output_current_ma)
+                },
+            )
+        } else {
+            true
+        }
+    }
+    pub fn cord_input_load(&self, kind: PowerCordKind) -> ElectricalLoad {
+        if !self.cord_allows_load(kind) {
+            return ElectricalLoad::default();
+        }
+        if kind == PowerCordKind::Cisco66WAdapter
+            && let Some(a) = &self.adapter
+        {
+            ElectricalLoad::from_watts_pf(
+                s32(ceil(
+                    u64::from(self.load.watts) * 100,
+                    u64::from(a.efficiency_percent),
+                )),
+                a.power_factor_percent,
+            )
+        } else {
+            kind.input_load(self.load)
+        }
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PowerTelemetry {
@@ -315,6 +351,7 @@ impl PowerSystem {
                 load: ElectricalLoad::from_watts_pf(watts, pf),
                 effective: false,
                 psus: None,
+                adapter: None,
             },
         );
         self.recompute();
@@ -383,7 +420,7 @@ impl PowerSystem {
                     && self
                         .devices
                         .get(&d)
-                        .is_some_and(|x| !kind.allows_load(x.load)) =>
+                        .is_some_and(|x| !x.cord_allows_load(kind)) =>
             {
                 return Err(PowerError::AdapterOverload);
             }

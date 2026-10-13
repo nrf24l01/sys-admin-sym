@@ -11,33 +11,8 @@ pub struct RouterNetworkProfile {
 }
 
 pub fn router_network_profile() -> &'static RouterNetworkProfile {
-    #[derive(Deserialize)]
-    struct Config {
-        network: RouterNetworkProfile,
-    }
     static PROFILE: OnceLock<RouterNetworkProfile> = OnceLock::new();
-    PROFILE.get_or_init(|| {
-        let c: Config = crate::equipment_config::equipment_catalog(
-            "router_config.json",
-            include_str!("../../../assets/equipment/router_config.json"),
-        );
-        let p = c.network;
-        let mut ports = p
-            .wan_ports
-            .iter()
-            .chain(&p.lan_ports)
-            .copied()
-            .collect::<Vec<_>>();
-        ports.sort_unstable();
-        assert!(
-            !p.wan_ports.is_empty()
-                && !p.lan_ports.is_empty()
-                && ports.iter().copied().eq(0..ports.len())
-                && p.flex_ports.iter().all(|i| p.lan_ports.contains(i)),
-            "invalid network port layout in assets/equipment/router_config.json"
-        );
-        p
-    })
+    PROFILE.get_or_init(|| NetworkModelId::default().spec().network_profile())
 }
 
 impl NetworkSim {
@@ -116,7 +91,10 @@ impl NetworkSim {
         vlan: VlanId,
     ) -> Result<PortId, String> {
         let DeviceKind::Router(r) = &self.devices[&device].kind else {
-            return Err("% VLAN interfaces are supported on this router; Catalyst C1000 uses management ip.".into());
+            return Err(
+                "% This model uses management ip; VLAN routing interfaces require routing support."
+                    .into(),
+            );
         };
         if let Some(port) = r
             .svi_ports
@@ -156,13 +134,13 @@ impl NetworkSim {
         switching: bool,
     ) -> Result<(), String> {
         let DeviceKind::Router(r) = &self.devices[&device].kind else {
-            return Err("% Catalyst C1000 ports support Layer 2 switching only.".into());
+            return Err("% This model supports Layer 2 switching only.".into());
         };
         let Some(index) = r.ports.iter().position(|id| *id == port) else {
             return Err("% switchport applies to physical interfaces only.".into());
         };
-        let profile = router_network_profile();
-        if profile.wan_ports.contains(&index) {
+        let profile = r.model().network_profile();
+        if profile.wan_ports.contains(&index) && !profile.flex_ports.contains(&index) {
             return if switching {
                 Err("% WAN interfaces are routed ports; use a LAN switch port.".into())
             } else {

@@ -1,5 +1,4 @@
 //! Estimated device demand, separate from PSU/output capacity ratings.
-use super::profiles::router_power_profile;
 use crate::*;
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +67,7 @@ impl NetworkSim {
         match self.device(device).map(|d| &d.kind) {
             Some(DeviceKind::Server(server)) => server.model().power.power_factor_percent,
             Some(DeviceKind::Switch(switch)) => switch.model.spec().power.power_factor_percent,
-            Some(DeviceKind::Router(_)) => router_power_profile().load.power_factor_percent,
+            Some(DeviceKind::Router(r)) => r.model().power.power_factor_percent,
             _ => 100,
         }
     }
@@ -250,8 +249,8 @@ impl NetworkSim {
                 );
                 result.component(PowerComponentKind::Optics, modules.0, modules.1);
             }
-            DeviceKind::Router(_) => {
-                let curve = &router_power_profile().load;
+            DeviceKind::Router(r) => {
+                let curve = &r.model().power;
                 let activity = utilization
                     .cpu
                     .max(network)
@@ -351,12 +350,28 @@ impl NetworkSim {
                     dc_demand_mw: consumption.demand_mw,
                     power_factor_percent: server.model().power.power_factor_percent,
                 })
+            } else if let Some(model) = self.devices[&id].kind.network_model() {
+                if model.adapter.is_none() {
+                    Some(DevicePsus {
+                        count: model.power_inlets.len() as u8,
+                        profile: model.psu.clone(),
+                        dc_demand_mw: consumption.demand_mw,
+                        power_factor_percent: model.power.power_factor_percent,
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             };
             self.runtime.consumption.insert(id, consumption);
             let load = ElectricalLoad::from_watts_pf(watts, self.device_power_factor(id));
+            let adapter = self.devices[&id]
+                .kind
+                .network_model()
+                .and_then(|m| m.adapter.clone());
             let power = self.power.devices.get_mut(&id).unwrap();
+            power.adapter = adapter;
             if power.load != load || power.psus != psus {
                 power.psus = psus;
                 power.load = load;

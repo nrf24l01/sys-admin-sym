@@ -3,13 +3,19 @@ use crate::*;
 
 impl NetworkSim {
     pub fn cage_profile(&self, port: PortId) -> Option<CageProfile> {
-        (self.port(port)?.connector == PortConnector::Sfp).then(|| {
-            self.optics.cages.get(&port).cloned().unwrap_or_else(|| {
-                match self.device(self.ports[&port].device).map(|d| &d.kind) {
-                    Some(DeviceKind::Switch(switch)) => switch.model.spec().cage.clone(),
-                    _ => CageProfile::sfp(),
-                }
-            })
+        let p = self.port(port)?;
+        if let Some(model) = self.device(p.device).and_then(|d| d.kind.network_model()) {
+            let device = self.device(p.device)?;
+            if let Some(index) = device.ports().iter().position(|id| *id == port) {
+                return model.ports.get(index)?.cage.clone();
+            }
+        }
+        (p.connector == PortConnector::Sfp).then(|| {
+            self.optics
+                .cages
+                .get(&port)
+                .cloned()
+                .unwrap_or_else(CageProfile::sfp)
         })
     }
     pub fn installed_transceiver(&self, port: PortId) -> Option<&TransceiverInstance> {
@@ -112,6 +118,12 @@ impl NetworkSim {
             return Err(OpticsError::IncompatibleHost);
         }
         if let Some(link) = self.link_for_port(port) {
+            if self
+                .port(port)
+                .is_some_and(|p| p.connector == PortConnector::Rj45)
+            {
+                return Err(OpticsError::AttachedCable);
+            }
             let fiber = self.connected_assembly(link.id).is_some();
             if fiber != matches!(spec.medium, ModuleMedium::Optical { .. }) {
                 return Err(OpticsError::ConnectorMismatch);
@@ -160,7 +172,40 @@ impl NetworkSim {
                 })
         })
     }
+    /// Physical media follows installed inventory, including after console reload.
+    pub(crate) fn normalize_combo_connectors(&mut self) {
+        let connectors: Vec<_> = self
+            .devices
+            .values()
+            .flat_map(|d| {
+                d.ports().iter().enumerate().filter_map(|(index, id)| {
+                    let spec = d.kind.network_model()?.ports.get(index)?;
+                    if spec.connector != PortConnector::Rj45 || spec.cage.is_none() {
+                        return None;
+                    }
+                    let optical = self.installed_transceiver(*id).is_some()
+                        || self.links.values().any(|l| {
+                            (l.a == *id || l.b == *id) && self.connected_assembly(l.id).is_some()
+                        });
+                    Some((
+                        *id,
+                        if optical {
+                            PortConnector::Sfp
+                        } else {
+                            PortConnector::Rj45
+                        },
+                    ))
+                })
+            })
+            .collect();
+        for (id, connector) in connectors {
+            if let Some(p) = self.ports.get_mut(&id) {
+                p.connector = connector;
+            }
+        }
+    }
     pub(crate) fn refresh_module_loads(&mut self) {
+        self.normalize_combo_connectors();
         self.refresh_device_loads();
     }
     pub(crate) fn configure_optics(
@@ -197,6 +242,7 @@ impl NetworkSim {
                     .ok_or(OpticsError::NotOwned)?;
                 self.transceiver_model_supported_at_port(&instance.model_id, port)?;
                 self.optics.transceivers.get_mut(&module).unwrap().port = Some(port);
+                self.ports.get_mut(&port).unwrap().connector = PortConnector::Sfp;
                 vec![SimEvent::PortConfigChanged(port)]
             }
             OpticsCommand::RemoveTransceiver { port } => {
@@ -208,6 +254,14 @@ impl NetworkSim {
                     .ok_or(OpticsError::NotOwned)?;
                 // The fiber remains plugged into this physical port; replacing the optic preserves interface configuration.
                 instance.port = None;
+                if let Some(p) = self.port(port)
+                    && let Some(d) = self.device(p.device)
+                    && let Some(model) = d.kind.network_model()
+                    && let Some(index) = d.ports().iter().position(|id| *id == port)
+                    && let Some(spec) = model.ports.get(index)
+                {
+                    self.ports.get_mut(&port).unwrap().connector = spec.connector;
+                }
                 vec![SimEvent::PortConfigChanged(port)]
             }
             OpticsCommand::BuyAssembly { model } => {
@@ -287,8 +341,8 @@ impl NetworkSim {
                     });
                 }
                 // The existing device implementation owns switching/panel behavior; the profile supplies hardware capabilities.
-                let switch_model = match model.profile {
-                    OpticalHardwareProfile::Switch { model } => model,
+                let switch_model = match &model.profile {
+                    OpticalHardwareProfile::Switch { model } => model.clone(),
                     OpticalHardwareProfile::FiberPanel => SwitchModel::default(),
                 };
                 let id = self.buy_device_with_switch_model(template, model.price, switch_model)?;

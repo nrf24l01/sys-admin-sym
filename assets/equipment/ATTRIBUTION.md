@@ -250,3 +250,48 @@ chassis memory tables above. In particular, the R740's 16GB 2666/2933 RDIMMs are
 standard RDIMM rates of 5600/4400 and 3DS RDIMM rates of 5200/4400; the generic
 parts do not claim Lenovo Performance+ capability. Component shop
 thumbnails reuse the existing generated CPU/RAM cells by component kind.
+
+## Cisco network device product artwork
+
+The network catalog uses downloaded Cisco documentation artwork and clean
+product catalog images cropped to the complete device panel. Each model's JSON
+artwork paths select its image. The same panel appears on both rack sides where
+separate opposite-side artwork is unavailable. Images remain copyrighted by
+Cisco and/or their original creators; the project source license does not grant
+reuse rights. Existing C1111 and C1000 images retain their attribution.
+
+| Model | Asset | Artwork source |
+| --- | --- | --- |
+| Cisco C1101-4P | `network/c1101_4p_photo.png` | [Cisco ISR 1100 datasheet, Figure 13](https://www.cisco.com/c/en/us/products/collateral/routers/1000-series-integrated-services-routers-isr/datasheet-c78-739512.html) |
+| Cisco ISR 4321 | `network/isr_4321_photo.png` | [Cisco branch routing portfolio, page 59](https://community.cisco.com/kxiwq67737/attachments/kxiwq67737/5951-discussions-small-business-routers/38064/1/Overview%20of%20Cisco%27s%20Branch%20Routing%20Portfolio.pdf) |
+| Cisco ISR 4331 | `network/isr_4331_photo.png` | [Comel-IT](https://sklep.comel-it.com/pl/products/isr4331-k9-1757.html) |
+| Cisco ISR 4351 | `network/isr_4351_photo.png` | [eBay listing](https://www.ebay.co.uk/itm/115807835869) |
+| Cisco C8200L-1N-4T | `network/c8200l_1n_4t_photo.png` | [NetworkTigers](https://www.networktigers.com/products/c8200l-1n-4t-cisco-edge-platform) |
+| Cisco C8200-1N-4T | `network/c8200_1n_4t_photo.png` | [Cisco Catalyst 8200 datasheet, Figure 1](https://www.cisco.com/c/en/us/products/collateral/routers/catalyst-8200-series-edge-platforms/nb-06-cat8200-series-edge-plat-ds-cte-en.html) |
+| Cisco C8300-1N1S-6T | `network/c8300_1n1s_6t_photo.png` | [Cisco Catalyst 8300 datasheet, Figure 4](https://www.cisco.com/c/en/us/products/collateral/routers/catalyst-8300-series-edge-platforms/datasheet-c78-744088.html) |
+| Cisco ASR 1001-X | `network/asr_1001_x_photo.png` | [Comel-IT](https://sklep.comel-it.com/en/products/asr1001-x-5384.html) |
+| Cisco C8500-12X4QC | `network/c8500_12x4qc_photo.png` | [Cloud Appliances](https://www.cloudappliances.co.uk/cisco-routers/catalyst-8500/cisco-c8500-12x4qc/) |
+| Cisco CBS250-24T-4G | `network/cbs250_24t_4g_photo.png` | [LDLC](https://www.ldlc.com/en/product/PB00394367.html) |
+| Cisco CBS350-24T-4G | `network/cbs350_24t_4g_photo.png` | [Senetic](https://www.senetic.de/product/CBS350-24T-4G-EU) |
+| Cisco C1300-24T-4G | `network/c1300_24t_4g_photo.png` | [Network Devices Inc.](https://networkdevicesinc.com/products/c1300-24t-4g) |
+| Cisco WS-C2960X-24TS-L | `network/ws_c2960x_24ts_l_photo.png`, `network/ws_c2960x_24ts_l_rear_photo.png` | [Dedicated Networks](https://dedicatednetworksinc.com/product/new-open-box-cisco-ws-c2960x-24ts-l-switch/) |
+| Cisco C9200L-24T-4G-E | `network/c9200l_24t_4g_e_photo.png` | [DS3 Comunicaciones](https://www.ds3comunicaciones.com/cisco/catalyst/C9200L-24T-4G-E.html) |
+| Cisco C9300-24T-E | `network/c9300_24t_e_photo.png` | [Viettuans C9300-24T catalog artwork](https://viettuans.vn/uploads/2023/11/cisco-c9300-24t-a.jpg) (same C9300-24T chassis; license tier differs) |
+| Cisco C9500-24Y4C-E | `network/c9500_24y4c_e_photo.png` | [Comel-IT](https://sklep.comel-it.com/en/products/c9500-24y4c-e-24x-1-10-25g-sfp28-uplink-4x-40g-100g-qsfp28-2tbps-network-essentials-l3-macsec-128-cisco-catalyst-9500-switch-13204.html) |
+| Cisco N9K-C93180YC-FX3 | `network/n9k_c93180yc_fx3_photo.png` | [eBay listing](https://www.ebay.de/itm/225533367708) |
+| Cisco N9K-C9364C-GX | `network/n9k_c9364c_gx_photo.png` | [Cisco Nexus 9300-GX datasheet, Figure 3](https://www.cisco.com/c/en/us/products/collateral/switches/nexus-9000-series-switches/nexus-9300-gx-series-switches-ds.html) |
+
+The artwork above shows complete chassis panels, with perspective
+rectified where needed. Panel edges fill the artwork crop, following the
+existing C1000-24T-4G-L reference, with no studio background, case lids or
+sidewalls in the displayed face. Front socket rectangles in
+`network_devices.json` are measured against these normalized panels. Reference
+artwork can show fitted optional modules; their extra ports are not
+playable unless listed in the model JSON.
+New 40/100G optics reuse the existing duplex optical sprite family.
+
+The six documentation-style replacements are C1101-4P, ISR 4321,
+C8200-1N-4T, C8300-1N1S-6T, C9300-24T-E and N9K-C9364C-GX. Five use
+Cisco documentation pixels; the C9300 uses a sharper, straight-on product
+catalog image instead of the low-resolution datasheet family image. No device
+panels were generated or redrawn as schematics.

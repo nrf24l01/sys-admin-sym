@@ -332,6 +332,9 @@ impl Offer {
                     PurchaseItem::Device(template) => {
                         d.template() == *template && !sim.optics.device_models.contains_key(&d.id)
                     }
+                    PurchaseItem::NetworkDevice(id) => {
+                        d.kind.network_model().is_some_and(|m| &m.id == id)
+                    }
                     PurchaseItem::OpticalHardware(id) => {
                         sim.optics.device_models.get(&d.id) == Some(id)
                     }
@@ -367,6 +370,8 @@ fn cage_name(cage: CageKind) -> &'static str {
         CageKind::Sfp => "SFP",
         CageKind::SfpPlus => "SFP+",
         CageKind::Sfp28 => "SFP28",
+        CageKind::QsfpPlus => "QSFP+",
+        CageKind::Qsfp28 => "QSFP28",
     }
 }
 fn fiber_name(fiber: FiberClass) -> &'static str {

@@ -53,9 +53,7 @@ impl PowerSystem {
                 let outlet =
                     self.outlet_for_endpoint(PowerEndpoint::device_inlet(device, inlet))?;
                 (self.outlet_available(outlet)
-                    && self
-                        .cord_kind(outlet)
-                        .allows_load(self.devices[&device].load))
+                    && self.devices[&device].cord_allows_load(self.cord_kind(outlet)))
                 .then_some((inlet, outlet))
             })
             .collect()
@@ -110,7 +108,7 @@ impl PowerSystem {
                         .map_or_default(|p| p.input);
                 }
                 if self.outlet_available(outlet) {
-                    self.cord_kind(outlet).input_load(state.load)
+                    state.cord_input_load(self.cord_kind(outlet))
                 } else {
                     ElectricalLoad::default()
                 }

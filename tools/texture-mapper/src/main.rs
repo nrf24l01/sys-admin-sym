@@ -48,7 +48,7 @@ impl Editor {
                     .unwrap_or_default();
                 self.group = groups(doc.model(), &self.side)
                     .first()
-                    .map(|g| g.pointer.clone())
+                    .map(|g| g.key())
                     .unwrap_or_default();
                 self.texture_override = None;
                 self.doc = Some(doc);
@@ -89,16 +89,13 @@ impl Editor {
     fn active_group(&self) -> Option<Group> {
         groups(self.doc.as_ref()?.model(), &self.side)
             .into_iter()
-            .find(|g| g.pointer == self.group)
+            .find(|g| g.key() == self.group || g.pointer == self.group)
     }
     fn delete(&mut self) {
         let Some(group) = self.active_group() else {
             return;
         };
-        if self.selected.is_empty()
-            || group.pointer.starts_with("/chassis/")
-            || group.pointer == "/power_inlets"
-        {
+        if self.selected.is_empty() || group.fixed_count() {
             return;
         }
         let doc = self.doc.as_mut().unwrap();
@@ -122,7 +119,7 @@ impl Editor {
         let Some(group) = self.active_group() else {
             return;
         };
-        if group.pointer.starts_with("/chassis/") || group.pointer == "/power_inlets" {
+        if group.fixed_count() {
             return;
         }
         let template = {
