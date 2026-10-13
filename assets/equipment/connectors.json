@@ -225,6 +225,18 @@
       ]
     },
     {
+      "id": "cisco-six-pin",
+      "family": "power",
+      "role": "inlet",
+      "mates_with": [
+        "cisco-six-pin"
+      ],
+      "default_size": [
+        0.055,
+        0.4
+      ]
+    },
+    {
       "id": "anchor",
       "family": "routing",
       "role": "anchor",
@@ -406,6 +418,19 @@
       "cable_exit": [
         0.5,
         0.5
+      ]
+    },
+    "cisco-six-pin-plug": {
+      "atlas": "power-plugs",
+      "uv": [
+        0.6459977452085682,
+        0.1544532130777903,
+        0.9041713641488163,
+        0.7835400225479143
+      ],
+      "cable_exit": [
+        0.5,
+        0.745
       ]
     }
   }

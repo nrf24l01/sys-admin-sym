@@ -74,6 +74,7 @@ impl ConnectorCatalog {
             "rj45-plug",
             "iec-plug",
             "cisco-four-pin-plug",
+            "cisco-six-pin-plug",
             "iec-socket",
             "empty-cage",
             "duplex-module",
@@ -127,6 +128,7 @@ impl ConnectorCatalog {
             ConnectorType::IecC14,
             ConnectorType::IecC13,
             ConnectorType::CiscoFourPin,
+            ConnectorType::CiscoSixPin,
             ConnectorType::Anchor,
         ];
         for id in expected {

@@ -3283,12 +3283,15 @@ fn device_power_inlet_rect(
 fn power_connector_kind(sim: &NetworkSim, socket: PowerSocket) -> cables::ConnectorKind {
     if let PowerSocket::Inlet(endpoint) = socket
         && let Some(id) = endpoint.device_id()
-        && sim
+        && let Some(inlet) = sim
             .device(id)
             .and_then(|device| device.kind.power_inlet_at(usize::from(endpoint.inlet())))
-            .is_some_and(|inlet| inlet.connector == PowerInletConnector::CiscoFourPin)
     {
-        return cables::ConnectorKind::CiscoFourPin;
+        return match inlet.connector {
+            PowerInletConnector::IecC14 => cables::ConnectorKind::Iec,
+            PowerInletConnector::CiscoFourPin => cables::ConnectorKind::CiscoFourPin,
+            PowerInletConnector::CiscoSixPin => cables::ConnectorKind::CiscoSixPin,
+        };
     }
     cables::ConnectorKind::Iec
 }
@@ -3696,6 +3699,21 @@ mod power_geometry_tests {
                 })
             ),
             cables::ConnectorKind::Iec
+        ));
+        let SimEvent::DeviceAdded(six_pin_router) = sim
+            .execute(cloud_provider_sim::Command::BuyNetworkDevice {
+                model_id: "isr_4321".into(),
+            })
+            .unwrap()[0]
+        else {
+            unreachable!()
+        };
+        assert!(matches!(
+            power_connector_kind(
+                &sim,
+                PowerSocket::Inlet(PowerEndpoint::Device(six_pin_router))
+            ),
+            cables::ConnectorKind::CiscoSixPin
         ));
     }
 

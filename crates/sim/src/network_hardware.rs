@@ -308,8 +308,7 @@ impl NetworkDeviceCatalog {
                 }
                 for inlet in &model.power_inlets {
                     if !rect(inlet.socket.rect)
-                        || (inlet.connector == PowerInletConnector::CiscoFourPin)
-                            != model.adapter.is_some()
+                        || inlet.connector.is_dc() != model.adapter.is_some()
                     {
                         return Err("invalid inlet geometry/adapter".into());
                     }

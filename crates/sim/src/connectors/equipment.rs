@@ -196,6 +196,7 @@ impl DeviceKind {
                 let expected = match inlet.connector {
                     crate::PowerInletConnector::IecC14 => ConnectorType::IecC14,
                     crate::PowerInletConnector::CiscoFourPin => ConnectorType::CiscoFourPin,
+                    crate::PowerInletConnector::CiscoSixPin => ConnectorType::CiscoSixPin,
                 };
                 if inlet.side != side || expected != id {
                     return None;

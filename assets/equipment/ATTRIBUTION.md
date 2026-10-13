@@ -49,6 +49,40 @@ derivatives.
   https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR5B30rRACOmf_wSaokUQubg8MkZHwilI0E_D5hNtDtLA&s=10
 - Processing: OpenAI image tool, upscale and isolate the front panel.
 
+## Network device rear-panel photos
+
+The network-device catalog stores a separate rear image and rear power-inlet
+hitboxes for each model. These photos are cropped to the chassis panel; they are
+not generated illustrations or schematic figures. The CBS250 and CBS350 use the
+CBS350-24T-4G rear photo because their fanless 24-port enclosures share the same
+rear-panel layout. The C8200 and C8200L share a C8200 rear photo because the rear
+power-input enclosure is common to that family.
+
+- CBS250-24T-4G and CBS350-24T-4G: CBS350 rear photo, [product image](https://www.opticaltransceiver-module.com/photo/opticaltransceiver-module/editor/20231219180218_34670.jpg).
+- C1300-24T-4G: [Network Devices Inc. rear-panel product image](https://networkdevicesinc.com/cdn/shop/files/c1300-24t-4g_4_552edc19-623f-469b-af34-92e4c70248da.png?v=1790766219&width=1200).
+- WS-C2960X-24TS-L: [Comel-IT rear-panel product photo](https://sklep.comel-it.com/hpeciai/f05401e02905e7e3e2fce4503d1a0ae4/eng_pl_WS-C2960X-24TS-L-Switch-Cisco-Catalyst-2960X-SFP-4733_4.jpg).
+- C9200L-24T-4G-E: [ETB Technologies exact-model rear product photograph](https://res.cloudinary.com/dmwxtja1g/image/upload/c_lpad,dpr_1.0,f_auto,q_80/v1/media/catalog/product/c/i/cisco_catalyst_c9200l-24t-4g-e_24x_1gb_rj-45_4x_sfp_1_x_125w_rear_zoom_2.jpg?_i=AB), perspective corrected to the rear panel.
+- C9300-24T-E: C9300-24T-A chassis rear photo from [Comel-IT](https://sklep.comel-it.com/hpeciai/a967a6db1f5f3e963765c8cb204dc5b9/eng_pl_C9300-24T-A-Switch-Cisco-Catalyst-9300-STACK-5359_4.jpg); the rear chassis configuration matches the 24T-E model.
+- C9500-24Y4C-E: [Network Warehouse rear-panel product photo](https://networkwarehouse.co.uk/cdn/shop/files/cisco-catalyst-9500-series-switch-c9500-24y4c-e-376530_1024x1150.jpg?v=1742969492).
+- N9K-C93180YC-FX3: [rear-panel product photo](https://i.ebayimg.com/images/g/mEUAAOSwCA9kAoUf/s-l1600.jpg).
+- N9K-C9364C-GX: [rear-panel product photo](https://www.linknewnet.com/attach/2023/12/08/1702025642576_original.jpg).
+- C8200-1N-4T and C8200L-1N-4T: [C8200 rear-panel product photo](https://www.prostore.ro/images/products/img_202103200752/116234/full/router-cisco-catalyst-c8200-1n-4t-4x-lan-390170.jpg).
+- C8300-1N1S-6T: straight-on original rear product photograph from page 25 of [Cisco Live BRKARC-2882 (2023)](https://www.ciscolive.com/c/dam/r/ciscolive/emea/docs/2023/pdf/BRKARC-2882.pdf). The pictured optional LTE PIM does not add playable ports; only JSON-listed ports are active.
+- C8500-12X4QC: original full-width rear product photograph and transparency mask extracted from page 38 of [Cisco Catalyst 8500 Deep Dive](https://community.cisco.com/kxiwq67737/attachments/kxiwq67737/4461-docs-network-infrastructure/6656/1/Catalyst8500Edge_DeepDive_CommunityWebinar_11-17.pdf). Replaces the clipped tabletop photograph; no hardware pixels are generated.
+- ASR1001-X: [rear-panel product photo](https://sklep.comel-it.com/hpeciai/2481fcc8eabe98b99484079c5be4d55d/eng_pl_ASR1001-X-5384_2.jpg).
+- ISR4331: [rear-panel product photo](https://sunnkingstorage.blob.core.windows.net/ebay/adf89ff3-22df-4f7d-9ef6-f0ec5b8607dd.png).
+- ISR4351: [Cloud Appliances rear-panel product photo](https://www.cloudappliances.co.uk/uploads/cisco_ISR4351-V-K9-640x450.webp).
+- ISR4321: [Comel-IT opposite bezel-side product photo](https://sklep.comel-it.com/hpeciai/2d7de21d9e8a44ffd2201291d9012f6f/eng_pl_ISR4321-SEC-K9-6054_1.jpg). The six-pin DC inlet is on the I/O face; the bezel has no power inlet. The supplied PWR-4320-AC adapter profile models a 12 V, 9 A, 108 W supply. [Cisco community pinout reference](https://community.cisco.com/t5/routing-and-sd-wan/power-supply-pinout-for-cisco-4321/td-p/5147594).
+- `connectors.json` distinguishes four-pin and six-pin DC connector families.
+  Both use the existing seated connector cable-exit sprite because the
+  mating pins are hidden when connected; the inlet photographs retain their
+  actual pin counts. Their identities and mating rules remain distinct.
+- Processing: crop and perspective/size normalization to the chassis panel only;
+  original photographic details, labels, and hardware remain intact.
+- Cisco and the respective photographers or retailers retain rights to the
+  product photographs; listing a source here does not grant redistribution
+  rights.
+
 The older reference assets below are retained for reference.
 
 ## Cable textures
@@ -263,7 +297,6 @@ reuse rights. Existing C1111 and C1000 images retain their attribution.
 
 | Model | Asset | Artwork source |
 | --- | --- | --- |
-| Cisco C1101-4P | `network/c1101_4p_photo.png` | [Cisco ISR 1100 datasheet, Figure 13](https://www.cisco.com/c/en/us/products/collateral/routers/1000-series-integrated-services-routers-isr/datasheet-c78-739512.html) |
 | Cisco ISR 4321 | `network/isr_4321_photo.png` | [Cisco branch routing portfolio, page 59](https://community.cisco.com/kxiwq67737/attachments/kxiwq67737/5951-discussions-small-business-routers/38064/1/Overview%20of%20Cisco%27s%20Branch%20Routing%20Portfolio.pdf) |
 | Cisco ISR 4331 | `network/isr_4331_photo.png` | [Comel-IT](https://sklep.comel-it.com/pl/products/isr4331-k9-1757.html) |
 | Cisco ISR 4351 | `network/isr_4351_photo.png` | [eBay listing](https://www.ebay.co.uk/itm/115807835869) |
@@ -291,8 +324,8 @@ artwork can show fitted optional modules; their extra ports are not
 playable unless listed in the model JSON.
 New 40/100G optics reuse the existing duplex optical sprite family.
 
-The six documentation-style replacements are C1101-4P, ISR 4321,
-C8200-1N-4T, C8300-1N1S-6T, C9300-24T-E and N9K-C9364C-GX. Five use
+The five documentation-style replacements are ISR 4321,
+C8200-1N-4T, C8300-1N1S-6T, C9300-24T-E and N9K-C9364C-GX. Four use
 Cisco documentation pixels; the C9300 uses a sharper, straight-on product
 catalog image instead of the low-resolution datasheet family image. No device
 panels were generated or redrawn as schematics.

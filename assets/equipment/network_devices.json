@@ -3,214 +3,6 @@
   "default_switch": "c1000_24t_4g_l",
   "models": [
     {
-      "id": "c1101_4p",
-      "shop_id": "c1101_4p",
-      "name": "Cisco C1101-4P",
-      "manufacturer": "Cisco",
-      "family": "ISR 1100",
-      "category": "router",
-      "display_name": {
-        "en": "Cisco C1101-4P",
-        "ru": "Cisco C1101-4P"
-      },
-      "desc": {
-        "en": "ISR 1100 · 5 built-in data interfaces · 1U",
-        "ru": "ISR 1100 · встроенных интерфейсов: 5 · 1U"
-      },
-      "price": 350,
-      "rack_units": 1,
-      "routing_enabled": true,
-      "power": {
-        "idle_mw": 6000,
-        "peak_mw": 24000,
-        "link_share_permille": 250,
-        "power_factor_percent": 90
-      },
-      "adapter": {
-        "output_watts": 30,
-        "output_volts": 12,
-        "output_current_ma": 2500,
-        "efficiency_percent": 90,
-        "power_factor_percent": 90
-      },
-      "ports": [
-        {
-          "name": "WAN1",
-          "ios_name": "GigabitEthernet0/0/0",
-          "connector": "Rj45",
-          "role": "routed",
-          "speed_mbps": 1000,
-          "cage": null,
-          "flex": false,
-          "trunk": false,
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.704,
-              0.305,
-              0.768,
-              0.695
-            ]
-          },
-          "optical_socket": null,
-          "default_wan": false,
-          "leds": null
-        },
-        {
-          "name": "LAN1",
-          "ios_name": "GigabitEthernet0/1/0",
-          "connector": "Rj45",
-          "role": "switch",
-          "speed_mbps": 1000,
-          "cage": null,
-          "flex": false,
-          "trunk": false,
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.37,
-              0.305,
-              0.434,
-              0.695
-            ]
-          },
-          "optical_socket": null,
-          "default_wan": false,
-          "leds": null
-        },
-        {
-          "name": "LAN2",
-          "ios_name": "GigabitEthernet0/1/1",
-          "connector": "Rj45",
-          "role": "switch",
-          "speed_mbps": 1000,
-          "cage": null,
-          "flex": false,
-          "trunk": false,
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.445,
-              0.305,
-              0.509,
-              0.695
-            ]
-          },
-          "optical_socket": null,
-          "default_wan": false,
-          "leds": null
-        },
-        {
-          "name": "LAN3",
-          "ios_name": "GigabitEthernet0/1/2",
-          "connector": "Rj45",
-          "role": "switch",
-          "speed_mbps": 1000,
-          "cage": null,
-          "flex": false,
-          "trunk": false,
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.522,
-              0.305,
-              0.586,
-              0.695
-            ]
-          },
-          "optical_socket": null,
-          "default_wan": false,
-          "leds": null
-        },
-        {
-          "name": "LAN4",
-          "ios_name": "GigabitEthernet0/1/3",
-          "connector": "Rj45",
-          "role": "switch",
-          "speed_mbps": 1000,
-          "cage": null,
-          "flex": false,
-          "trunk": false,
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.596,
-              0.305,
-              0.66,
-              0.695
-            ]
-          },
-          "optical_socket": null,
-          "default_wan": false,
-          "leds": null
-        }
-      ],
-      "power_inlets": [
-        {
-          "connector": "CiscoFourPin",
-          "side": "Front",
-          "socket": {
-            "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
-            ]
-          }
-        }
-      ],
-      "artwork": {
-        "front": {
-          "path": "equipment/network/c1101_4p_photo.png",
-          "uv": [
-            0,
-            0,
-            1,
-            1
-          ],
-          "source_size": [
-            2200,
-            240
-          ]
-        },
-        "rear": {
-          "path": "equipment/network/c1101_4p_photo.png",
-          "uv": [
-            0,
-            0,
-            1,
-            1
-          ],
-          "source_size": [
-            2200,
-            240
-          ]
-        }
-      },
-      "switching_mbps": 0,
-      "forwarding_kpps": 0,
-      "weight_grams": 0,
-      "cpu_mhz": 0,
-      "dram_mb": 0,
-      "flash_mb": 0,
-      "source": "https://www.cisco.com/c/en/us/products/collateral/routers/1000-series-integrated-services-routers-isr/datasheet-c78-739512.html",
-      "notes": "Built-in ports only; management, console and optional modules excluded. Prices and operating power are game estimates.",
-      "psu": {
-        "capacity_watts": 30,
-        "efficiency_permille": [
-          [
-            0,
-            1000
-          ],
-          [
-            1000,
-            1000
-          ]
-        ]
-      },
-      "mode_blocks": []
-    },
-    {
       "id": "cisco_isr_c1111",
       "shop_id": "cisco_isr_c1111",
       "name": "Cisco ISR C1111-8P",
@@ -569,7 +361,13 @@
         "link_share_permille": 250,
         "power_factor_percent": 90
       },
-      "adapter": null,
+      "adapter": {
+        "output_watts": 108,
+        "output_volts": 12,
+        "output_current_ma": 9000,
+        "efficiency_percent": 90,
+        "power_factor_percent": 90
+      },
       "ports": [
         {
           "name": "Gi0/0/0",
@@ -635,14 +433,14 @@
       ],
       "power_inlets": [
         {
-          "connector": "IecC14",
-          "side": "Rear",
+          "connector": "CiscoSixPin",
+          "side": "Front",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.109,
+              0.525,
+              0.155,
+              0.853
             ]
           }
         }
@@ -662,7 +460,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/isr_4321_photo.png",
+          "path": "equipment/network/isr_4321_rear_photo.png",
           "uv": [
             0,
             0,
@@ -824,10 +622,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.866,
+              0.18,
+              0.938,
+              0.75
             ]
           }
         }
@@ -847,7 +645,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/isr_4331_photo.png",
+          "path": "equipment/network/isr4331_rear.png",
           "uv": [
             0,
             0,
@@ -1033,10 +831,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.139,
+              0.64,
+              0.195,
+              0.94
             ]
           }
         }
@@ -1056,7 +854,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/isr_4351_photo.png",
+          "path": "equipment/network/isr4351_rear.png",
           "uv": [
             0,
             0,
@@ -1233,10 +1031,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.042,
+              0.12,
+              0.097,
+              0.81
             ]
           }
         }
@@ -1256,7 +1054,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c8200l_1n_4t_photo.png",
+          "path": "equipment/network/c8200_rear.png",
           "uv": [
             0,
             0,
@@ -1433,10 +1231,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.042,
+              0.12,
+              0.097,
+              0.81
             ]
           }
         }
@@ -1456,7 +1254,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c8200_1n_4t_photo.png",
+          "path": "equipment/network/c8200_rear.png",
           "uv": [
             0,
             0,
@@ -1677,10 +1475,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.1806,
+              0.2294,
+              0.2165,
+              0.7882
             ]
           }
         },
@@ -1689,10 +1487,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.9234,
+              0.2294,
+              0.9635,
+              0.8
             ]
           }
         }
@@ -1712,7 +1510,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c8300_1n1s_6t_photo.png",
+          "path": "equipment/network/c8300_rear.png",
           "uv": [
             0,
             0,
@@ -2037,10 +1835,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.1906,
+              0.1544,
+              0.2368,
+              0.7919
             ]
           }
         },
@@ -2049,10 +1847,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.8892,
+              0.1544,
+              0.9532,
+              0.8054
             ]
           }
         }
@@ -2072,7 +1870,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/asr_1001_x_photo.png",
+          "path": "equipment/network/asr1001_rear.png",
           "uv": [
             0,
             0,
@@ -2723,10 +2521,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.7691,
+              0.1932,
+              0.815,
+              0.7246
             ]
           }
         },
@@ -2735,10 +2533,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.9144,
+              0.1932,
+              0.9613,
+              0.7391
             ]
           }
         }
@@ -2758,7 +2556,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c8500_12x4qc_photo.png",
+          "path": "equipment/network/c8500_rear.png",
           "uv": [
             0,
             0,
@@ -3516,10 +3314,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.86,
+              0.18,
+              0.94,
+              0.82
             ]
           }
         }
@@ -3539,7 +3337,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/cbs250_24t_4g_photo.png",
+          "path": "equipment/network/cbs_business_rear.png",
           "uv": [
             0,
             0,
@@ -4264,10 +4062,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.86,
+              0.18,
+              0.94,
+              0.82
             ]
           }
         }
@@ -4287,7 +4085,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/cbs350_24t_4g_photo.png",
+          "path": "equipment/network/cbs_business_rear.png",
           "uv": [
             0,
             0,
@@ -6744,10 +6542,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.86,
+              0.18,
+              0.94,
+              0.82
             ]
           }
         }
@@ -6767,7 +6565,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c1300_24t_4g_photo.png",
+          "path": "equipment/network/c1300_rear.png",
           "uv": [
             0,
             0,
@@ -7492,10 +7290,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.872,
-              0.22,
-              0.947,
-              0.73
+              0.8694,
+              0.1752,
+              0.934,
+              0.7162
             ]
           }
         }
@@ -7515,7 +7313,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/ws_c2960x_24ts_l_rear_photo.png",
+          "path": "equipment/network/2960x_rear.png",
           "uv": [
             0,
             0,
@@ -8240,10 +8038,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.5206,
+              0.2399,
+              0.5898,
+              0.7657
             ]
           }
         }
@@ -8263,7 +8061,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c9200l_24t_4g_e_photo.png",
+          "path": "equipment/network/c9200l_rear.png",
           "uv": [
             0,
             0,
@@ -8860,10 +8658,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.9049,
+              0.2397,
+              0.9631,
+              0.7144
             ]
           }
         }
@@ -8883,7 +8681,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c9300_24t_e_photo.png",
+          "path": "equipment/network/c9300_rear.png",
           "uv": [
             0,
             0,
@@ -10108,10 +9906,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.1723,
+              0.1909,
+              0.2195,
+              0.7273
             ]
           }
         },
@@ -10120,10 +9918,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.9155,
+              0.1909,
+              0.9671,
+              0.7273
             ]
           }
         }
@@ -10143,7 +9941,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/c9500_24y4c_e_photo.png",
+          "path": "equipment/network/c9500_rear.png",
           "uv": [
             0,
             0,
@@ -12450,10 +12248,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.1669,
+              0.2275,
+              0.2075,
+              0.7587
             ]
           }
         },
@@ -12462,10 +12260,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.9298,
+              0.2026,
+              0.9733,
+              0.7146
             ]
           }
         }
@@ -12485,7 +12283,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/n9k_c93180yc_fx3_photo.png",
+          "path": "equipment/network/n9k93180_rear.png",
           "uv": [
             0,
             0,
@@ -14922,10 +14720,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.06,
-              0.25,
-              0.11,
-              0.7
+              0.9083,
+              0.0793,
+              0.968,
+              0.4104
             ]
           }
         },
@@ -14934,10 +14732,10 @@
           "side": "Rear",
           "socket": {
             "rect": [
-              0.135,
-              0.25,
-              0.185,
-              0.7
+              0.9041,
+              0.5966,
+              0.9641,
+              0.9188
             ]
           }
         }
@@ -14957,7 +14755,7 @@
           ]
         },
         "rear": {
-          "path": "equipment/network/n9k_c9364c_gx_photo.png",
+          "path": "equipment/network/n9k9364_rear.png",
           "uv": [
             0,
             0,

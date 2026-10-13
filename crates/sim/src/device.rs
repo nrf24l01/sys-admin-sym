@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 pub enum PowerInletConnector {
     IecC14,
     CiscoFourPin,
+    CiscoSixPin,
+}
+
+impl PowerInletConnector {
+    pub fn is_dc(self) -> bool {
+        matches!(self, Self::CiscoFourPin | Self::CiscoSixPin)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -102,6 +109,7 @@ impl DeviceKind {
         let connector = match socket.connector {
             crate::ConnectorType::IecC14 => PowerInletConnector::IecC14,
             crate::ConnectorType::CiscoFourPin => PowerInletConnector::CiscoFourPin,
+            crate::ConnectorType::CiscoSixPin => PowerInletConnector::CiscoSixPin,
             _ => return None,
         };
         Some(PowerInlet {

@@ -38,7 +38,9 @@ impl ServerCatalog {
                         || !matches!(
                             p.connector,
                             None | Some(
-                                crate::ConnectorType::IecC14 | crate::ConnectorType::CiscoFourPin
+                                crate::ConnectorType::IecC14
+                                    | crate::ConnectorType::CiscoFourPin
+                                    | crate::ConnectorType::CiscoSixPin
                             )
                         )
                 }) || model

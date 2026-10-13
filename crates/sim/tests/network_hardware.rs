@@ -8,7 +8,6 @@ fn requested_network_devices_have_catalog_records() {
     let catalog: Value = serde_json::from_str(&source).unwrap();
     let models = catalog["models"].as_array().unwrap();
     for name in [
-        "C1101-4P",
         "C1111-8P",
         "ISR 4321",
         "ISR 4331",
@@ -69,6 +68,33 @@ fn install(sim: &mut NetworkSim, id: DeviceId, unit: u8, outlet: u8) {
         endpoint: PowerEndpoint::Device(id),
     })
     .unwrap();
+}
+
+#[test]
+fn isr4321_uses_its_six_pin_socket_and_supplied_adapter() {
+    let mut sim = NetworkSim::new();
+    sim.money = 1_000_000;
+    let id = buy(&mut sim, "isr_4321");
+    install(&mut sim, id, 1, 0);
+    let device = sim.device(id).unwrap();
+    let socket = device.kind.power_connector_socket(0).unwrap();
+    assert_eq!(socket.connector_type().key(), "cisco-six-pin");
+    assert_eq!(socket.side, RackSide::Front);
+    assert!(!socket.can_mate(&ConnectorType::CiscoFourPin));
+    assert!(!socket.can_mate(&ConnectorType::IecC14));
+    let adapter = device
+        .kind
+        .network_model()
+        .unwrap()
+        .adapter
+        .as_ref()
+        .unwrap();
+    assert_eq!(adapter.output_watts, 108);
+    assert_eq!(adapter.output_volts, 12);
+    assert_eq!(adapter.output_current_ma, 9000);
+    assert!(device.powered);
+    assert!(sim.power.devices[&id].psus.is_none());
+    assert!(sim.power.devices[&id].adapter.is_some());
 }
 
 #[test]
@@ -173,7 +199,7 @@ fn two_unit_switches_block_overlapping_placement_and_use_redundant_feeds() {
     sim.money = 100_000;
     let large = buy(&mut sim, "n9k_c9364c_gx");
     install(&mut sim, large, 1, 0);
-    let small = buy(&mut sim, "c1101_4p");
+    let small = buy(&mut sim, "cisco_isr_c1111");
     assert!(
         sim.execute(Command::PlaceDevice {
             device: small,
@@ -367,8 +393,15 @@ fn catalog_validation_rejects_duplicate_ids_bad_geometry_and_incompatible_modes(
                     serde_json::json!([0.5, 0.5, 0.2, 0.8])
             }
             2 => {
-                source["models"][1]["ports"][1]["cage"]["modes"][0]["speed"] =
-                    serde_json::json!("Gbps100")
+                let cage = source["models"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .flat_map(|model| model["ports"].as_array_mut().unwrap())
+                    .filter_map(|port| port.get_mut("cage"))
+                    .find(|cage| cage["kind"] == "sfp")
+                    .expect("catalog must include an SFP cage");
+                cage["modes"][0]["speed"] = serde_json::json!("Gbps100")
             }
             _ => {
                 source["models"][0]["artwork"]["front"]["path"] =

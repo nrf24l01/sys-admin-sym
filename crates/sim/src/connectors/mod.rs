@@ -33,6 +33,8 @@ pub enum ConnectorType {
     IecC13,
     #[serde(rename = "cisco-four-pin")]
     CiscoFourPin,
+    #[serde(rename = "cisco-six-pin")]
+    CiscoSixPin,
     #[serde(rename = "anchor")]
     Anchor,
 }
@@ -50,6 +52,7 @@ impl ConnectorType {
             Self::IecC14 => "c14",
             Self::IecC13 => "c13",
             Self::CiscoFourPin => "cisco-four-pin",
+            Self::CiscoSixPin => "cisco-six-pin",
             Self::Anchor => "anchor",
         }
     }
@@ -104,6 +107,7 @@ impl Connector for PowerInletConnector {
         match self {
             Self::IecC14 => ConnectorType::IecC14,
             Self::CiscoFourPin => ConnectorType::CiscoFourPin,
+            Self::CiscoSixPin => ConnectorType::CiscoSixPin,
         }
     }
 }

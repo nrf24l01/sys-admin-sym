@@ -611,6 +611,7 @@ pub(super) enum ConnectorKind {
     Attached { active: bool, cage: CageKind },
     Iec,
     CiscoFourPin,
+    CiscoSixPin,
 }
 
 impl ConnectorKind {
@@ -642,6 +643,7 @@ impl Connector for CableConnector {
             ConnectorKind::Attached { cage, .. } => cage.connector_type(),
             ConnectorKind::Iec => ConnectorType::IecC14,
             ConnectorKind::CiscoFourPin => ConnectorType::CiscoFourPin,
+            ConnectorKind::CiscoSixPin => ConnectorType::CiscoSixPin,
         }
     }
 }
@@ -662,6 +664,7 @@ impl CableConnector {
         match self.kind {
             ConnectorKind::Iec => "iec-plug",
             ConnectorKind::CiscoFourPin => "cisco-four-pin-plug",
+            ConnectorKind::CiscoSixPin => "cisco-six-pin-plug",
             _ => "rj45-plug",
         }
     }

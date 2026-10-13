@@ -21,6 +21,9 @@ the same registry. Existing `router_config.json`, `switch_config.json` and
 4. Set the operating `power` curve, optional DC `adapter`, AC `psu` rating and
    efficiency curve, and `power_inlets`. Each inlet has a connector, side and
    normalized socket rectangle. Multiple AC inlets support redundant feeds.
+   Use `IecC14` for AC inlets without an adapter, or `CiscoFourPin` /
+   `CiscoSixPin` for a DC inlet with its supplied `adapter` profile. The profile
+   supplies the voltage, current, capacity and conversion efficiency.
 5. Supply `artwork.front` and `artwork.rear`, each with `path`, normalized `uv`
    and `source_size`, using Cisco documentation artwork or clean product
    catalog images. Match the C1000-24T-4G-L reference: a complete, straight-on chassis panel filling the crop from edge
@@ -31,11 +34,30 @@ the same registry. Existing `router_config.json`, `switch_config.json` and
    uncropped source image. Prefer clean manufacturer documentation panels
    with even lighting and crisp port details. Avoid used-hardware camera shots.
    Do not use generated schematic faces.
+   Use a distinct photograph of the opposite face for `artwork.rear`; do not
+   repeat the port-side image. `Front` is the game's interactive I/O face,
+   even when manufacturer documentation calls it the rear. Align each power
+   inlet with the face on which its physical socket appears. For example, the
+   C1111 four-pin and ISR4321 six-pin inputs belong on the I/O face;
+   their opposite bezels contain no power sockets.
 6. Add `source` and `notes`; record image provenance in `ATTRIBUTION.md`.
 7. Run `make check`. Invalid catalogs identify the model and field at startup.
 
 [Artwork comparison with the C1000 reference](images/cisco-artwork-comparison.jpg)
-shows the previous and corrected catalog crops at equal rack width.
+shows the current catalog faces at equal rack width, starting with the C1000 reference.
+
+[Router front/rear comparison](images/cisco-router-front-rear-comparison.jpg)
+shows every router's two faces with the configured power-inlet bounds marked.
+
+[Corrected rear panels](images/cisco-network-rear-comparison.jpg) show the requested
+router and switch repairs with power socket bounds. The [previous crops](images/cisco-network-rears-before.jpg)
+are retained for comparison. Rear panel preparation removes background padding and
+straightens the photographed panel; case lids and projecting PSU extraction grips
+outside the panel plane are excluded from the playable face.
+
+Removing a catalog model also removes its purchase offer and artwork. Saves that
+still contain that model cannot load until its saved devices are removed; unknown
+identities are rejected instead of silently substituting different hardware.
 
 All socket rectangles use `[left, top, right, bottom]` in the rendered face's
 normalized coordinates. Ports have a stable array order: saved links use
