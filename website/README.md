@@ -79,7 +79,7 @@ Create these repository Actions secrets before the next successful `main` build:
 | `S3_ENDPOINT_URL` | S3 API endpoint, using HTTPS |
 | `S3_REGION` | S3 signing region |
 
-The game workflows store immutable packages under `downloads/versions/<commit-sha>/` and publish the current ZIP and checksum files under `resources/`. The website image is published only to GHCR. The configured directory path must resolve those resource keys directly. Bucket/CDN read access must allow visitors to fetch ZIPs and `.sha256` files; a browser must never receive an S3 access key. Set the GHCR package visibility to public if visitors should pull the image without authentication.
+The game workflows upload only the current ZIP and checksum files under `resources/`, replacing the same filenames on each build. Uploads require cache revalidation so visitors receive the current files. The website image is published only to GHCR. The configured directory path must resolve those resource keys directly. Bucket/CDN read access must allow visitors to fetch ZIPs and `.sha256` files; a browser must never receive an S3 access key. Set the GHCR package visibility to public if visitors should pull the image without authentication.
 
 The workflows reject non-HTTPS S3 endpoints. No S3 credentials are stored in this repository; rotate any keys previously pasted into chat before adding their replacements to GitHub Secrets. The provided read-only key is not embedded in the frontend; static browsers cannot safely hold private S3 credentials.
 

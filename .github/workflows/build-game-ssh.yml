@@ -161,9 +161,6 @@ jobs:
           case "$S3_ENDPOINT_URL" in https://*) ;; *) echo 'S3_ENDPOINT_URL must use HTTPS.' >&2; exit 1 ;; esac
           package="game-ssh-${TARGET}.zip"
           for file in "$package" "$package.sha256"; do
-            aws s3 cp "dist/$file" "s3://${S3_BUCKET}/downloads/versions/${GITHUB_SHA}/${file}" \
-              --endpoint-url "$S3_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION" \
-              --cache-control 'public,max-age=31536000,immutable' --only-show-errors --no-progress
             aws s3 cp "dist/$file" "s3://${S3_BUCKET}/resources/${file}" \
               --endpoint-url "$S3_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION" \
               --cache-control 'public,max-age=0,must-revalidate' --only-show-errors --no-progress
